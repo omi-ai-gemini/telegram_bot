@@ -265,6 +265,9 @@ def webhook():
 
     if "message" in data:
 
+        #測試
+        print("📩 WEBHOOK HIT")
+
         chat_id = data["message"]["chat"]["id"]
         user_id = str(chat_id)
         text = data["message"].get("text", "")
@@ -281,7 +284,13 @@ def webhook():
         # 正常回覆
         reply = ask_gemini(user_id, text)
 
+        #測試
+        print("🤖 REPLY:", reply)
+
         send_message(reply, chat_id)
+
+        #測試
+        print("📤 SENDING MESSAGE")
 
     return "ok"
 
