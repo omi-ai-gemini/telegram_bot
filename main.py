@@ -64,7 +64,6 @@ def init():
     conn.commit()
     conn.close()
 
-
 init()
 
 
@@ -106,7 +105,7 @@ def get_bots():
 def add_bot(bot_id, personality="default"):
     conn = sqlite3.connect("memory.db")
     c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO bots VALUES (?, ?, ?, 1)", 
+    c.execute("INSERT OR REPLACE INTO bots VALUES (?, ?, ?, 1)",
               (bot_id, bot_id, personality))
     conn.commit()
     conn.close()
@@ -131,66 +130,81 @@ def send(chat_id, text):
 
 
 # =========================
-# BOT STATE HANDLER
+# BOT-SET UI (✔ 完整替換版)
 # =========================
 def handle_bot_set(user_id, text, chat_id):
 
     state = USER_STATE.get(user_id, STATE_NORMAL)
 
-    # ========== ADD BOT ==========
+    # -------------------------
+    # ADD FLOW
+    # -------------------------
     if state == STATE_ADD:
         add_bot(text)
         USER_STATE[user_id] = STATE_NORMAL
-        send(chat_id, f"✅ bot 已加入群組：{text}")
+        send(chat_id, f"bot: add-bot\n[{text}] 已加入群組")
         return True
 
-    # ========== DELETE BOT ==========
+    # -------------------------
+    # DELETE FLOW
+    # -------------------------
     if state == STATE_DELETE:
         delete_bot(text)
         USER_STATE[user_id] = STATE_NORMAL
-        send(chat_id, f"🗑 bot 已移除：{text}")
+        send(chat_id, f"bot: {text} 已退出群組")
         return True
 
-    # ========== COMMAND ==========
+    # -------------------------
+    # COMMANDS
+    # -------------------------
     if text.startswith("[ add ]"):
         USER_STATE[user_id] = STATE_ADD
-        send(chat_id, "請輸入 bot 名稱")
+        send(chat_id, "bot: add-bot\n請輸入 bot 名稱")
         return True
 
     if text.startswith("[ delete ]"):
         USER_STATE[user_id] = STATE_DELETE
-        send(chat_id, "請輸入要刪除的 bot 名稱")
+        send(chat_id, "bot: delete-bot\n請輸入要刪除的 bot 名稱")
         return True
 
-    if text.startswith("["):
+    # -------------------------
+    # VIEW BOT SETTING（✔ 你要的）
+    # -------------------------
+    if text.startswith("[") and text.endswith("]"):
+
         bot_id = text.replace("[", "").replace("]", "").strip()
 
         bots = get_bots()
+
         for b in bots:
             if b[0] == bot_id:
-                send(chat_id, f"""
-bot: {b[0]}
+
+                send(chat_id, f"""bot:
+[{b[0]}]
 性格: {b[2]}
 """)
                 return True
+
+        send(chat_id, "bot: 尚未找到該 bot")
+        return True
 
     return False
 
 
 # =========================
-# GEMINI
+# GEMINI（✔ 已加名字前綴）
 # =========================
 def ask_gemini(text, world):
 
     bots = get_bots()
 
     if len(bots) == 0:
-        return "尚無bot加入群組，請先使用 [ add ] 新增角色"
+        return "bot: 尚無bot加入群組，請先使用 [ add ] 新增角色"
 
     npc_info = "\n".join([f"{b[0]}:{b[2]}" for b in bots])
 
     prompt = f"""
-群組AI
+你是群組AI
 
 世界:
 {world}
@@ -201,14 +215,16 @@ NPC:
 使用者:
 {text}
 
-請自然回覆群組聊天內容
+請用「角色名稱:內容」格式回覆
+例如：
+小明: 我覺得可以
 """
 
     return model.generate_content(prompt).text
 
 
 # =========================
-# NPC SYSTEM
+# NPC SYSTEM（✔ 已加名字）
 # =========================
 def should_trigger_npc():
 
@@ -243,10 +259,12 @@ def npc_tick():
 性格:{bot[2]}
 
 請說一句群組聊天內容
+請直接輸出一句話，不要解釋
 """
 
     msg = model.generate_content(prompt).text
 
+    # ✔ 加名字（你要求的）
     send(GROUP_CHAT_ID, f"{bot[1]}: {msg}")
 
 
@@ -263,11 +281,10 @@ def webhook():
     user_id = str(msg["from"]["id"])
     text = msg.get("text", "")
 
-    # BOT SET 優先處理（不進 Gemini）
+    # ✔ bot-set 優先
     if handle_bot_set(user_id, text, chat_id):
         return "ok"
 
-    # 世界
     world = get_world()
     world["activity"] = "high"
     save_world(world)
