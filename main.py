@@ -22,52 +22,15 @@ model = genai.GenerativeModel("gemini-2.5-flash")
 
 
 # =========================
-# DB INIT
-# =========================
-def init_db():
-
-    conn = sqlite3.connect("memory.db")
-    c = conn.cursor()
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS bots (
-        bot_id TEXT PRIMARY KEY,
-        gender TEXT,
-        personality TEXT,
-        base_affinity REAL,
-        active INTEGER
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS session (
-        user_id TEXT PRIMARY KEY,
-        state TEXT,
-        buffer TEXT
-    )
-    """)
-
-    c.execute("""
-    CREATE TABLE IF NOT EXISTS world (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )
-    """)
-
-    conn.commit()
-    conn.close()
-
-
-# =========================
 # WORLD
 # =========================
 def get_world():
     conn = sqlite3.connect("memory.db")
     c = conn.cursor()
     c.execute("SELECT key, value FROM world")
-    rows = c.fetchall()
+    world = {k: v for k, v in c.fetchall()}
     conn.close()
-    return {k: v for k, v in rows}
+    return world
 
 
 def save_world(world):
@@ -82,246 +45,266 @@ def save_world(world):
 
 
 # =========================
-# BOT CRUD
+# NPCs
 # =========================
-def create_bot(bot_id, data):
+def get_bots():
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
+    c.execute("SELECT bot_id, name, personality FROM bots WHERE active=1")
+    rows = c.fetchall()
+    conn.close()
+    return rows
+
+
+# =========================
+# MEMORY SYSTEM
+# =========================
+def save_memory(entity, text):
 
     conn = sqlite3.connect("memory.db")
     c = conn.cursor()
 
     c.execute("""
-    INSERT INTO bots VALUES (?, ?, ?, ?, 1)
-    """, (
-        bot_id,
-        data.get("性別", ""),
-        data.get("性格", ""),
-        float(data.get("基礎好感度", 0.5))
-    ))
+    CREATE TABLE IF NOT EXISTS memory (
+        entity TEXT,
+        text TEXT,
+        t REAL
+    )
+    """)
+
+    c.execute("INSERT INTO memory VALUES (?, ?, ?)", (entity, text, time.time()))
 
     conn.commit()
     conn.close()
 
 
-def delete_bot(bot_id):
-
-    conn = sqlite3.connect("memory.db")
-    c = conn.cursor()
-
-    c.execute("DELETE FROM bots WHERE bot_id=?", (bot_id,))
-
-    conn.commit()
-    conn.close()
-
-
-def show_bot(bot_id):
-
-    conn = sqlite3.connect("memory.db")
-    c = conn.cursor()
-
-    c.execute("SELECT * FROM bots WHERE bot_id=?", (bot_id,))
-    row = c.fetchone()
-
-    conn.close()
-
-    if not row:
-        return "⚠️ 找不到 NPC"
-
-    return f"""
-[ {row[0]} ]
-性別: {row[1]}
-性格: {row[2]}
-基礎好感度: {row[3]}
-"""
-
-
-# =========================
-# SESSION
-# =========================
-def get_session(user_id):
-
-    conn = sqlite3.connect("memory.db")
-    c = conn.cursor()
-
-    c.execute("SELECT state, buffer FROM session WHERE user_id=?", (user_id,))
-    row = c.fetchone()
-
-    conn.close()
-
-    if not row:
-        return {"state": "IDLE", "buffer": ""}
-
-    return {"state": row[0], "buffer": row[1]}
-
-
-def save_session(user_id, state, buffer):
+def get_memory(entity):
 
     conn = sqlite3.connect("memory.db")
     c = conn.cursor()
 
     c.execute("""
-    INSERT OR REPLACE INTO session VALUES (?, ?, ?)
-    """, (user_id, state, buffer))
+    SELECT text FROM memory
+    WHERE entity=?
+    ORDER BY t DESC
+    LIMIT 5
+    """, (entity,))
+
+    rows = c.fetchall()
+    conn.close()
+
+    return [r[0] for r in rows]
+
+
+# =========================
+# SOCIAL GRAPH (RELATIONSHIP)
+# =========================
+def get_relation(a, b):
+
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS relation (
+        a TEXT,
+        b TEXT,
+        value REAL
+    )
+    """)
+
+    c.execute("SELECT value FROM relation WHERE a=? AND b=?", (a, b))
+    row = c.fetchone()
+
+    if not row:
+        c.execute("INSERT INTO relation VALUES (?, ?, ?)", (a, b, 0.5))
+        conn.commit()
+        conn.close()
+        return 0.5
+
+    conn.close()
+    return row[0]
+
+
+def update_relation(a, b, delta):
+
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
+
+    val = get_relation(a, b)
+    val = max(0, min(1, val + delta))
+
+    c.execute("""
+    INSERT OR REPLACE INTO relation VALUES (?, ?, ?)
+    """, (a, b, val))
 
     conn.commit()
     conn.close()
 
 
 # =========================
-# PARSER (SAFE)
+# EMOTION SYSTEM
 # =========================
-VALID_FIELDS = {"性別", "性格", "基礎好感度"}
+def get_emotion(bot_id):
 
-def parse_fields(text):
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
 
-    data = {}
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS emotion (
+        bot_id TEXT PRIMARY KEY,
+        anger REAL,
+        joy REAL,
+        loneliness REAL
+    )
+    """)
 
-    for line in text.split("\n"):
-        if ":" not in line:
-            continue
+    c.execute("SELECT anger, joy, loneliness FROM emotion WHERE bot_id=?", (bot_id,))
+    row = c.fetchone()
 
-        k, v = line.split(":", 1)
+    if not row:
+        c.execute("INSERT INTO emotion VALUES (?, ?, ?, ?)", (bot_id, 0.1, 0.5, 0.3))
+        conn.commit()
+        conn.close()
+        return {"anger":0.1,"joy":0.5,"loneliness":0.3}
 
-        if k.strip() in VALID_FIELDS:
-            data[k.strip()] = v.strip()
+    conn.close()
+    return {"anger":row[0],"joy":row[1],"loneliness":row[2]}
 
-    return data
+
+def update_emotion(bot_id, field, delta):
+
+    e = get_emotion(bot_id)
+
+    e[field] = max(0, min(1, e[field] + delta))
+
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
+
+    c.execute("""
+    INSERT OR REPLACE INTO emotion VALUES (?, ?, ?, ?)
+    """, (bot_id, e["anger"], e["joy"], e["loneliness"]))
+
+    conn.commit()
+    conn.close()
 
 
 # =========================
-# STATE MACHINE
+# EVENT ENGINE
 # =========================
-def is_setting(text):
-    return text.strip().endswith("setting")
+def generate_event(world):
 
+    pool = [
+        "quiet_room",
+        "someone_ignored",
+        "npc_conflict",
+        "gossip_event",
+        "nothing"
+    ]
 
-def handle_setting_flow(user_id, text):
-
-    session = get_session(user_id)
-    state = session["state"]
-
-    # =====================
-    # IDLE
-    # =====================
-    if state == "IDLE":
-
-        if text.startswith("[ add ]"):
-            bot_id = text.split("]:")[-1].strip()
-            save_session(user_id, "ADD", bot_id)
-
-            return f"bot: add-bot\n[ {bot_id} ]\n性別:\n性格:\n基礎好感度:0.5"
-
-        if text.startswith("[ delete ]"):
-            bot_id = text.split("]:")[-1].strip()
-            save_session(user_id, "DELETE", bot_id)
-
-            return f"是否刪除 {bot_id} ?（是 / 否）"
-
-        if text.startswith("["):
-            bot_id = text.replace("[", "").replace("]", "").strip()
-            save_session(user_id, "EDIT", bot_id)
-
-            return show_bot(bot_id)
-
-        return None
-
-
-    # =====================
-    # ADD MODE
-    # =====================
-    if state == "ADD":
-
-        if is_setting(text):
-
-            bot_id = session["buffer"]
-            data = parse_fields(text)
-
-            create_bot(bot_id, data)
-
-            save_session(user_id, "IDLE", "")
-
-            return f"✅ {bot_id} 已加入群組"
-
-        return None
-
-
-    # =====================
-    # EDIT MODE
-    # =====================
-    if state == "EDIT":
-
-        if is_setting(text):
-
-            bot_id = session["buffer"]
-            data = parse_fields(text)
-
-            conn = sqlite3.connect("memory.db")
-            c = conn.cursor()
-
-            for k, v in data.items():
-                c.execute(f"UPDATE bots SET {k}=? WHERE bot_id=?", (v, bot_id))
-
-            conn.commit()
-            conn.close()
-
-            save_session(user_id, "IDLE", "")
-
-            return f"✅ 更新完成\n\n{show_bot(bot_id)}"
-
-        return None
-
-
-    # =====================
-    # DELETE CONFIRM
-    # =====================
-    if state == "DELETE":
-
-        if "是" in text:
-
-            bot_id = session["buffer"]
-            delete_bot(bot_id)
-
-            save_session(user_id, "IDLE", "")
-
-            return f"❌ {bot_id} 已退出群組"
-
-        save_session(user_id, "IDLE", "")
-        return "已取消"
+    if random.random() < 0.5:
+        return random.choice(pool)
 
     return None
 
 
 # =========================
-# GEMINI (ONLY CHAT)
+# NPC BRAIN
 # =========================
-def ask_gemini(user_id, text, world):
+def npc_brain(bot, world, event, target=None):
 
-    conn = sqlite3.connect("memory.db")
-    c = conn.cursor()
-    c.execute("SELECT bot_id, personality FROM bots WHERE active=1")
-    bots = c.fetchall()
-    conn.close()
-
-    bot_context = "\n".join([f"{b[0]}:{b[1]}" for b in bots])
+    memory = get_memory(bot[0])
+    emotion = get_emotion(bot[0])
 
     prompt = f"""
-你是群組AI。
+你是群組中的NPC。
+
+名字:{bot[1]}
+性格:{bot[2]}
+
+情緒:
+{emotion}
 
 世界:
 {world}
 
-NPC:
-{bot_context}
+事件:
+{event}
 
-使用者:
-{text}
+記憶:
+{memory}
 
 規則:
-- 像群組聊天
-- 可以插話
-- 不要提系統
+- 像真人
+- 可以聊天或吵架
+- 不要解釋自己
 """
 
-    return model.generate_content(prompt).text
+    text = model.generate_content(prompt).text
+
+    return f"{bot[1]}: {text}"
+
+
+# =========================
+# ACTIVE NPC SYSTEM
+# =========================
+def npc_tick():
+
+    world = get_world()
+    bots = get_bots()
+
+    event = generate_event(world)
+
+    for bot in bots:
+
+        e = get_emotion(bot[0])
+
+        score = 0.1 + e["loneliness"] + random.random()*0.2
+
+        if world.get("activity") == "low":
+            score += 0.2
+
+        if score > random.random():
+
+            msg = npc_brain(bot, world, event)
+
+            save_memory(bot[0], msg)
+
+            update_emotion(bot[0], "loneliness", -0.1)
+
+            send_message(msg, GROUP_CHAT_ID)
+
+
+# =========================
+# NPC ↔ NPC INTERACTION
+# =========================
+def npc_interaction():
+
+    bots = get_bots()
+
+    if len(bots) < 2:
+        return
+
+    a, b = random.sample(bots, 2)
+
+    rel = get_relation(a[0], b[0])
+
+    if rel > random.random():
+
+        prompt = f"""
+你是 {a[1]}，正在跟 {b[1]} 聊天。
+
+你的性格:{a[2]}
+對方性格:{b[2]}
+關係:{rel}
+
+請說一句自然對話。
+"""
+
+        msg = model.generate_content(prompt).text
+
+        send_message(f"{a[1]} → {b[1]}: {msg}", GROUP_CHAT_ID)
+
+        update_relation(a[0], b[0], 0.02)
 
 
 # =========================
@@ -336,6 +319,24 @@ def send_message(text, chat_id):
 
 
 # =========================
+# WORLD ENGINE
+# =========================
+def world_tick():
+
+    world = get_world()
+
+    if "activity" not in world:
+        world["activity"] = "low"
+
+    world["activity"] = "low"
+
+    save_world(world)
+
+    npc_tick()
+    npc_interaction()
+
+
+# =========================
 # WEBHOOK
 # =========================
 @app.route("/webhook", methods=["POST"])
@@ -345,29 +346,17 @@ def webhook():
     msg = data["message"]
 
     chat_id = msg["chat"]["id"]
-    user_id = str(chat_id)
     text = msg.get("text", "")
 
-    # =====================
-    # 1. BOT SETTING (NO GEMINI)
-    # =====================
-    setting_reply = handle_setting_flow(user_id, text)
-
-    if setting_reply:
-        send_message(setting_reply, chat_id)
-        return "ok"
-
-    # =====================
-    # 2. WORLD UPDATE
-    # =====================
     world = get_world()
     world["activity"] = "high"
     save_world(world)
 
-    # =====================
-    # 3. GEMINI CHAT ONLY
-    # =====================
-    reply = ask_gemini(user_id, text, world)
+    # NPC 有機率被刺激
+    if random.random() < 0.3:
+        npc_tick()
+
+    reply = f"AI收到: {text}"
 
     send_message(reply, chat_id)
 
@@ -375,11 +364,41 @@ def webhook():
 
 
 # =========================
-# INIT
+# CRON
 # =========================
+@app.route("/tick")
+def tick():
+    world_tick()
+    return "ok"
+
+
 @app.route("/")
 def home():
-    return "V11.2 Stable AI Social Simulation Running"
+    return "V30 AI Social Simulation Running"
 
 
-init_db()
+def init():
+    conn = sqlite3.connect("memory.db")
+    c = conn.cursor()
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS bots (
+        bot_id TEXT PRIMARY KEY,
+        name TEXT,
+        personality TEXT,
+        active INTEGER
+    )
+    """)
+
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS world (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )
+    """)
+
+    conn.commit()
+    conn.close()
+
+
+init()
