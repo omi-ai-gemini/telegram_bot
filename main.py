@@ -196,11 +196,14 @@ def webhook():
 # =========================
 # TICK (UptimeRobot)
 # =========================
-@app.route("/tick")
+@app.route("/tick", methods=["GET", "HEAD"])
 def tick():
 
-    update_world()
+    # ⚠️ HEAD 不做重運算（避免浪費）
+    if request.method == "HEAD":
+        return "", 200
 
+    update_world()
     npc_tick()
 
     return "ok"
