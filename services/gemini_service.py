@@ -1,5 +1,5 @@
 from config import model
-from style import build_prompt
+from services.style import build_prompt
 
 # =========================
 # 取得gemini回覆
