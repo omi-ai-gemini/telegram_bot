@@ -20,13 +20,21 @@ PESPONSE_RULES = """
 5. 像人在聊天，不像在寫報告
 """
 
-def build_prompt(user_text):
+def build_prompt(history, user_text):
+
+    history_text = ""
+
+    for msg in history:
+        history_text += f"{msg['role']}: {msg['text']}\n"
 
     prompt = f"""
 
 {BASE_STYLE}
 
 {PESPONSE_RULES}
+
+===對話紀錄===
+{history_text}
 
 使用者:
 {user_text}
