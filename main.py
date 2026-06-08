@@ -1,37 +1,8 @@
 from flask import Flask, request
-import os
-import requests
-import google.generativeai as genai
+import threading
+from handlers.message_handler import run_ai
 
 app = Flask(__name__)
-
-# =========================
-# 環境變數（Render + GitHub部署）
-# =========================
-
-BOT_TOKEN = os.getenv("BOT_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
-
-# Gemini初始化
-genai.configure(api_key=GEMINI_API_KEY)
-model = genai.GenerativeModel("gemini-2.5-flash")
-
-# =========================
-# Telegram 發送訊息
-# =========================
-def send_message(chat_id, text):
-    url = f"{TELEGRAM_API}/sendMessage"
-
-    requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": text
-        },
-        timeout=30
-    )
-
 
 # =========================
 # Webhook（核心入口）
@@ -53,19 +24,13 @@ def webhook():
     chat_id = message["chat"]["id"]
     user_text = message["text"]
 
-    # =========================
-    # AI 回覆
-    # =========================
-    response = model.generate_content(user_text)
-    reply = response.text
-
-    # =========================
-    # 回傳 Telegram
-    # =========================
-    send_message(chat_id, reply)
+    # 🚀 直接丟背景跑 AI（避免 timeout）
+    threading.Thread(
+        target=run_ai,
+        args=(chat_id, user_text)
+    ).start()
 
     return "ok"
-
 
 # =========================
 # 健康檢查（Render用）
@@ -73,7 +38,6 @@ def webhook():
 @app.route("/")
 def home():
     return "OK"
-
 
 # =========================
 # 啟動
