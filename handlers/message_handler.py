@@ -15,7 +15,4 @@ def run_ai(chat_id, user_text):
 
         print("AI ERROR:", e)
 
-        send_message(
-            chat_id,
-             "發生錯誤，請稍後再試"
-        )
+        return
