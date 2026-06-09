@@ -18,5 +18,5 @@ TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
 genai.configure(api_key=GEMINI_API_KEY)
 
 model = genai.GenerativeModel(
-    "gemini-2.5-flash"
+    "gemini-3.1-flash-Lite"
     )

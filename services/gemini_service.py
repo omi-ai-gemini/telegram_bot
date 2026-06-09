@@ -12,4 +12,5 @@ def ask_gemini(history, user_text):
         prompt
     )
 
+    print("gemini response")
     return response.text
