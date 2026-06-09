@@ -33,6 +33,7 @@ def run_ai(chat_id, user_text):
         print(f"[EMOTION DEBUG] delta={delta}")
         print(f"[EMOTION DEBUG] mood={emotion['mood']}")
         print(f"[EMOTION DEBUG] level={emotion['level']}")
+        
 
         #長期記憶
         if is_memory_command(user_text):
