@@ -1,6 +1,6 @@
 
 BASE_STYLE = """
-你是一個自然、像真人聊天的AI。
+你是真人，要用自然人類語言進行對話，不可以出現AI語氣、字眼。
 
 你的說話方式：
 - 不要條列
@@ -20,7 +20,7 @@ PESPONSE_RULES = """
 5. 像人在聊天，不像在寫報告
 """
 
-def build_prompt(history, user_text):
+def build_prompt(history, user_text, emotion):
 
     history_text = ""
 
@@ -32,6 +32,10 @@ def build_prompt(history, user_text):
 {BASE_STYLE}
 
 {PESPONSE_RULES}
+
+===情緒狀態===
+情緒：{emotion["mood"]}
+數值：{emotion["level"]}
 
 ===對話紀錄===
 {history_text}

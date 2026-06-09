@@ -1,6 +1,7 @@
 from flask import Flask, request
 import threading
 from handlers.message_handler import run_ai
+from services.memory import add_chat
 
 app = Flask(__name__)
 
@@ -13,7 +14,7 @@ def webhook():
     data = request.json
 
     # 只處理文字訊息
-    if "message" not in data:
+    if not data or "message" not in data:
         return "ok"
 
     message = data["message"]
@@ -23,6 +24,8 @@ def webhook():
 
     chat_id = message["chat"]["id"]
     user_text = message["text"]
+
+    add_chat(chat_id, "user", user_text)
 
     # 🚀 直接丟背景跑 AI（避免 timeout）
     threading.Thread(
