@@ -1,19 +1,23 @@
 import os
-import sqlite3
+import psycopg2
 
-DB_NAME = os.path.join("/tmp", "app.db")
+DATABASE_URL = os.environ["DATABASE_URL"]
+#DB_NAME = os.path.join("/tmp", "app.db")
 
 # =========================
 # 取得 DB 連線
 # =========================
 def get_conn():
 
-    conn = sqlite3.connect(DB_NAME)
+    return psycopg2.connect(DATABASE_URL)
+
+    #會消失版
+    #conn = sqlite3.connect(DB_NAME)
 
     # 讓 row 可以用 dict 方式讀
-    conn.row_factory = sqlite3.Row
+    #conn.row_factory = sqlite3.Row
 
-    return conn
+    #return conn
 
 
 # =========================
@@ -39,7 +43,7 @@ def init_db():
     # =========================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS user_config (
-        user_id INTEGER PRIMARY KEY,
+        user_id TEXT PRIMARY KEY,
         gemini_key TEXT
     )
     """)
@@ -49,7 +53,7 @@ def init_db():
     # =========================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS chat_memory (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         chat_id TEXT,
         role TEXT,
         text TEXT,
@@ -62,7 +66,7 @@ def init_db():
     # =========================
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS facts_memory (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        id SERIAL PRIMARY KEY,
         chat_id TEXT,
         fact TEXT
     )

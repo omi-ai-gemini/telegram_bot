@@ -1,7 +1,6 @@
 from services.gemini_service import ask_gemini
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
-from config import GEMINI_MODEL, TELEGRAM_API_BASE
 from services.telegram_service import send_message
 from services.memory import(
     add_chat,
