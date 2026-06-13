@@ -1,6 +1,6 @@
 import requests
 from config import TELEGRAM_API_BASE
-from services.telegram_service import get_bot_token
+from services.bot_router import get_bot_token
 
 # =========================
 # Telegram 發送訊息
