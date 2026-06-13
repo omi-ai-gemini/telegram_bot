@@ -1,8 +1,7 @@
+import os
 import sqlite3
-#from config import DB_NAME
-from services.config_db import DB_NAME
 
-#DB_NAME = os.path.json("/tmp", "app.db")
+DB_NAME = os.path.join("/tmp", "app.db")
 
 # =========================
 # 取得 DB 連線
