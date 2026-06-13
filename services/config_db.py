@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-DB_NAME = os.path.json("/tmp", "app.db")
+DB_NAME = os.path.join("/tmp", "app.db")
 
 def get_conn():
     conn = sqlite3.connect(DB_NAME)
