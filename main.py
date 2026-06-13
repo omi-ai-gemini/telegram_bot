@@ -42,9 +42,10 @@ def webhook(bot_id):
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT OR IGNORE INTO user_config (user_id, gemini_key)
-    VALUES (?, NULL)
-    """, (user_id,))
+    INSERT INTO user_config (user_id, gemini_key)
+    VALUES (%s, %s)
+    ON CONFLICT (user_id) DO NOTHING
+    """, (user_id, None))
 
     conn.commit()
     conn.close()
