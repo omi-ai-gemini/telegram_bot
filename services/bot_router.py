@@ -36,7 +36,7 @@ def bot_exists(bot_id: str) -> bool:
     cursor.execute("""
         SELECT 1
         FROM bot_config
-        WHERE bot_id = ?
+        WHERE bot_id = %s
     """, (bot_id,))
 
     result = cursor.fetchone()

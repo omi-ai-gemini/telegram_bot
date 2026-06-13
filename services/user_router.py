@@ -36,7 +36,7 @@ def user_has_key(user_id: int) -> bool:
     cursor.execute("""
         SELECT 1
         FROM user_config
-        WHERE user_id = ?
+        WHERE user_id = %s
     """, (user_id,))
 
     result = cursor.fetchone()
