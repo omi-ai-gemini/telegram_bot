@@ -6,6 +6,8 @@ from services.memory import add_chat
 from services.database import init_db
 from services.database import get_conn
 
+init_db()
+
 app = Flask(__name__)
 
 # =========================
@@ -76,7 +78,5 @@ def admin():
 # 啟動
 # =========================
 if __name__ == "__main__":
-
-    init_db()
 
     app.run(host="0.0.0.0", port=5000)
