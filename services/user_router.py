@@ -14,14 +14,14 @@ def get_gemini_key(user_id: int):
     cursor.execute("""
         SELECT gemini_key
         FROM user_config
-        WHERE user_id = ?
+        WHERE user_id = %s
     """, (user_id,))
 
     row = cursor.fetchone()
     conn.close()
 
     if row:
-        return row["gemini_key"]
+        return row[0]
 
     return None
 

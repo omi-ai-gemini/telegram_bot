@@ -14,14 +14,14 @@ def get_bot_token(bot_id: str):
     cursor.execute("""
         SELECT token
         FROM bot_config
-        WHERE bot_id = ?
+        WHERE bot_id = %s
     """, (bot_id,))
 
     row = cursor.fetchone()
     conn.close()
 
     if row:
-        return row["token"]
+        return row[0]
 
     return None
 
