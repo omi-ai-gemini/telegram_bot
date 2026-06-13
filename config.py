@@ -1,22 +1,35 @@
 import os
-import google.generativeai as genai
 
 # =========================
-# 環境變數（Render + GitHub部署）
+# Gemini
 # =========================
 
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+GEMINI_MODEL = "gemini-3.1-flash-lite"
 
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-TELEGRAM_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+# 如果你未來想保留預設備用KEY才留著
+#DEFAULT_GEMINI_KEY = os.getenv("DEFAULT_GEMINI_KEY")
 
 # =========================
-# Gemini初始化
+# Telegram
 # =========================
 
-genai.configure(api_key=GEMINI_API_KEY)
+TELEGRAM_API_BASE = "https://api.telegram.org/bot"
 
-model = genai.GenerativeModel(
-    "gemini-3.1-flash-lite"
-    )
+# =========================
+# Database
+# =========================
+
+#DB_NAME = "app.db"
+
+# =========================
+# AI參數
+# =========================
+
+#MAX_OUTPUT_TOKENS = 1024   #最大TOKEN
+#TEMPERATURE = 0.8  #創意度
+
+# =========================
+# Debug
+# =========================
+
+#DEBUG = False

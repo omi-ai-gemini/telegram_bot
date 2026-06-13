@@ -1,0 +1,44 @@
+/* ...你原本在右邊寫的 body 和 .main-container 保持不變... */
+
+/* 這是從左邊搬過來的，並加上了寬度設定 👇 */
+.phone-container {
+  max-width: 480px;
+  width: 100%;
+  min-height: 100vh;
+  margin: 0 auto;
+  background-color: #ffffff;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.center-text {
+  text-align: center;
+  color: #333;
+  margin-bottom: 30px;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;            
+}
+
+.custom-button {
+  display: block;
+  text-align: center;
+  background-color: #007bff;
+  color: white;
+  text-decoration: none;
+  padding: 12px 20px;
+  border-radius: 8px;
+  font-weight: bold;
+  transition: background 0.3s;
+  
+  /* 🎯 在這裡直接修改按鈕寬度！ */
+  width: 200px;     /* 設定你想要的寬度，例如 200px */
+  margin: 0 auto;   /* 讓設定了寬度的按鈕在畫面中置中 */
+}
+
+.custom-button:hover {
+  background-color: #0056b3;
+}

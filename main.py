@@ -1,19 +1,24 @@
 from flask import Flask, request
+from flask import render_template
 import threading
 from handlers.message_handler import run_ai
 from services.memory import add_chat
+from services.database import init_db
+from services.database import get_conn
 
 app = Flask(__name__)
 
 # =========================
 # Webhook（核心入口）
 # =========================
-@app.route("/webhook", methods=["POST"])
-def webhook():
+@app.route("/webhook/<bot_id>", methods=["POST"])
+def webhook(bot_id):
 
     data = request.json
 
-    # 只處理文字訊息
+    # =========================
+    # 解析json
+    # =========================
     if not data or "message" not in data:
         return "ok"
 
@@ -21,16 +26,34 @@ def webhook():
 
     if "text" not in message:
         return "ok"
-
+    
+    user_id = message["from"]["id"]
     chat_id = message["chat"]["id"]
     user_text = message["text"]
 
+    # =========================
+    # 自動保存user_id
+    # =========================
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+    INSERT OR IGNORE INTO user_config (user_id, gemini_key)
+    VALUES (?, NULL)
+    """, (user_id,))
+
+    conn.commit()
+    conn.close()
+
+    # =========================
+    # 執行AI
+    # =========================
     add_chat(chat_id, "user", user_text)
 
     # 🚀 直接丟背景跑 AI（避免 timeout）
     threading.Thread(
         target=run_ai,
-        args=(chat_id, user_text)
+        args=(user_id, bot_id, chat_id, user_text)
     ).start()
 
     return "ok"
@@ -43,7 +66,17 @@ def home():
     return "OK"
 
 # =========================
+# admin後台網站
+# =========================
+@app.route("/admin")
+def admin():
+    return render_template("admin.html")
+
+# =========================
 # 啟動
 # =========================
 if __name__ == "__main__":
+
+    init_db()
+
     app.run(host="0.0.0.0", port=5000)

@@ -1,6 +1,4 @@
-from collections import defaultdict, deque
-from collections import defaultdict
-
+from services.database import get_conn
 
 # =========================
 # 人格記憶
@@ -12,39 +10,108 @@ from collections import defaultdict
 # 情緒記憶
 # =========================
 
-emotion_memory = defaultdict(lambda: {
-    "mood": "neutral",      # happy/sad/angry/neutral
-    "level": 0              # -10~10
-})
+#RAN version
+# emotion_memory = defaultdict(lambda: {
+#     "mood": "neutral",      # happy/sad/angry/neutral
+#     "level": 0              # -10~10
+# })
 
-def update_emotion(chat_id, delta: int):
-    """
-    delta:
-    + 正面情緒
-    - 負面情緒
-    """
+def update_emotion(chat_id, delta):
 
-    emotion = emotion_memory[chat_id]
+    emotion = get_emotion(chat_id)
 
-    emotion["level"] += delta
+    level = emotion["level"] + delta
 
-    #限制範圍
-    if emotion["level"] > 10:
-        emotion["level"] = 10
-    if emotion["level"] < -10:
-        emotion["level"] = -10
-    
-    #更新mood
-    if emotion["level"] >= 5:
-        emotion["mood"] = "happy"
-    elif emotion["level"] <= -5:
-        emotion["mood"] = "angry"
+    level = max(-10, min(10, level))
+
+    if level >= 5:
+        mood = "happy"
+
+    elif level <= -5:
+        mood = "angry"
+
     else:
-        emotion["mood"] = "neutral"
+        mood = "neutral"
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO emotion_memory (chat_id, mood, level)
+        VALUES (?, ?, ?)
+        ON CONFLICT(chat_id)
+        DO UPDATE SET
+        mood=excluded.mood,
+        level=excluded.level
+        """,
+        (
+            chat_id,
+            mood,
+            level
+        )
+    )
+
+    conn.commit()
+    conn.close()
+
+    #RAN version
+    # """
+    # delta:
+    # + 正面情緒
+    # - 負面情緒
+    # """
+
+    # emotion = emotion_memory[chat_id]
+
+    # emotion["level"] += delta
+
+    # #限制範圍
+    # if emotion["level"] > 10:
+    #     emotion["level"] = 10
+    # if emotion["level"] < -10:
+    #     emotion["level"] = -10
+    
+    # #更新mood
+    # if emotion["level"] >= 5:
+    #     emotion["mood"] = "happy"
+    # elif emotion["level"] <= -5:
+    #     emotion["mood"] = "angry"
+    # else:
+    #     emotion["mood"] = "neutral"
 
 def get_emotion(chat_id):
     
-    return emotion_memory[chat_id]
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT mood, level
+        FROM emotion_memory
+        WHERE chat_id=?
+        """,
+        (chat_id,)
+    )
+
+    row = cursor.fetchone()
+
+    conn.close()
+
+    if row:
+
+        return {
+            "mood": row[0],
+            "level": row[1]
+        }
+
+    return {
+        "mood": "neutral",
+        "level": 0
+    }
+
+    #RAN version
+    #return emotion_memory[chat_id]
 
 def detect_emotion(text: str) -> int:
     """
@@ -78,7 +145,8 @@ memory_triggers = [
     "強化記憶"
 ]
 
-facts_memory = defaultdict(list)
+#RAN version
+#facts_memory = defaultdict(list)
 
 # 判斷是否為記憶相關指令
 def is_memory_command(text: str) -> bool:
@@ -95,29 +163,127 @@ def extract_memory_content(text: str) -> str:
     return text.strip()
 
 def add_fact(chat_id, fact):
-    facts_memory[chat_id].append(fact)
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        INSERT INTO facts_memory
+        (chat_id, fact)
+        VALUES (?, ?)
+        """,
+        (chat_id, fact)        
+    )
+
+    conn.commit()
+    conn.close()
+
+    #RAN version
+    #facts_memory[chat_id].append(fact)
+
+def get_facts(chat_id):
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT fact
+        FROM facts_memory
+        WHERE chat_id=?
+        """,
+        (chat_id,)        
+    )
+
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    return [row[0] for row in rows]
 
 # =========================
 # 短期記憶
 # =========================
 
-chat_memory = defaultdict(lambda:                         
-                           deque(
-                               maxlen=100
-                               )
-                           )
+#RAN version
+# chat_memory = defaultdict(lambda:                         
+#                            deque(
+#                                maxlen=100
+#                                )
+#                            )
 
 def add_chat(chat_id, role, text):
 
-    chat_memory[chat_id].append({
+    conn = get_conn()
+    cursor = conn.cursor()
 
-        "role": role,
-        "text": text
+    cursor.execute(
+        """
+        INSERT INTO chat_memory
+        (chat_id, role, text)
+        VALUES (?, ?, ?)
+        """,
+        (chat_id, role, text)   
+    )
 
-    })
+    # ✔ 新增：控制DB最多保留3000筆
+    cursor.execute(
+        """
+        DELETE FROM chat_memory
+        WHERE chat_id = ?
+        AND id NOT IN (
+            SELECT id FROM chat_memory
+            WHERE chat_id = ?
+            ORDER BY id DESC
+            LIMIT 3000
+        )
+        """,
+        (chat_id, chat_id)
+    )
+
+
+    conn.commit()
+    conn.close()
+
+    #RAN version
+    #chat_memory[chat_id].append({
+
+    #    "role": role,
+    #    "text": text
+
+    #})
 
 def get_chat(chat_id):
 
-    return list(
-        chat_memory[chat_id]
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute(
+        """
+        SELECT role, text
+        FROM chat_memory
+        WHERE chat_id=?
+        ORDER BY id DESC
+        LIMIT 100
+        """,
+        (chat_id,)
     )
+
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    rows.reverse() # 反轉回原本順序
+
+    return[{
+        "role": row[0],
+        "text": row[1]
+    }
+    for row in rows
+    ]
+
+    #RAN version
+    #return list(
+    #    chat_memory[chat_id]
+    #)
