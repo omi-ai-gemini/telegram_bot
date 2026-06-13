@@ -32,7 +32,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         bot_token = get_bot_token(bot_id)
 
         if not gemini_key or not bot_token:
-            send_message(chat_id, "我是GPT，我沒腦子")
+            send_message(bot_id, chat_id, "我是GPT，我沒腦子")
             #print("❌ missing key/token")
             return
 
@@ -66,7 +66,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             add_fact(chat_id, fact)
 
             #測試長期記憶通過
-            send_message(chat_id, "已記住")
+            send_message(bot_id, chat_id, "已記住")
             return
 
         # =========================
@@ -87,7 +87,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 7. 回 Telegram
         # =========================
-        send_message(chat_id, reply)
+        send_message(bot_id, chat_id, reply)
 
     except Exception as e:
 
