@@ -1,10 +1,12 @@
 from flask import Flask, request
 from flask import render_template
+import os
 import threading
 from handlers.message_handler import run_ai
 from services.memory import add_chat
 from services.database import init_db
 from services.database import get_conn
+from services.bot_router import get_bot_token
 
 init_db()
 
@@ -47,6 +49,9 @@ def webhook(bot_id):
     conn.commit()
     conn.close()
 
+    print("DEBUG bot_id:", bot_id)
+    print("DEBUG token:", get_bot_token(bot_id))
+
     # =========================
     # 執行AI
     # =========================
@@ -79,4 +84,5 @@ def admin():
 # =========================
 if __name__ == "__main__":
 
-    app.run(host="0.0.0.0", port=5000)
+    port = int(os.environ["PORT"])
+    app.run(host="0.0.0.0", port=port)
