@@ -78,20 +78,24 @@ def home():
 # =========================
 # admin後台網站
 # =========================
+
+#首頁
 @app.route("/admin")
 def admin():
     return render_template("index.html")
+
+#登入畫面
 @app.route("/admin/login")
 def admin_login():
     return render_template("login.html")
-@app.route("/admin/login/developer")
-def admin_login_developer():
 
-    if not session.get("admin"):
-        return redirect("/admin/login")
+#登入GET
+@app.route("/admin/login", methods=["GET"])
+def admin_login():
+    return render_template("login.html")
 
-    return render_template("developer.html")
-@app.route("/admin/login", methods={"POST"})
+#登入POST
+@app.route("/admin/login", methods=["POST"])
 def admin_login_post():
     
     password = request.form["password"]
@@ -101,6 +105,15 @@ def admin_login_post():
         return redirect("/admin")
     
     return "密碼錯誤"
+
+#後台主頁
+@app.route("/admin/login/developer")
+def admin_login_developer():
+
+    if not session.get("admin"):
+        return redirect("/admin/login")
+
+    return render_template("developer.html")
 
 # =========================
 # 啟動
