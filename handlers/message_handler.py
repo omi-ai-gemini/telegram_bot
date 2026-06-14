@@ -31,7 +31,11 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         bot_token = get_bot_token(bot_id)
 
         if not gemini_key or not bot_token:
-            send_message(bot_id, chat_id, "我是GPT，我沒腦子")
+            send_message(
+                bot_id,
+                chat_id,
+                f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
+            )
             #print("❌ missing key/token")
             return
 
