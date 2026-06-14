@@ -30,7 +30,7 @@
       position: fixed;
       inset: 0;
       z-index: 0;
-      background-image: url('https://w.wallhaven.cc/full/85/wallhaven-85m88y.jpg');
+      background-image: url('{{ url_for("static", filename="login_bg.png") }}?v=3');
       background-size: cover;
       background-position: center;
       filter: brightness(0.6) blur(2px);
@@ -220,6 +220,82 @@
         eggBox.style.display = 'block';
       }
     });
+    
+    @keyframes shake {
+    0%, 100% { transform: translateX(0); }
+    20%, 60% { transform: translateX(-10px); }
+    40%, 80% { transform: translateX(10px); }
+    }
+    
+    .shake-error {
+        animation: shake 0.5s ease-in-out;
+    }
+    
+    .shake-error input {
+        border-color: #ff4444 !important;
+        box-shadow: 0 0 10px rgba(255, 68, 68, 0.4);
+    }
+  </style>
+
+<script>
+    document.addEventListener("DOMContentLoaded", () => {
+    
+    // 🥚 你的彩蛋功能 (忘記密碼)
+    const forgetLink = document.getElementById('forget-link');
+    if (forgetLink) {
+        forgetLink.addEventListener('click', function() {
+            var eggBox = document.getElementById('egg-box');
+            if (eggBox) {
+                if (eggBox.style.display === 'block') {
+                    eggBox.style.display = 'none';
+                } else {
+                    eggBox.style.display = 'block';
+                }
+            }
+        });
+    }
+
+    // 🛡️ 我們的登入安全攔截與特效
+    const form = document.querySelector("form");
+    const passwordInput = document.querySelector("input[name='password']");
+    const shakeTarget = document.querySelector(".input-group"); // 你想要震動的區塊
+
+    if (form && passwordInput) {
+      form.addEventListener("submit", async (e) => {
+        e.preventDefault(); 
+        const password = passwordInput.value;
+        if (!password) return;
+
+        try {
+          const response = await fetch("https://telegram-bot-vdrc.onrender.com/admin/login", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({ "password": password }),
+            credentials: "include" 
+          });
+
+          const text = await response.text();
+
+          if (text.includes("密碼錯誤")) {
+            // ❌ 錯誤：清空密碼＋震動發紅光！
+            passwordInput.value = "";
+            if(shakeTarget) {
+                shakeTarget.classList.add("shake-error");
+                setTimeout(() => {
+                  shakeTarget.classList.remove("shake-error");
+                }, 500);
+            }
+          } else {
+            // 🎉 成功：順利進入後台！
+            window.location.href = "https://telegram-bot-vdrc.onrender.com/admin/login/developer";
+          }
+        } catch (error) {
+          console.error("連線錯誤：", error);
+          alert("無法連線至安全伺服器！");
+        }
+      });
+    }
+  });
   </script>
 
 </body>
