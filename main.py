@@ -91,7 +91,7 @@ def admin_login():
 
 #登入GET
 @app.route("/admin/login", methods=["GET"])
-def admin_login():
+def admin_login_get():
     return render_template("login.html")
 
 #登入POST
