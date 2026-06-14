@@ -33,3 +33,9 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 # =========================
 
 #DEBUG = False
+
+# =========================
+# 環境變數
+# =========================
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
+SECRET_KEY = os.getenv("SECRET_KEY")

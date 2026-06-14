@@ -110,20 +110,117 @@
         0 18px 36px rgba(37, 99, 235, 0.65),
         0 6px 16px rgba(0, 0, 0, 0.2);
     }
+    
+    /* 💡 核心切換與排版優化 */
+    #developer-page {
+      display: none;
+    }
+
+    /* 當點擊按鈕跳到吐槽頁面時 */
+    #developer-page:target {
+      display: flex;
+    }
+
+    /* 隱藏主網頁 */
+    body:has(#developer-page:target) #main-page {
+      display: none;
+    }
+
+    /* 1. 把吐槽頁面的 p 文字改大一點 */
+    #developer-page p {
+      font-size: 1.8rem !important; /* 從 1.2rem 放大到 1.8rem，超有感吐槽 */
+      font-weight: bold;
+    }
+
+    /* 2. 讓返回主頁的按鈕在卡片裡完美居中 */
+    #developer-page .glass-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    
+    /* ================= 🎇 3秒霓虹煙火特效 ================= */
+    .firework {
+      position: absolute;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      opacity: 0;
+      z-index: 1;
+    }
+
+    /* 當點擊進入 developer-page 時，煙火動畫才觸換啟動 */
+    #developer-page:target .firework {
+      animation: explode 3s ease-out forwards; /* 剛好放3秒，播放完就消失 */
+    }
+
+    /* 三個煙火的不同爆炸位置與霓虹顏色 */
+    .f1 { left: 30%; top: 40%; color: #3b82f6; box-shadow: 0 0 0 2px; }
+    .f2 { left: 70%; top: 25%; color: #ec4899; animation-delay: 0.4s !important; }
+    .f3 { left: 50%; top: 65%; color: #10b981; animation-delay: 0.2s !important; }
+
+    /* 煙火爆炸成無數霓虹粒子的魔法數學公式 */
+    @keyframes explode {
+      0% {
+        transform: translate(0, 100px) scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 2px currentColor;
+      }
+      30% {
+        /* 升空到頂點準備爆炸 */
+        transform: translate(0, 0) scale(1);
+        opacity: 1;
+        box-shadow: 0 0 0 4px currentColor;
+      }
+      60% {
+        /* 四散炸開成無數個粒子點點，延續你原本的霓虹光芒 */
+        opacity: 1;
+        box-shadow: 
+          -80px -80px 0 currentColor, 80px -80px 0 currentColor,
+          -80px 80px 0 currentColor, 80px 80px 0 currentColor,
+          0px -110px 0 currentColor, 0px 110px 0 currentColor,
+          -110px 0px 0 currentColor, 110px 0px 0 currentColor,
+          -50px -50px 0 2px currentColor, 50px -50px 0 2px currentColor,
+          -50px 50px 0 2px currentColor, 50px 50px 0 2px currentColor;
+      }
+      100% {
+        /* 3秒到！淡出消失 */
+        transform: scale(1.5);
+        opacity: 0;
+        box-shadow: none;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="bg-layer"></div>
-  <div class="container">
+  <div class="container" id="main-page">
     <div class="glass-card">
     <h1>telemini<br/><br/></h1>
     <div class="button-group">
       <!--操作說明-->
       <a href="https://telegram-bot-vdrc.onrender.com/admin/manual" class="custom-button">使用說明</a>
       <br/>
+      <!--你想得美-->
+      <a href="#developer-page" class="custom-button">成為開發者</a>
+      <br/>
       <!--後台登入-->
       <a href="https://telegram-bot-vdrc.onrender.com/admin/login" class="custom-button">開發者登入<br/></a>
     </div>
+    </div>
+  </div>
+    <div class="container" id="developer-page">
+      
+    <div class="firework f1"></div>
+    <div class="firework f2"></div>
+    <div class="firework f3"></div>
+      
+    <div class="glass-card">
+      <h1>成為開發者 🚀</h1>
+      <p style="color: white; margin-bottom: 30px; font-size: 1.2rem;">
+        你想得美哦<br/><br/><br/>
+      </p>
+      <a href="#main-page" class="custom-button">返回主頁</a>
     </div>
   </div>
 </body>
