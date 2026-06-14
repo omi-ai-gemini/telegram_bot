@@ -78,7 +78,7 @@ def home():
 # =========================
 @app.route("/admin")
 def admin():
-    return render_template("admin.html")
+    return render_template("index.html")
 
 # =========================
 # 啟動
