@@ -39,7 +39,7 @@ def update_emotion(chat_id, delta):
     cursor.execute(
         """
         INSERT INTO emotion_memory (chat_id, mood, level)
-        VALUES (?, ?, ?)
+        VALUES (%s, %s, %s)
         ON CONFLICT(chat_id)
         DO UPDATE SET
         mood=excluded.mood,
@@ -89,7 +89,7 @@ def get_emotion(chat_id):
         """
         SELECT mood, level
         FROM emotion_memory
-        WHERE chat_id=?
+        WHERE chat_id=%s
         """,
         (chat_id,)
     )
@@ -171,7 +171,7 @@ def add_fact(chat_id, fact):
         """
         INSERT INTO facts_memory
         (chat_id, fact)
-        VALUES (?, ?)
+        VALUES (%s, %s)
         """,
         (chat_id, fact)        
     )
@@ -191,7 +191,7 @@ def get_facts(chat_id):
         """
         SELECT fact
         FROM facts_memory
-        WHERE chat_id=?
+        WHERE chat_id=%s
         """,
         (chat_id,)        
     )
@@ -222,7 +222,7 @@ def add_chat(chat_id, role, text):
         """
         INSERT INTO chat_memory
         (chat_id, role, text)
-        VALUES (?, ?, ?)
+        VALUES (%s, %s, %s)
         """,
         (chat_id, role, text)   
     )
@@ -231,10 +231,10 @@ def add_chat(chat_id, role, text):
     cursor.execute(
         """
         DELETE FROM chat_memory
-        WHERE chat_id = ?
+        WHERE chat_id = %s
         AND id NOT IN (
             SELECT id FROM chat_memory
-            WHERE chat_id = ?
+            WHERE chat_id = %s
             ORDER BY id DESC
             LIMIT 3000
         )
@@ -263,7 +263,7 @@ def get_chat(chat_id):
         """
         SELECT role, text
         FROM chat_memory
-        WHERE chat_id=?
+        WHERE chat_id=%s
         ORDER BY id DESC
         LIMIT 100
         """,

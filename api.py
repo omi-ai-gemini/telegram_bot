@@ -19,8 +19,10 @@ def add_bot():
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT OR REPLACE INTO bot_config (bot_id, token)
-    VALUES (?, ?)
+    INSERT INTO bot_config (bot_id, token)
+    VALUES (%s, %s)
+    ON CONFLICT (bot_id)
+    DO UPDATE SET token = EXCLUDED.token
     """, (bot_id, token))
 
     conn.commit()
@@ -68,8 +70,10 @@ def add_user():
     cursor = conn.cursor()
 
     cursor.execute("""
-    INSERT OR REPLACE INTO user_config (user_id, gemini_key)
-    VALUES (?, ?)
+    INSERT INTO user_config (user_id, gemini_key)
+    VALUES (%s, %s)
+    ON CONFLICT (user_id)
+    DO UPDATE SET gemini_key = EXCLUDED.gemini_key
     """, (user_id, gemini_key))
 
     conn.commit()

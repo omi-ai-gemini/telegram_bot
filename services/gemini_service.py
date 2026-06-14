@@ -1,4 +1,4 @@
-import google.generativeai as genai
+from google import genai
 from services.style import build_prompt
 from config import GEMINI_MODEL
 
@@ -10,11 +10,6 @@ def ask_gemini(gemini_key, history, user_text, emotion):
     # =========================
     # 1. 動態初始化（每個 user 都可能不同 key）
     # =========================
-    genai.configure(api_key=gemini_key)
-
-    model = genai.GenerativeModel(GEMINI_MODEL)
-
-
     # =========================
     # 2. 組 prompt
     # =========================
@@ -24,7 +19,11 @@ def ask_gemini(gemini_key, history, user_text, emotion):
     # =========================
     # 3. 呼叫 Gemini
     # =========================
-    response = model.generate_content(prompt)
+    with genai.Client(api_key=gemini_key) as client:
+        response = client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt
+        )
 
     print("gemini response:", response.text)
 
