@@ -226,32 +226,18 @@
   </div>
 
   <script>
-    document.getElementById('forget-link').addEventListener('click', function() {
-      var eggBox = document.getElementById('egg-box');
-      // 切換顯示狀態
-      if (eggBox.style.display === 'block') {
-        eggBox.style.display = 'none';
-      } else {
-        eggBox.style.display = 'block';
-      }
-    });
-    
     document.addEventListener("DOMContentLoaded", () => {
-    
-    // 🥚 你的彩蛋功能 (忘記密碼)
-    const forgetLink = document.getElementById('forget-link');
-    if (forgetLink) {
-        forgetLink.addEventListener('click', function() {
-            var eggBox = document.getElementById('egg-box');
-            if (eggBox) {
-                if (eggBox.style.display === 'block') {
-                    eggBox.style.display = 'none';
-                } else {
-                    eggBox.style.display = 'block';
-                }
-            }
+      // 1. 處理彩蛋點擊
+      const forgetLink = document.getElementById('forget-link');
+      const eggBox = document.getElementById('egg-box');
+      
+      if (forgetLink && eggBox) {
+        forgetLink.addEventListener('click', function(e) {
+          e.preventDefault(); // 防止網頁跳轉
+          // 切換顯示狀態：如果隱藏就顯示，如果顯示就隱藏
+          eggBox.style.display = (eggBox.style.display === 'block') ? 'none' : 'block';
         });
-    }
+      }
 
     // 🛡️ 我們的登入安全攔截與特效
     const form = document.querySelector("form");
