@@ -4,20 +4,17 @@
 <meta charset="UTF-8" name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>bot and user db api</title>
   <style>
+    /* 全域與背景設定 */
     html, body {
       margin: 0;
-      min-height: 100%;
-    }
-
-    body {
+      padding: 0;
       min-height: 100vh;
       font-family: Arial, Helvetica, sans-serif;
       background: #0b1220;
-      position: relative;
-      overflow-x: hidden;
       display: flex;
       justify-content: center;
-      align-items: stretch;
+      align-items: center;
+      overflow: hidden;
     }
 
     .bg-layer {
@@ -27,84 +24,107 @@
       background-image: url('{{ url_for("static", filename="home_bg.png") }}?v=3');
       background-size: cover;
       background-position: center;
-      background-repeat: no-repeat;
     }
 
-    .bg-layer::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      background: rgba(11, 18, 32, 0.12);
-    }
-
-    .phone-container {
+    /* 主容器 */
+    .container {
       position: relative;
       z-index: 1;
-      width: min(420px, calc(100% - 32px));
-      margin: 24px auto;
-      min-height: calc(100vh - 48px);
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.22);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      width: 100%;
+      padding: 20px;
+    }
+
+    /* ✨ 中央模糊大卡片（幫你補回來了！） */
+    .glass-card {
+      background: rgba(255, 255, 255, 0.05);
+      -webkit-backdrop-filter: blur(20px);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 24px;
-      padding: 24px 20px;
-      box-sizing: border-box;
-      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
-      backdrop-filter: blur(6px);
-      -webkit-backdrop-filter: blur(6px);
-    }
-
-    .center-text {
+      padding: 40px 60px;
+      width: 100%;
+      max-width: 400px;
       text-align: center;
-      color: #ffffff;
-      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.55);
-      margin-bottom: 30px;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
     }
 
+    h1 {
+      color: white;
+      margin: 0 0 40px 0; /* 移除內文多餘的 br，用 margin 控制與按鈕的完美距離 */
+      font-size: 2.5rem;
+      letter-spacing: 1px;
+    }
+
+    /* 按鈕群組的垂直排列與完美間距 */
     .button-group {
       display: flex;
       flex-direction: column;
-      gap: 15px;
+      align-items: center;
+      gap: 20px; /* 讓兩個按鈕之間有 20px 的漂亮空隙 */
     }
 
+    /* ✨ 液態玻璃按鈕（文字置中 + 底部藍色霓虹發光） */
     .custom-button {
       display: block;
       text-align: center;
-      background: rgba(255, 255, 255, 0.18);
-      border: 1px solid rgba(255, 255, 255, 0.28);
-      color: white;
+      width: 220px; /* 稍微加寬一點點，比例更優雅 */
+      padding: 14px 20px;
+      box-sizing: border-box;
+
+      /* 按鈕本身的液態玻璃感 */
+      background: rgba(255, 255, 255, 0.12);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 12px;
+
+      /* 結合頂部白光折射 + 你最愛的底部藍色霓虹發光 */
+      box-shadow: 
+        inset 0 1px 2px rgba(255, 255, 255, 0.4),
+        0 12px 24px rgba(37, 99, 235, 0.35),
+        0 4px 12px rgba(0, 0, 0, 0.15);
+
+      /* 文字美化 */
+      color: #ffffff;
       text-decoration: none;
-      padding: 12px 20px;
-      border-radius: 8px;
       font-weight: bold;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-      width: 200px;
-      margin: 0 auto;
-      box-shadow: 0 10px 20px rgba(37, 99, 235, 0.22);
+      letter-spacing: 0.8px;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+
+      /* 動態過渡效果 */
+      transition: transform 0.3s cubic-bezier(0.25, 0.8, 0.25, 1), box-shadow 0.3s ease, background 0.3s;
     }
 
+    /* 滑鼠懸停 Hover 效果 */
     .custom-button:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.18);
+      transform: translateY(-3px);
+      background: rgba(255, 255, 255, 0.22);
+      border-color: rgba(255, 255, 255, 0.45);
+
+      /* 懸停時藍色霓虹光芒擴散放大 */
+      box-shadow: 
+        inset 0 1px 3px rgba(255, 255, 255, 0.5),
+        0 18px 36px rgba(37, 99, 235, 0.65),
+        0 6px 16px rgba(0, 0, 0, 0.2);
     }
   </style>
 </head>
 <body>
   <div class="bg-layer"></div>
-  <div class="phone-container">
-  <h1 class="center-text">
-    <br/>telemini<br/><br/><br/>
-  </h1>
-  <div class="button-group">
-    <!--操作說明-->
-    <a href="google.com" class="custom-button">
-      使用說明
-    </a>
-    <br/>
-    <!--後台登入-->
-    <a href="google.com" class="custom-button">
-      開發者登入
-    </a>
-  </div>
+  <div class="container">
+    <div class="glass-card">
+    <h1><br/>telemini<br/><br/><br/></h1>
+    <div class="button-group">
+      <!--操作說明-->
+      <a href="google.com" class="custom-button">使用說明</a>
+      <br/>
+      <!--後台登入-->
+      <a href="google.com" class="custom-button">開發者登入</a>
+    </div>
+    </div>
   </div>
 </body>
 </html>
