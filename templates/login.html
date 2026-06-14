@@ -18,22 +18,25 @@
       padding: 0;
       min-height: 100vh;
       font-family: 'Urbanist', -apple-system, BlinkMacSystemFont, sans-serif;
-      background: #0b1220;
+      /* 基礎背景色，防止圖片沒載入時一片白 */
+      background: #0b1220; 
       display: flex;
       justify-content: center;
       align-items: center;
       overflow: hidden;
     }
 
-    /* 科技感背景層 */
+    /* ✨ 補上的科技感背景圖層 */
     .bg-layer {
       position: fixed;
       inset: 0;
       z-index: 0;
-      background-image: url('https://w.wallhaven.cc/full/85/wallhaven-85m88y.jpg');
+      /* 這邊用一個示例網址，您可以換成您喜歡的科技感背景圖 */
+      background-image: url('{{ url_for("static", filename="login_bg.png") }}?v=3');
       background-size: cover;
       background-position: center;
-      opacity: 0.65;
+      /* 將圖片壓暗，並設定一點點模糊，讓卡片更突出 */
+      filter: brightness(0.6) blur(2px);
     }
 
     .container {
@@ -185,18 +188,18 @@
         </div>
         
         <div class="input-group">
-          <label for="password">開發者密碼</label>
+          <label for="password">安全密碼</label>
           <input type="password" id="password" name="password" placeholder="••••••••" required>
         </div>
         
-        <button type="submit" class="login-btn">進入後台</button>
+        <button type="submit" class="login-btn">進入後台管理</button>
         
       </form>
       
       <div class="footer-links">
         <a href="#">忘記密碼？</a>
         <span>|</span>
-        <a href="#">返回首頁</a>
+        <a href="https://telegram-bot-vdrc.onrender.com/admin">返回首頁</a>
       </div>
     </div>
   </div>
