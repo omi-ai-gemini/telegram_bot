@@ -1,40 +1,15 @@
 import os
 import psycopg2
-from psycopg2.pool import ThreadedConnectionPool
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 #DB_NAME = os.path.join("/tmp", "app.db")
-
-DB_POOL_MIN = int(os.getenv("DB_POOL_MIN", "1"))
-DB_POOL_MAX = int(os.getenv("DB_POOL_MAX", "5"))
-
-_POOL = ThreadedConnectionPool(
-    DB_POOL_MIN,
-    DB_POOL_MAX,
-    DATABASE_URL
-)
-
-
-class PooledConnection:
-    def __init__(self, pool, conn):
-        self._pool = pool
-        self._conn = conn
-        self._closed = False
-
-    def __getattr__(self, name):
-        return getattr(self._conn, name)
-
-    def close(self):
-        if not self._closed:
-            self._pool.putconn(self._conn)
-            self._closed = True
 
 # =========================
 # 取得 DB 連線
 # =========================
 def get_conn():
 
-    return PooledConnection(_POOL, _POOL.getconn())
+    return psycopg2.connect(DATABASE_URL)
 
     #會消失版
     #conn = sqlite3.connect(DB_NAME)
@@ -110,5 +85,8 @@ def init_db():
         """)
 
         conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         conn.close()
