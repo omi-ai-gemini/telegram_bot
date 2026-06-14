@@ -10,6 +10,10 @@ from services.database import get_conn
 # 情緒記憶
 # =========================
 
+
+def _text_id(value):
+    return str(value)
+
 #RAN version
 # emotion_memory = defaultdict(lambda: {
 #     "mood": "neutral",      # happy/sad/angry/neutral
@@ -17,6 +21,8 @@ from services.database import get_conn
 # })
 
 def update_emotion(chat_id, delta):
+
+    chat_id = _text_id(chat_id)
 
     emotion = get_emotion(chat_id)
 
@@ -81,6 +87,8 @@ def update_emotion(chat_id, delta):
     #     emotion["mood"] = "neutral"
 
 def get_emotion(chat_id):
+
+    chat_id = _text_id(chat_id)
     
     conn = get_conn()
     cursor = conn.cursor()
@@ -164,6 +172,8 @@ def extract_memory_content(text: str) -> str:
 
 def add_fact(chat_id, fact):
 
+    chat_id = _text_id(chat_id)
+
     conn = get_conn()
     cursor = conn.cursor()
 
@@ -183,6 +193,8 @@ def add_fact(chat_id, fact):
     #facts_memory[chat_id].append(fact)
 
 def get_facts(chat_id):
+
+    chat_id = _text_id(chat_id)
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -214,6 +226,8 @@ def get_facts(chat_id):
 #                            )
 
 def add_chat(chat_id, role, text):
+
+    chat_id = _text_id(chat_id)
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -255,6 +269,8 @@ def add_chat(chat_id, role, text):
     #})
 
 def get_chat(chat_id):
+
+    chat_id = _text_id(chat_id)
 
     conn = get_conn()
     cursor = conn.cursor()

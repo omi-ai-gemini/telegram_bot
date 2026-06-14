@@ -1,5 +1,9 @@
 from services.database import get_conn
 
+
+def _text_id(value):
+    return str(value)
+
 # =========================
 # 取得 Gemini API key
 # =========================
@@ -7,6 +11,8 @@ def get_gemini_key(user_id: int):
     """
     根據 user_id 從 DB 取得 Gemini API key
     """
+
+    user_id = _text_id(user_id)
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -29,6 +35,8 @@ def get_gemini_key(user_id: int):
 # 檢查 user 是否有 key
 # =========================
 def user_has_key(user_id: int) -> bool:
+
+    user_id = _text_id(user_id)
 
     conn = get_conn()
     cursor = conn.cursor()

@@ -32,7 +32,7 @@ def webhook(bot_id):
         return "ok"
     
     user_id = message["from"]["id"]
-    chat_id = message["chat"]["id"]
+    chat_id = str(message["chat"]["id"])
     user_text = message["text"]
 
     # =========================
@@ -45,13 +45,13 @@ def webhook(bot_id):
     INSERT INTO user_config (user_id, gemini_key)
     VALUES (%s, %s)
     ON CONFLICT (user_id) DO NOTHING
-    """, (user_id, None))
+    """, (str(user_id), None))
 
     conn.commit()
     conn.close()
 
     print("DEBUG bot_id:", bot_id)
-    print("DEBUG token:", get_bot_token(bot_id))
+    #print("DEBUG token:", get_bot_token(bot_id))
 
     # =========================
     # 執行AI

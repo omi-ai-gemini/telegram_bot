@@ -1,5 +1,9 @@
 from services.database import get_conn
 
+
+def _text_id(value):
+    return str(value)
+
 # =========================
 # 取得 bot token
 # =========================
@@ -7,6 +11,8 @@ def get_bot_token(bot_id: str):
     """
     根據 bot_id 從 DB 取得 Telegram Bot Token
     """
+
+    bot_id = _text_id(bot_id)
 
     conn = get_conn()
     cursor = conn.cursor()
@@ -29,6 +35,8 @@ def get_bot_token(bot_id: str):
 # 檢查 bot 是否存在
 # =========================
 def bot_exists(bot_id: str) -> bool:
+
+    bot_id = _text_id(bot_id)
 
     conn = get_conn()
     cursor = conn.cursor()
