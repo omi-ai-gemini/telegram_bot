@@ -351,37 +351,43 @@
       }
     }
 
-    /* 這裡是你原本卡片、按鈕、背景的其他 CSS 樣式... */
-
     /* ==========================================================
-       📱 針對手機小螢幕的極致防撞與滾動優化 (只留這完整的一塊)
+       📱 針對手機小螢幕的【終極地空隔離】防撞滾動優化
     ========================================================== */
     @media (max-width: 480px) {
-      /* 解鎖手機版垂直滾動，防止卡片跟名單疊在一起 */
+      /* 🌟 1. 強制解鎖手機網頁的垂直滾動條 */
       html, body {
         overflow-y: auto !important;
+        overflow-x: hidden !important;
         height: auto !important;
-        min-height: 100vh;
+        min-height: 100vh !important;
       }
 
+      /* 🌟 2. 徹底改造名單：脫離絕對定位，利用 95vh 隔離到卡片下方 */
       .sponsors-outer-box {
-        position: absolute;
-        /* 從螢幕正中央往下推 190 像素，永遠保持在卡片下方 */
-        top: calc(50% + 190px); 
-        bottom: auto !important; /* 強制清除原本的 bottom 設定 */
-        left: 50%;
-        transform: translateX(-50%);
-        padding-bottom: 40px;    /* 讓網頁最底部留下一點優雅的空白邊距 */
+        position: relative !important; /* 🛑 變成相對定位，跟卡片分層，絕對不可能再重疊！ */
+        top: auto !important;          /* 清除之前的 top */
+        bottom: auto !important;       /* 清除之前的 bottom */
+        left: auto !important;         /* 清除之前的 left */
+        transform: none !important;    /* 清除置中變形 */
+        
+        /* 🛑 核心：利用 95vh 把它推到第一屏螢幕的下方，並透過 auto 達成水平置中 */
+        margin: 95vh auto 0 auto !important; 
+        width: 90% !important;
+        max-width: 480px !important;
+        text-align: center;
+        z-index: 10;
+        padding-bottom: 40px;          /* 底部留下一點優雅的空白 */
       }
       
       .sponsors-title {
-        font-size: 0.72rem;
-        margin-bottom: 8px;
+        font-size: 0.75rem !important;
+        margin-bottom: 10px !important;
       }
       
       .sponsor-tag {
-        font-size: 0.72rem;
-        padding: 4px 10px;
+        font-size: 0.72rem !important;
+        padding: 4px 10px !important;
       }
     }
   </style>
