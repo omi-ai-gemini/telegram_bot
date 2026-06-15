@@ -351,11 +351,38 @@
       }
     }
 
-    /* 手機端 RWD 優化 */
+    /* 這裡是你原本卡片、按鈕、背景的其他 CSS 樣式... */
+
+    /* ==========================================================
+       📱 針對手機小螢幕的極致防撞與滾動優化 (只留這完整的一塊)
+    ========================================================== */
     @media (max-width: 480px) {
-      .sponsors-outer-box { bottom: 15px; }
-      .sponsors-title { font-size: 0.72rem; margin-bottom: 8px; }
-      .sponsor-tag { font-size: 0.72rem; padding: 4px 10px; }
+      /* 解鎖手機版垂直滾動，防止卡片跟名單疊在一起 */
+      html, body {
+        overflow-y: auto !important;
+        height: auto !important;
+        min-height: 100vh;
+      }
+
+      .sponsors-outer-box {
+        position: absolute;
+        /* 從螢幕正中央往下推 190 像素，永遠保持在卡片下方 */
+        top: calc(50% + 190px); 
+        bottom: auto !important; /* 強制清除原本的 bottom 設定 */
+        left: 50%;
+        transform: translateX(-50%);
+        padding-bottom: 40px;    /* 讓網頁最底部留下一點優雅的空白邊距 */
+      }
+      
+      .sponsors-title {
+        font-size: 0.72rem;
+        margin-bottom: 8px;
+      }
+      
+      .sponsor-tag {
+        font-size: 0.72rem;
+        padding: 4px 10px;
+      }
     }
   </style>
 </head>
