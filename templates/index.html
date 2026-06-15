@@ -351,33 +351,29 @@
       }
     }
 
-    /* ==========================================================
-       📱 針對手機小螢幕的【終極地空隔離】防撞滾動優化
+/* ==========================================================
+       📱 針對手機小螢幕的【不擠壓＋智能防撞】優化
     ========================================================== */
     @media (max-width: 480px) {
-      /* 🌟 1. 強制解鎖手機網頁的垂直滾動條 */
+      /* 🌟 1. 維持解鎖垂直滾動，隱藏不小心超出的橫向滾動條 */
       html, body {
         overflow-y: auto !important;
-        overflow-x: hidden !important;
-        height: auto !important;
-        min-height: 100vh !important;
+        overflow-x: hidden !important; 
       }
 
-      /* 🌟 2. 徹底改造名單：脫離絕對定位，利用 95vh 隔離到卡片下方 */
+      /* 🌟 2. 終極解法：回歸絕對定位 (卡片秒回中間)，並用 max() 智能下推 */
       .sponsors-outer-box {
-        position: relative !important; /* 🛑 變成相對定位，跟卡片分層，絕對不可能再重疊！ */
-        top: auto !important;          /* 清除之前的 top */
-        bottom: auto !important;       /* 清除之前的 bottom */
-        left: auto !important;         /* 清除之前的 left */
-        transform: none !important;    /* 清除置中變形 */
+        position: absolute !important; /* 🛑 變回絕對定位，退出排版隊伍，卡片立刻回正！ */
         
-        /* 🛑 核心：利用 95vh 把它推到第一屏螢幕的下方，並透過 auto 達成水平置中 */
-        margin: 95vh auto 0 auto !important; 
-        width: 90% !important;
-        max-width: 480px !important;
-        text-align: center;
-        z-index: 10;
-        padding-bottom: 40px;          /* 底部留下一點優雅的空白 */
+        /* 🛑 魔法核心：如果卡片很長，就從中心往下推 280px；如果螢幕很長，就推到螢幕 85% 處。
+           它會自動選比較深的那一個位置，絕對不可能再蓋到按鈕！ */
+        top: max(calc(50% + 280px), 85vh) !important; 
+        
+        bottom: auto !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        width: 95% !important;
+        padding-bottom: 50px !important; /* 底部留白多一點，滑起來更舒服 */
       }
       
       .sponsors-title {
