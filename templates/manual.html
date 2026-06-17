@@ -97,9 +97,10 @@
       border-radius: 0 !important; /* 🌟 徹底清除標籤個別圓角，避免滾動時鋸齒外溢 */
     }
 
-    /* 補上最後一個標籤的底線 */
+    /* 找到手機版媒體查詢裡的這一段，直接替換覆蓋掉： */
     .tab-sidebar .tab-item:last-child {
-      border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+      border-right: 1px solid rgba(255, 255, 255, 0.25);
+      border-bottom: none !important; /* 🌟 核心修正：強迫拔除殘留底線，把這個檻徹底剷平！ */
     }
 
     .tab-item:hover {
