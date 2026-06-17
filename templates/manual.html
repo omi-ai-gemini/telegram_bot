@@ -272,6 +272,32 @@
         opacity: 0;
       }
     }
+    
+    /* 📱 大師級卡片手機版優化：動態換行與精準縮排 */
+    .metric-item {
+      margin-bottom: 16px; /* 每個項目的上下間距 */
+    }
+
+    .metric-title {
+      display: block; /* 🌟 強制小標題自己站一行 */
+      font-weight: bold;
+      font-size: 1.05rem;
+      color: #333;
+      margin-bottom: 6px; /* 小標題與下方內文的微小間距 */
+    }
+
+    .metric-title i {
+      margin-right: 6px; /* 圖標與文字的精緻微距 */
+      color: #4a90e2; /* 圖標顏色，可依您的設計自行調整 */
+    }
+
+    .metric-desc {
+      display: block;
+      padding-left: 28px; /* 🌟 核心魔法：這裡控制內文的開頭縮排，完美對齊圖標後方的寬度！ */
+      font-size: 0.95rem;
+      line-height: 1.6; /* 讓文字有些微呼吸空間，不擁擠 */
+      color: #555;
+    }
   </style>
 </head>
 <body>
@@ -313,21 +339,20 @@
       <div class="tab-content">
         <h2 id="cardTitle">網頁標籤卡控制教學</h2>
         <p id="cardDesc">為什麼要寫這個? 因為我覺得我做得很漂亮</p>
-                <div class="metrics-box">
-          <h3>🧭 大師級 Carousel 標籤控制指南：</h3>
-          <ul>
-            <!--<li><i class="fa-solid fa-mouse"></i> <strong>電腦網頁版</strong>：請把滑鼠移到左側標籤欄，<strong>按住滑鼠左鍵不放往上/下拖拽</strong>，隱藏的標籤就會完美滑出來！</li>-->
-            <li><i class="fa-solid fa-fingerprint"></i> <strong>用你的手指</strong>：放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</li>
-            <li><i class="fa-solid fa-eye"></i> <strong>完美視覺</strong>：我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</li>
-          </ul>
-        </div>
-        
-
-          </ul>
-        </div>
-      </div>
+        <div class="metrics-box">
+            <h3>🧭 大師級 Carousel 標籤控制指南：</h3>
+            
+            <div class="metric-item">
+              <div class="metric-title"><i class="fa-solid fa-fingerprint"></i> 用你的手指</div>
+              <div class="metric-desc">放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</div>
+            </div>
+            
+            <div class="metric-item">
+              <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
+              <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+            </div>
+          </div>  
     </div>
-
   </div>
 
   <script>
@@ -343,14 +368,20 @@
       b1: {
         title: "網頁標籤卡控制教學",
         desc: "為什麼要寫這個? 因為我覺得我做得很漂亮",
-        // 只有這個分頁有 metrics-box
+        // 🌟 這裡升級為大師級響應式結構
         extra: `
           <div class="metrics-box">
             <h3>🧭 大師級 Carousel 標籤控制指南：</h3>
-            <ul>
-              <li><i class="fa-solid fa-fingerprint"></i> <strong>用你的手指</strong>：放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</li>
-              <li><i class="fa-solid fa-eye"></i> <strong>完美視覺</strong>：我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</li>
-            </ul>
+            
+            <div class="metric-item">
+              <div class="metric-title"><i class="fa-solid fa-fingerprint"></i> 用你的手指</div>
+              <div class="metric-desc">放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</div>
+            </div>
+            
+            <div class="metric-item">
+              <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
+              <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+            </div>
           </div>`
       },
       b2: {
