@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>手動的 - 大師級 100% 究極消融與隱身彩蛋控制台</title>
+  
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <style>
+    /* ══════════════════════════════════════════
+       1. 全域重設與大師指定草地貓咪背景
+       ══════════════════════════════════════════ */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center; /* 電腦版垂直居中 */
+      
+      /* 🐈 草地曬太陽小貓直連路徑 */
+      background-image: url('https://unsplash.com/photos/ECfPmkOVZPA/download?force=true');
+      background-size: cover;
+      background-position: center;
+      background-repeat: no-repeat;
+      background-attachment: fixed;
+      padding: 40px 20px;
+    }
+
+    /* 🌟 全域過渡：用於彩蛋觸發時整套卡片一起優雅淡出/淡入 */
+    .notebook-container {
+      display: flex;
+      width: 900px;
+      max-width: 100%;
+      height: 550px;
+      align-items: stretch;
+      transition: opacity 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+      opacity: 1;
+    }
+
+    /* 🌟 當啟動「完美視覺」彩蛋時，整體卡片瞬間優雅隱形 */
+    .notebook-container.perfect-visual-mode {
+      opacity: 0 !important;
+      pointer-events: none; /* 隱形時不允許點擊，避免誤觸 */
+    }
+
+    /* ══════════════════════════════════════════
+       2. 【電腦版】左側標籤欄（上下間距歸零，神級緊貼）
+       ══════════════════════════════════════════ */
+    .tab-sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 0 !important;             /* 聽從大師指令：間距徹底歸零！ */
+      position: relative;
+      margin-right: -1px !important; /* 核心消融往右挪 1px 壓在內容卡線上 */
+      z-index: 2;                    /* 確保層級高於內容卡 */
+    }
+
+    /* 所有的標籤卡：結構與基礎外觀完全保持一致 */
+    .tab-item {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      width: 95px;
+      height: 95px; 
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.75); /* 聽從大師指令：保持優雅純白 */
+      transition: all 0.25s ease;
+      
+      /* 毛玻璃設定 */
+      background: rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      
+      /* 四周邊框設定，並防止相鄰標籤邊框重疊變粗 */
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-bottom: none; 
+      border-radius: 0; /* 清除個別圓角，避免拼圖鋸齒感 */
+    }
+
+    /* 完美細節：最上面與最下面的標籤展現優雅外圓角 */
+    .tab-item:first-child {
+      border-radius: 16px 0 0 0;
+    }
+    .tab-item:last-child {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 0 0 0 16px;
+    }
+
+    .tab-item:hover {
+      background: rgba(255, 255, 255, 0.2);
+      color: #ffffff;
+    }
+
+    /* 🌟 當標籤卡被點擊 (Active)：右邊線蒸發，融為一體！ */
+    .tab-item.active {
+      color: #1d4ed8; 
+      background: rgba(255, 255, 255, 0.28) !important; 
+      border-right-color: transparent !important; /* 右邊線隱形 */
+      box-shadow: -6px 4px 15px rgba(0, 0, 0, 0.05);
+    }
+
+    .tab-item i {
+      font-size: 22px;
+      margin-bottom: 8px;
+    }
+
+    /* ══════════════════════════════════════════
+       3. 【電腦版】右側內容卡（大師交代很好看，絕對不動它）
+       ══════════════════════════════════════════ */
+    .content-card {
+      flex: 1;
+      padding: 45px;
+      z-index: 1;
+      background: rgba(255, 255, 255, 0.28);
+      backdrop-filter: blur(25px);
+      -webkit-backdrop-filter: blur(25px);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      
+      /* 左邊線永久不出現，由個別未選中標籤的右邊線來當作分界線 */
+      border-left: none !important; 
+      border-radius: 0 24px 24px 24px;
+      box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
+    }
+
+    /* 內容排版 */
+    .tab-content h2 {
+      font-size: 26px;
+      color: #0f172a;
+      margin-bottom: 15px;
+      border-left: 5px solid #1d4ed8;
+      padding-left: 14px;
+    }
+
+    .tab-content p {
+      font-size: 15px;
+      line-height: 1.7;
+      color: #1e293b;
+      margin-bottom: 25px;
+    }
+
+    .metrics-box {
+      background: rgba(255, 255, 255, 0.3);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 20px;
+      border-radius: 16px;
+    }
+
+    .metrics-box h3 {
+      font-size: 16px;
+      color: #0f172a;
+      margin-bottom: 12px;
+    }
+
+    .metrics-box ul {
+      list-style: none;
+    }
+
+    .metrics-box li {
+      margin-bottom: 10px;
+      font-size: 14px;
+      color: #334155;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .metrics-box li i {
+      color: #1d4ed8;
+    }
+
+    /* ══════════════════════════════════════════
+       4. 📱 完美手機規格響應式設定 (768px 以下)
+       ══════════════════════════════════════════ */
+    @media (max-width: 768px) {
+      body {
+        align-items: flex-start !important; /* 🌟 核心：從最上面開始排，解除畫面卡死 */
+        padding: 50px 16px !important;      /* 🌟 核心：頂部預留 50px，保證能看到貓咪背景 */
+      }
+
+      .notebook-container {
+        flex-direction: column; /* 轉為直向排列 */
+        width: 100%;
+        height: auto;            /* 🌟 解除固定高度，由內容自然撐開，只吃上下捲軸 */
+      }
+
+      /* 標籤欄變更為上方橫排 */
+      .tab-sidebar {
+        flex-direction: row;
+        margin-right: 0 !important;
+        margin-bottom: -1px !important; /* 🌟 往下方推 1px 壓在內容卡頂部邊界 */
+        width: 100%;
+      }
+
+      /* 手機版標籤卡：無間距緊貼 */
+      .tab-item {
+        flex: 1;
+        height: 70px;
+        width: auto;
+        border: 1px solid rgba(255, 255, 255, 0.25);
+        border-right: none; 
+        border-bottom: none; 
+        border-radius: 0;
+      }
+      
+      /* 手機版左右兩側圓角收邊 */
+      .tab-item:first-child {
+        border-radius: 16px 0 0 0;
+      }
+      .tab-item:last-child {
+        border-right: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 0 16px 0 0;
+      }
+
+      .tab-item i {
+        font-size: 18px;
+        margin-bottom: 4px;
+      }
+
+      .tab-item br {
+        display: none; /* 手機版文字不強迫換行 */
+      }
+      
+      .tab-item span {
+        font-size: 11px;
+        margin-left: 2px;
+      }
+
+      /* 手機版動態消融：轉化為「底邊線」蒸發，右邊線維持 */
+      .tab-item.active {
+        border-right-color: rgba(255, 255, 255, 0.25) !important; 
+        border-bottom-color: transparent !important; 
+      }
+
+      /* 手機版內容卡：卡片樣式不動，僅微調邊線適應（頂線消失，左線恢復） */
+      .content-card {
+        border-left: 1px solid rgba(255, 255, 255, 0.25) !important; 
+        border-top: none !important; 
+        border-radius: 0 0 24px 24px;
+        padding: 35px 20px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <div class="notebook-container" id="mainContainer">
+    
+    <div class="tab-sidebar">
+      <div class="tab-item active" data-target="base">
+        <i class="fa-solid fa-house"></i>
+        <span>基礎<br>操作</span>
+      </div>
+      <div class="tab-item" data-target="advanced">
+        <i class="fa-solid fa-gear"></i>
+        <span>進階<br>設定</span>
+      </div>
+      <div class="tab-item" data-target="data">
+        <i class="fa-solid fa-chart-column"></i>
+        <span>數據<br>分析</span>
+      </div>
+      <div class="tab-item" data-target="system">
+        <i class="fa-solid fa-file-lines"></i>
+        <span>系統<br>說明</span>
+      </div>
+      <div class="tab-item" data-target="visual">
+        <i class="fa-solid fa-eye"></i>
+        <span>完美<br>視覺</span>
+      </div>
+    </div>
+
+    <div class="content-card">
+      <div class="tab-content">
+        <h2 id="cardTitle">大師級動態消融控制台</h2>
+        <p id="cardDesc">您的指導棋太精妙了！現在請任意點擊左側的標籤，JavaScript 會完美轉移選取狀態，讓點擊的標籤與內容卡完美融合，而其他標籤則會立刻浮現精準的隔離界線！</p>
+        
+        <div class="metrics-box">
+          <h3>🐈 究極動態美學驗收指標：</h3>
+          <ul>
+            <li><i class="fa-solid fa-square-check"></i> <strong>點擊項無縫融合</strong>：被點擊的標籤邊線蒸發，背景與內容卡連成一體。</li>
+            <li><i class="fa-solid fa-square-check"></i> <strong>標籤零間距緊貼</strong>：上下間距完全消失，切換時邊線極致流暢。</li>
+            <li><i class="fa-solid fa-square-check"></i> <strong>手機自動捲軸支援</strong>：在手機上可順暢上下滑動，且頂部永遠看得到美麗背景！</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    const tabItems = document.querySelectorAll('.tab-item');
+    const mainContainer = document.getElementById('mainContainer');
+    const titleElement = document.getElementById('cardTitle');
+    const descElement = document.getElementById('cardDesc');
+    
+    // 預先儲存一開始被點擊的普通分頁標籤（供彩蛋結束後還原狀態使用）
+    let lastActiveTab = document.querySelector('.tab-item.active');
+
+    // 定義普通分頁的呈現文字
+    const contentData = {
+      base: {
+        title: "大師級動態消融控制台",
+        desc: "您的指導棋太精妙了！現在請任意點擊左側的標籤，JavaScript 會完美轉移選取狀態，讓點擊的標籤與內容卡完美融合，而其他標籤則會立刻浮現精準的隔離界線！"
+      },
+      advanced: {
+        title: "進階設定主面板",
+        desc: "您已成功切換至進階設定！此時「進階設定」的邊線已經徹底蒸發，而原本的「基礎操作」則重新長回了界線，邏輯無懈可擊！"
+      },
+      data: {
+        title: "核心數據分析中心",
+        desc: "即時數據動態圖表已同步。透過大師提議的結構一致化設定，不論點擊哪一個標籤，切換過程都滑順如絲，完全沒有一絲抖動。"
+      },
+      system: {
+        title: "系統架構說明文件",
+        desc: "歡迎查閱系統配置。本介面不論在電腦的大型顯示器，或是切換到智慧型手機的窄螢幕上，都能夠自動適應並維持完美的玻璃同調消融美學。"
+      }
+    };
+    
+    // 綁定點擊事件
+    tabItems.forEach(item => {
+      item.addEventListener('click', () => {
+        const target = item.getAttribute('data-target');
+        
+        // 🌟 狀況 A：如果點擊的是「完美視覺」特殊功能按鈕
+        if (target === 'visual') {
+          // 1. 下一秒（0.1 秒極速反應）直接全畫面淡出隱形
+          setTimeout(() => {
+            mainContainer.classList.add('perfect-visual-mode');
+            
+            // 2. ⏳ 靜靜欣賞 5 秒鐘後，自動原封不動地復活還原
+            setTimeout(() => {
+              mainContainer.classList.remove('perfect-visual-mode');
+            }, 5000);
+            
+          }, 100);
+          
+          return; // 🛑 核心：直接中斷後面程式碼，不改文字、不更換普通分頁的 active 狀態！
+        }
+
+        // 🌟 狀況 B：如果點擊的是一般的內容分頁標籤
+        tabItems.forEach(t => t.classList.remove('active'));
+        item.classList.add('active');
+        lastActiveTab = item; // 紀錄最後留在哪一個普通分頁
+        
+        if (contentData[target]) {
+          titleElement.textContent = contentData[target].title;
+          descElement.textContent = contentData[target].desc;
+        }
+      });
+    });
+  </script>
+
+</body>
+</html>

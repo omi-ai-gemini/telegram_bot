@@ -1,18 +1,19 @@
-from flask import Flask, request, render_template, redirect, session
+from flask import Flask, request
 import os
 import threading
 from handlers.message_handler import run_ai
 from services.memory import add_chat
 from services.database import init_db
 from services.database import get_conn
-from config import ADMIN_PASSWORD
 from config import SECRET_KEY
+from routes.admin import admin_bp
 
 init_db()
 
 app = Flask(__name__)
 
 app.secret_key = SECRET_KEY
+app.register_blueprint(admin_bp)
 
 # =========================
 # Webhook（核心入口）
@@ -74,46 +75,6 @@ def webhook(bot_id):
 @app.route("/")
 def home():
     return "OK"
-
-# =========================
-# admin後台網站
-# =========================
-
-#首頁
-@app.route("/admin")
-def admin():
-    return render_template("index.html")
-
-#登入畫面
-@app.route("/admin/login")
-def admin_login():
-    return render_template("login.html")
-
-#登入GET
-@app.route("/admin/login", methods=["GET"])
-def admin_login_get():
-    return render_template("login.html")
-
-#登入POST
-@app.route("/admin/login", methods=["POST"])
-def admin_login_post():
-    
-    password = request.form["password"]
-
-    if password == ADMIN_PASSWORD:
-        session["admin"] = True
-        return redirect("/admin")
-    
-    return "密碼錯誤"
-
-#後台主頁
-@app.route("/admin/login/developer")
-def admin_login_developer():
-
-    if not session.get("admin"):
-        return redirect("/admin/login")
-
-    return render_template("developer.html")
 
 # =========================
 # 啟動
