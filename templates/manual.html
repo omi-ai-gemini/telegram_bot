@@ -243,6 +243,35 @@
         border-radius: 0 0 24px 24px !important;
       }
     }
+    
+    /* 💖 隱藏彩蛋：IG 風格點讚愛心（完美起飛版） */
+    .like-heart {
+      position: fixed;
+      color: #ff3040;
+      font-size: 4rem;
+      transform: translate(-50%,-50%) scale(0);
+      pointer-events: none;
+      z-index: 9999;
+      filter: drop-shadow(0 0 15px rgba(255,48,64,0.6));
+      animation: heartBurst 0.8s cubic-bezier(0.175,0.885,0.32,1.275) forwards;
+    }
+
+    @keyframes heartBurst {
+      0% {
+        transform: translate(-50%,-50%) scale(0);
+        opacity: 1;
+      }
+      15% {
+        transform: translate(-50%,-50%) scale(1.2);
+      }
+      30% {
+        transform: translate(-50%,-50%) scale(1);
+      }
+      100% {
+        transform: translate(-50%,-150px) scale(0.8);
+        opacity: 0;
+      }
+    }
   </style>
 </head>
 <body>
@@ -250,47 +279,50 @@
   <div class="notebook-container" id="mainContainer">
     
     <div class="tab-sidebar" id="tabSidebar">
-      <div class="tab-item active" data-target="base">
-        <i class="fa-solid fa-house"></i>
-        <span>基礎<br>操作</span>
+      <div class="tab-item active" data-target="b1">
+        <i class="fa-solid fa-fingerprint"></i>
+        <span>標籤<br>操作</span>
       </div>
-      <div class="tab-item" data-target="advanced">
-        <i class="fa-solid fa-gear"></i>
-        <span>進階<br>設定</span>
+      <div class="tab-item" data-target="b2">
+        <i class="fa-solid fa-robot"></i>
+        <span>bot<br>設定</span>
       </div>
-      <div class="tab-item" data-target="data">
-        <i class="fa-solid fa-chart-column"></i>
-        <span>數據<br>分析</span>
+      <div class="tab-item" data-target="b3">
+        <i class="fa-solid fa-user-gear"></i>
+        <span>人物<br>設定</span>
       </div>
-      <div class="tab-item" data-target="system">
+      <div class="tab-item" data-target="b4">
         <i class="fa-solid fa-file-lines"></i>
-        <span>系統<br>說明</span>
+        <span>測試<br>標籤</span>
       </div>
-      <div class="tab-item" data-target="test6">
-        <i class="fa-solid fa-flask"></i>
-        <span>測試<br>標籤六</span>
+      <div class="tab-item" data-target="b5">
+        <i class="fa-solid fa-mobile-screen-button"></i>
+        <span>關於<br>系統</span>
       </div>
-      <div class="tab-item" data-target="test7">
-        <i class="fa-solid fa-wand-magic-sparkles"></i>
-        <span>測試<br>標籤七</span>
+      <div class="tab-item" data-target="b6">
+        <i class="fa-solid fa-database"></i>
+        <span>關於<br>資料庫</span>
       </div>
       <div class="tab-item" data-target="visual">
-        <i class="fa-solid fa-eye"></i>
+        <i class="fa-solid fa-cat"></i>
         <span>完美<br>視覺</span>
       </div>
     </div>
 
     <div class="content-card">
       <div class="tab-content">
-        <h2 id="cardTitle">大師級動態消融控制台</h2>
-        <p id="cardDesc">您的指導棋太精妙了！現在請任意點擊左側的標籤，JavaScript 會完美轉移選取狀態，讓點擊的標籤與內容卡完美融合，而其他標籤則會立刻浮現精準的隔離界線！</p>
-        
-        <div class="metrics-box">
-          <h3>🧭 大師級 Carousel 標籤測試指南：</h3>
+        <h2 id="cardTitle">網頁標籤卡控制教學</h2>
+        <p id="cardDesc">為什麼要寫這個? 因為我覺得我做得很漂亮</p>
+                <div class="metrics-box">
+          <h3>🧭 大師級 Carousel 標籤控制指南：</h3>
           <ul>
-            <li><i class="fa-solid fa-mouse"></i> <strong>電腦網頁版</strong>：請把滑鼠移到左側標籤欄，<strong>按住滑鼠左鍵不放往上/下拖拽</strong>，隱藏的標籤就會完美滑出來！</li>
-            <li><i class="fa-solid fa-fingerprint"></i> <strong>手機網頁版</strong>：用手指直接在上方標籤欄<strong>向左橫滑</strong>，畫面永遠優雅維持 5 個標籤！</li>
-            <li><i class="fa-solid fa-eye"></i> <strong>完美視覺按鈕</strong>：點擊後文字不變，下一秒卡片通通消失 5 秒，純白字體絕不變色！</li>
+            <!--<li><i class="fa-solid fa-mouse"></i> <strong>電腦網頁版</strong>：請把滑鼠移到左側標籤欄，<strong>按住滑鼠左鍵不放往上/下拖拽</strong>，隱藏的標籤就會完美滑出來！</li>-->
+            <li><i class="fa-solid fa-fingerprint"></i> <strong>用你的手指</strong>：放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</li>
+            <li><i class="fa-solid fa-eye"></i> <strong>完美視覺</strong>：我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</li>
+          </ul>
+        </div>
+        
+
           </ul>
         </div>
       </div>
@@ -308,57 +340,81 @@
     let lastActiveTab = document.querySelector('.tab-item.active');
 
     const contentData = {
-      base: {
-        title: "大師級動態消融控制台",
-        desc: "您的指導棋太精妙了！現在請任意點擊左側的標籤，JavaScript 會完美轉移選取狀態，讓點擊的標籤與內容卡完美融合，而其他標籤則會立刻浮現精準的隔離界線！"
+      b1: {
+        title: "網頁標籤卡控制教學",
+        desc: "為什麼要寫這個? 因為我覺得我做得很漂亮",
+        // 只有這個分頁有 metrics-box
+        extra: `
+          <div class="metrics-box">
+            <h3>🧭 大師級 Carousel 標籤控制指南：</h3>
+            <ul>
+              <li><i class="fa-solid fa-fingerprint"></i> <strong>用你的手指</strong>：放在上方標籤欄<strong>向左橫滑</strong>這會讓它看起來很厲害！</li>
+              <li><i class="fa-solid fa-eye"></i> <strong>完美視覺</strong>：我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</li>
+            </ul>
+          </div>`
       },
-      advanced: {
+      b2: {
         title: "進階設定主面板",
-        desc: "您已成功切換至進階設定！此時「進階設定」的邊線已經徹底蒸發，而原本的「基礎操作」則重新長回了界線，邏輯無懈可擊！"
+        desc: "您已成功切換至進階設定！此時「進階設定」的邊線已經徹底蒸發。",
+        extra: "" // 其他頁面設為空字串，就不會顯示
       },
-      data: {
+      b3: {
         title: "核心數據分析中心",
-        desc: "即時數據動態圖表已同步。透過大師提議的結構一致化設定，不論點擊哪一個標籤，切換過程都滑順如絲，完全沒有一絲抖動。"
+        desc: "即時數據動態圖表已同步，結構一致化設定完成。",
+        extra: ""
       },
-      system: {
+      b4: {
         title: "系統架構說明文件",
-        desc: "歡迎查閱系統配置。本介面不論在電腦的大型顯示器，或是切換到智慧型手機的窄螢幕上，都能夠自動適應並維持完美的玻璃同調消融美學。"
+        desc: "歡迎查閱系統配置。本介面不論在電腦的大型顯示器或是智慧型手機都能維持美學。",
+        extra: ""
       },
-      test6: {
-        title: "測試功能模組 六",
-        desc: "這是為了驗證大師「水平與垂直傳送帶標籤」靈感而誕生的第六個分頁！容器高度與寬度配比精密，滾動極致順暢！"
+      b5: {
+        title: "核心數據分析中心",
+        desc: "即時數據動態圖表已同步，結構一致化設定完成。",
+        extra: ""
       },
-      test7: {
-        title: "測試功能模組 七",
-        desc: "這是第七個標籤分頁內容！不論未來大師想要擴充到十個還是二十個標籤，這個滑動架構都能完美承載，無限延伸！"
+      b6: {
+        title: "核心數據分析中心",
+        desc: "即時數據動態圖表已同步，結構一致化設定完成。",
+        extra: ""
       }
+      // test6, test7 同理，extra 留空即可
     };
     
     // 💡 1. 處理標籤點擊與大師指定「下一秒隱身」彩蛋
-    tabItems.forEach(item => {
-      item.addEventListener('click', () => {
-        const target = item.getAttribute('data-target');
-        
-        if (target === 'visual') {
-          setTimeout(() => {
-            mainContainer.classList.add('perfect-visual-mode');
-            setTimeout(() => {
-              mainContainer.classList.remove('perfect-visual-mode');
-            }, 5000);
-          }, 100);
-          return; 
-        }
+        tabItems.forEach(item => {
+          item.addEventListener('click', () => {
+            const target = item.getAttribute('data-target');
 
-        tabItems.forEach(t => t.classList.remove('active'));
-        item.classList.add('active');
-        lastActiveTab = item; 
-        
-        if (contentData[target]) {
-          titleElement.textContent = contentData[target].title;
-          descElement.textContent = contentData[target].desc;
-        }
-      });
-    });
+            if (target === 'visual') {
+              setTimeout(() => {
+                mainContainer.classList.add('perfect-visual-mode');
+                setTimeout(() => {
+                  mainContainer.classList.remove('perfect-visual-mode');
+                }, 3800);
+              }, 100);
+              return; 
+            }
+
+            tabItems.forEach(t => t.classList.remove('active'));
+            item.classList.add('active');
+            lastActiveTab = item; 
+
+            if (contentData[target]) {
+              titleElement.textContent = contentData[target].title;
+              descElement.textContent = contentData[target].desc;
+
+              // 🌟 這裡就是漏掉的靈魂核心！先清除舊的 metrics-box
+              const oldBox = document.querySelector('.metrics-box');
+              if (oldBox) oldBox.remove();
+
+              // 🌟 如果點擊的標籤有寫 extra（例如 b1），就把它重新長出來！
+              if (contentData[target].extra) {
+                document.querySelector('.tab-content').insertAdjacentHTML('beforeend', contentData[target].extra);
+              }
+            }
+          });
+        });
 
     // 💡 2. 電腦版滑鼠拖拽捲動
     let isDown = false;
@@ -388,6 +444,29 @@
       const y = e.pageY - sidebar.offsetTop;
       const walk = (y - startY) * 1.5; 
       sidebar.scrollTop = scrollTop - walk;
+    });
+    
+    // 💖 彩蛋中的彩蛋：在完美視覺模式下，點擊背景出現 IG 愛心
+    document.addEventListener('click', (e) => {
+      // 只有當 mainContainer 身上有 'perfect-visual-mode' 這個 class 時才觸發
+      if (mainContainer.classList.contains('perfect-visual-mode')) {
+
+        // 1. 創造一個 <i> 標籤，並套用 Font Awesome 的愛心圖示
+        const heart = document.createElement('i');
+        heart.className = 'fa-solid fa-heart like-heart';
+
+        // 2. 把愛心的位置設定在滑鼠/手指點擊的精準座標上
+        heart.style.left = `${e.clientX}px`;
+        heart.style.top = `${e.clientY}px`;
+
+        // 3. 把愛心貼到網頁上
+        document.body.appendChild(heart);
+
+        // 4. 動畫播完後 (約 0.8 秒)，自動把愛心清掉，保持 HTML 乾淨！
+        setTimeout(() => {
+          heart.remove();
+        }, 800);
+      }
     });
   </script>
 
