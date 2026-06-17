@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>手動的 - 大師級 100% 究極消融與無限滑動控制台</title>
+  <title>手動的 - 大師級 100% 究極消融與隱身彩蛋控制台</title>
   
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
   
@@ -22,8 +22,9 @@
       min-height: 100vh;
       display: flex;
       justify-content: center;
-      align-items: center; 
+      align-items: center; /* 電腦版垂直居中 */
       
+      /* 🐈 草地曬太陽小貓直連路徑 */
       background-image: url('https://unsplash.com/photos/ECfPmkOVZPA/download?force=true');
       background-size: cover;
       background-position: center;
@@ -32,10 +33,10 @@
       padding: 40px 20px;
     }
 
-    /* 全域過渡：用於彩蛋觸發時整套卡片一起優雅淡出/淡入 */
+    /* 🌟 全域過渡：用於彩蛋觸發時整套卡片一起優雅淡出/淡入 */
     .notebook-container {
       display: flex;
-      width: 950px;
+      width: 900px;
       max-width: 100%;
       height: 550px;
       align-items: stretch;
@@ -43,63 +44,56 @@
       opacity: 1;
     }
 
-    /* 當啟動「完美視覺」彩蛋時，整體卡片下一秒瞬間隱形 */
+    /* 🌟 當啟動「完美視覺」彩蛋時，整體卡片瞬間優雅隱形 */
     .notebook-container.perfect-visual-mode {
       opacity: 0 !important;
-      pointer-events: none; 
+      pointer-events: none; /* 隱形時不允許點擊，避免誤觸 */
     }
 
     /* ══════════════════════════════════════════
-       2. 【電腦版】左側標籤欄（形狀鎖定 + 滾輪隱藏）
+       2. 【電腦版】左側標籤欄（上下間距歸零，神級緊貼）
        ══════════════════════════════════════════ */
     .tab-sidebar {
       display: flex;
       flex-direction: column;
-      gap: 0 !important;             
+      gap: 0 !important;             /* 聽從大師指令：間距徹底歸零！ */
       position: relative;
-      margin-right: -1px !important; 
-      z-index: 2;                    
-      
-      height: 550px;
-      overflow-y: auto;
-      scrollbar-width: none; 
-      flex-shrink: 0;
-      cursor: pointer; 
-      user-select: none; 
-
-      /* 🌟 核心修正：由側邊欄容器本身來扛住「左上」與「左下」的 24px 圓角 */
-      border-radius: 24px 0 0 24px;
-    }
-    .tab-sidebar::-webkit-scrollbar {
-      display: none; 
+      margin-right: -1px !important; /* 核心消融往右挪 1px 壓在內容卡線上 */
+      z-index: 2;                    /* 確保層級高於內容卡 */
     }
 
-    /* 所有的標籤卡：高度為 110px，拿掉干擾滾動的個別圓角 */
+    /* 所有的標籤卡：結構與基礎外觀完全保持一致 */
     .tab-item {
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       width: 95px;
-      height: 110px; 
-      flex-shrink: 0; 
+      height: 95px; 
+      cursor: pointer;
       text-align: center;
       font-size: 14px;
-      color: rgba(255, 255, 255, 0.75); 
-      transition: background 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+      color: rgba(255, 255, 255, 0.75); /* 聽從大師指令：保持優雅純白 */
+      transition: all 0.25s ease;
       
+      /* 毛玻璃設定 */
       background: rgba(255, 255, 255, 0.12);
       backdrop-filter: blur(25px);
       -webkit-backdrop-filter: blur(25px);
       
+      /* 四周邊框設定，並防止相鄰標籤邊框重疊變粗 */
       border: 1px solid rgba(255, 255, 255, 0.25);
       border-bottom: none; 
-      border-radius: 0 !important; /* 🌟 徹底清除標籤個別圓角，避免滾動時鋸齒外溢 */
+      border-radius: 0; /* 清除個別圓角，避免拼圖鋸齒感 */
     }
 
-    /* 補上最後一個標籤的底線 */
-    .tab-sidebar .tab-item:last-child {
+    /* 完美細節：最上面與最下面的標籤展現優雅外圓角 */
+    .tab-item:first-child {
+      border-radius: 16px 0 0 0;
+    }
+    .tab-item:last-child {
       border-bottom: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 0 0 0 16px;
     }
 
     .tab-item:hover {
@@ -107,11 +101,11 @@
       color: #ffffff;
     }
 
-    /* 當標籤卡被點擊 (Active)：右邊線蒸發，融為一體！ */
+    /* 🌟 當標籤卡被點擊 (Active)：右邊線蒸發，融為一體！ */
     .tab-item.active {
       color: #1d4ed8; 
       background: rgba(255, 255, 255, 0.28) !important; 
-      border-right-color: transparent !important; 
+      border-right-color: transparent !important; /* 右邊線隱形 */
       box-shadow: -6px 4px 15px rgba(0, 0, 0, 0.05);
     }
 
@@ -121,7 +115,7 @@
     }
 
     /* ══════════════════════════════════════════
-       3. 【電腦版】右側內容卡（右側對稱圓角優化）
+       3. 【電腦版】右側內容卡（大師交代很好看，絕對不動它）
        ══════════════════════════════════════════ */
     .content-card {
       flex: 1;
@@ -132,13 +126,13 @@
       -webkit-backdrop-filter: blur(25px);
       border: 1px solid rgba(255, 255, 255, 0.25);
       
+      /* 左邊線永久不出現，由個別未選中標籤的右邊線來當作分界線 */
       border-left: none !important; 
+      border-radius: 0 24px 24px 24px;
       box-shadow: 0 12px 40px rgba(0, 0, 0, 0.12);
-
-      /* 🌟 核心修正：與左側欄完美呼應，鎖定「右上」與「右下」的 24px 圓角 */
-      border-radius: 0 24px 24px 0 !important;
     }
 
+    /* 內容排版 */
     .tab-content h2 {
       font-size: 26px;
       color: #0f172a;
@@ -167,7 +161,10 @@
       margin-bottom: 12px;
     }
 
-    .metrics-box ul { list-style: none; }
+    .metrics-box ul {
+      list-style: none;
+    }
+
     .metrics-box li {
       margin-bottom: 10px;
       font-size: 14px;
@@ -176,70 +173,80 @@
       align-items: center;
       gap: 10px;
     }
-    .metrics-box li i { color: #1d4ed8; }
+
+    .metrics-box li i {
+      color: #1d4ed8;
+    }
 
     /* ══════════════════════════════════════════
-       4. 📱 手機版完美圓角變形策略
+       4. 📱 完美手機規格響應式設定 (768px 以下)
        ══════════════════════════════════════════ */
     @media (max-width: 768px) {
       body {
-        align-items: flex-start !important; 
-        padding: 50px 16px !important;      
+        align-items: flex-start !important; /* 🌟 核心：從最上面開始排，解除畫面卡死 */
+        padding: 50px 16px !important;      /* 🌟 核心：頂部預留 50px，保證能看到貓咪背景 */
       }
 
       .notebook-container {
-        flex-direction: column; 
+        flex-direction: column; /* 轉為直向排列 */
         width: 100%;
-        height: auto;            
+        height: auto;            /* 🌟 解除固定高度，由內容自然撐開，只吃上下捲軸 */
       }
 
-      /* 手機版頂部標籤列：改為橫向排列 */
+      /* 標籤欄變更為上方橫排 */
       .tab-sidebar {
         flex-direction: row;
         margin-right: 0 !important;
-        margin-bottom: -1px !important; 
+        margin-bottom: -1px !important; /* 🌟 往下方推 1px 壓在內容卡頂部邊界 */
         width: 100%;
-        height: auto;
-        overflow-x: auto;          
-        overflow-y: hidden;        
-        -webkit-overflow-scrolling: touch; 
-
-        /* 🌟 手機版核心修正：容器切換為「左上」與「右上」圓角 */
-        border-radius: 24px 24px 0 0 !important;
       }
 
-      /* 手機版標籤卡：寬度平分 20% */
+      /* 手機版標籤卡：無間距緊貼 */
       .tab-item {
-        flex: 0 0 20% !important;  
-        height: 75px;
+        flex: 1;
+        height: 70px;
         width: auto;
         border: 1px solid rgba(255, 255, 255, 0.25);
         border-right: none; 
         border-bottom: none; 
+        border-radius: 0;
       }
       
-      .tab-sidebar .tab-item:last-child {
+      /* 手機版左右兩側圓角收邊 */
+      .tab-item:first-child {
+        border-radius: 16px 0 0 0;
+      }
+      .tab-item:last-child {
         border-right: 1px solid rgba(255, 255, 255, 0.25);
+        border-radius: 0 16px 0 0;
       }
 
-      .tab-item i { font-size: 18px; margin-bottom: 4px; }
-      .tab-item br { display: none; }
-      .tab-item span { font-size: 11px; margin-left: 2px; }
+      .tab-item i {
+        font-size: 18px;
+        margin-bottom: 4px;
+      }
 
-      /* 手機版動態消融：轉化為「底邊線」蒸發 */
+      .tab-item br {
+        display: none; /* 手機版文字不強迫換行 */
+      }
+      
+      .tab-item span {
+        font-size: 11px;
+        margin-left: 2px;
+      }
+
+      /* 手機版動態消融：轉化為「底邊線」蒸發，右邊線維持 */
       .tab-item.active {
         border-right-color: rgba(255, 255, 255, 0.25) !important; 
         border-bottom-color: transparent !important; 
       }
 
-      /* 手機版內容卡 */
+      /* 手機版內容卡：卡片樣式不動，僅微調邊線適應（頂線消失，左線恢復） */
       .content-card {
         border-left: 1px solid rgba(255, 255, 255, 0.25) !important; 
         border-top: none !important; 
+        border-radius: 0 0 24px 24px;
         padding: 35px 20px;
-
-        /* 🌟 手機版核心修正：內容卡切換為「左下」與「右下」圓角，完美包覆 */
-        border-radius: 0 0 24px 24px !important;
       }
     }
   </style>
@@ -248,7 +255,7 @@
 
   <div class="notebook-container" id="mainContainer">
     
-    <div class="tab-sidebar" id="tabSidebar">
+    <div class="tab-sidebar">
       <div class="tab-item active" data-target="base">
         <i class="fa-solid fa-house"></i>
         <span>基礎<br>操作</span>
@@ -265,14 +272,6 @@
         <i class="fa-solid fa-file-lines"></i>
         <span>系統<br>說明</span>
       </div>
-      <div class="tab-item" data-target="test6">
-        <i class="fa-solid fa-flask"></i>
-        <span>測試<br>標籤六</span>
-      </div>
-      <div class="tab-item" data-target="test7">
-        <i class="fa-solid fa-wand-magic-sparkles"></i>
-        <span>測試<br>標籤七</span>
-      </div>
       <div class="tab-item" data-target="visual">
         <i class="fa-solid fa-eye"></i>
         <span>完美<br>視覺</span>
@@ -285,11 +284,11 @@
         <p id="cardDesc">您的指導棋太精妙了！現在請任意點擊左側的標籤，JavaScript 會完美轉移選取狀態，讓點擊的標籤與內容卡完美融合，而其他標籤則會立刻浮現精準的隔離界線！</p>
         
         <div class="metrics-box">
-          <h3>🧭 大師級 Carousel 標籤測試指南：</h3>
+          <h3>🐈 究極動態美學驗收指標：</h3>
           <ul>
-            <li><i class="fa-solid fa-mouse"></i> <strong>電腦網頁版</strong>：請把滑鼠移到左側標籤欄，<strong>按住滑鼠左鍵不放往上/下拖拽</strong>，隱藏的標籤就會完美滑出來！</li>
-            <li><i class="fa-solid fa-fingerprint"></i> <strong>手機網頁版</strong>：用手指直接在上方標籤欄<strong>向左橫滑</strong>，畫面永遠優雅維持 5 個標籤！</li>
-            <li><i class="fa-solid fa-eye"></i> <strong>完美視覺按鈕</strong>：點擊後文字不變，下一秒卡片通通消失 5 秒，純白字體絕不變色！</li>
+            <li><i class="fa-solid fa-square-check"></i> <strong>點擊項無縫融合</strong>：被點擊的標籤邊線蒸發，背景與內容卡連成一體。</li>
+            <li><i class="fa-solid fa-square-check"></i> <strong>標籤零間距緊貼</strong>：上下間距完全消失，切換時邊線極致流暢。</li>
+            <li><i class="fa-solid fa-square-check"></i> <strong>手機自動捲軸支援</strong>：在手機上可順暢上下滑動，且頂部永遠看得到美麗背景！</li>
           </ul>
         </div>
       </div>
@@ -300,12 +299,13 @@
   <script>
     const tabItems = document.querySelectorAll('.tab-item');
     const mainContainer = document.getElementById('mainContainer');
-    const sidebar = document.getElementById('tabSidebar');
     const titleElement = document.getElementById('cardTitle');
     const descElement = document.getElementById('cardDesc');
     
+    // 預先儲存一開始被點擊的普通分頁標籤（供彩蛋結束後還原狀態使用）
     let lastActiveTab = document.querySelector('.tab-item.active');
 
+    // 定義普通分頁的呈現文字
     const contentData = {
       base: {
         title: "大師級動態消融控制台",
@@ -322,71 +322,40 @@
       system: {
         title: "系統架構說明文件",
         desc: "歡迎查閱系統配置。本介面不論在電腦的大型顯示器，或是切換到智慧型手機的窄螢幕上，都能夠自動適應並維持完美的玻璃同調消融美學。"
-      },
-      test6: {
-        title: "測試功能模組 六",
-        desc: "這是為了驗證大師「水平與垂直傳送帶標籤」靈感而誕生的第六個分頁！容器高度與寬度配比精密，滾動極致順暢！"
-      },
-      test7: {
-        title: "測試功能模組 七",
-        desc: "這是第七個標籤分頁內容！不論未來大師想要擴充到十個還是二十個標籤，這個滑動架構都能完美承載，無限延伸！"
       }
     };
     
-    // 💡 1. 處理標籤點擊與大師指定「下一秒隱身」彩蛋
+    // 綁定點擊事件
     tabItems.forEach(item => {
       item.addEventListener('click', () => {
         const target = item.getAttribute('data-target');
         
+        // 🌟 狀況 A：如果點擊的是「完美視覺」特殊功能按鈕
         if (target === 'visual') {
+          // 1. 下一秒（0.1 秒極速反應）直接全畫面淡出隱形
           setTimeout(() => {
             mainContainer.classList.add('perfect-visual-mode');
+            
+            // 2. ⏳ 靜靜欣賞 5 秒鐘後，自動原封不動地復活還原
             setTimeout(() => {
               mainContainer.classList.remove('perfect-visual-mode');
             }, 5000);
+            
           }, 100);
-          return; 
+          
+          return; // 🛑 核心：直接中斷後面程式碼，不改文字、不更換普通分頁的 active 狀態！
         }
 
+        // 🌟 狀況 B：如果點擊的是一般的內容分頁標籤
         tabItems.forEach(t => t.classList.remove('active'));
         item.classList.add('active');
-        lastActiveTab = item; 
+        lastActiveTab = item; // 紀錄最後留在哪一個普通分頁
         
         if (contentData[target]) {
           titleElement.textContent = contentData[target].title;
           descElement.textContent = contentData[target].desc;
         }
       });
-    });
-
-    // 💡 2. 電腦版滑鼠拖拽捲動
-    let isDown = false;
-    let startY;
-    let scrollTop;
-
-    sidebar.addEventListener('mousedown', (e) => {
-      isDown = true;
-      sidebar.style.cursor = 'grabbing';
-      startY = e.pageY - sidebar.offsetTop;
-      scrollTop = sidebar.scrollTop;
-    });
-
-    sidebar.addEventListener('mouseleave', () => {
-      isDown = false;
-      sidebar.style.cursor = 'pointer';
-    });
-
-    sidebar.addEventListener('mouseup', () => {
-      isDown = false;
-      sidebar.style.cursor = 'pointer';
-    });
-
-    sidebar.addEventListener('mousemove', (e) => {
-      if (!isDown) return; 
-      e.preventDefault();   
-      const y = e.pageY - sidebar.offsetTop;
-      const walk = (y - startY) * 1.5; 
-      sidebar.scrollTop = scrollTop - walk;
     });
   </script>
 
