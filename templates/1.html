@@ -408,6 +408,67 @@
     .card-desc, .desc, p { 
       white-space: pre-wrap !important; 
     }
+    
+    /* 🎯 貼在您 CSS 欄位的最底部（第 255 行之後） */
+
+    /* 1. 幫您的手機版內容卡解鎖 iPad 捲軸功能 */
+    .content-card {
+      height: 480px !important;     /* 🌟 鎖死高度（高度您可以看畫面自由調整數字） */
+      overflow-y: auto !important;  /* 🌟 超出高度時，自動啟用上下捲軸 */
+      overflow-x: hidden !important;/* 🌟 鎖死左右滑動，絕對防跑版 */
+    }
+
+    /* 2. 暗黑系極簡捲軸美化（讓捲軸變透明銀白，完美融入您的暗色主題） */
+    .content-card::-webkit-scrollbar {
+      width: 6px; /* 纖細科技感 */
+    }
+
+    .content-card::-webkit-scrollbar-track {
+      background: transparent; /* 軌道隱形 */
+      margin-top: 15px;
+      margin-bottom: 15px;
+    }
+
+    .content-card::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.2); /* 半透明銀白 */
+      border-radius: 10px;
+    }
+
+    .content-card::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.4); /* 滑鼠游標移過去時變亮 */
+    }
+    
+    /* 電腦與手機一起套用 */
+    .pc-card, .content-card {
+      height: 480px !important;
+      overflow-y: auto !important;
+      overflow-x: hidden !important;
+    }
+    
+    /* 🎯 請貼在您 CSS 欄位的最底部 */
+
+    .content-card {
+      height: 550px !important;     /* 🌟 大幅拔高！給按鈕和內容完美的伸展台，不再被剪短 */
+      overflow-y: auto !important;  /* 🌟 核心：內容如果真的超過 620px，就會在卡片內上下捲動 */
+      overflow-x: hidden !important;/* 🌟 鎖死左右，防跑版 */
+    }
+
+    /* 🎯 順便把剛剛迷路的換行魔法，安安全全地放回 CSS 欄位 */
+    .card-desc, .desc, p { 
+      white-space: pre-wrap !important; 
+    }
+    
+    /* 📸 大師特調：操作指引圖片優化 */
+    .guide-img {
+      width: 100%;             /* 🌟 核心：寬度自動填滿卡片內部，絕不超出邊框 */
+      max-width: 100%;         /* 強制鎖死最大寬度，防跑版 */
+      height: auto;            /* 🌟 核心：高度依比例自動縮放，圖片絕對不變形 */
+      border-radius: 12px;     /* 加上漂亮的圓角，呼應您的 iPad 風格 */
+      border: 1px solid rgba(255, 255, 255, 0.1); /* 隱隱約約的科技感邊框 */
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);   /* 給圖片一點立體陰影，質感大加分 */
+      margin: 15px 0 20px 0;   /* 上下留點呼吸空間，不要跟文字或輸入框擠在一起 */
+      display: block;          /* 確保圖片獨立一行 */
+    }
   </style>
 </head>
 <body>
@@ -463,7 +524,7 @@
             
             <div class="metric-item">
               <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
-              <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+              <div class="metric-desc">我讓Gemini參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
             </div>
         </div>  
     </div>
@@ -495,14 +556,14 @@
                 
                 <div class="metric-item">
                 <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
-                <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+                <div class="metric-desc">我讓Gemini參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
                 </div>
             </div>  
         </div>`
       },
       b7: {
         title: "建立擬真聊天機器人",
-        desc: "利用telegram通訊軟體連接gemini。自由設定人物性格，你可以跟任何人聊天。\n先建立bot，在telegram嘗試輸入任意文字，後台回傳user_id後回來取得gemini連線。\nAI設定完成後就可以開始聊天囉!",
+        desc: "利用telegram通訊軟體連接gemini。自由設定人物性格，你可以跟任何人聊天。\n先新增bot，然後在telegram聊天室輸入任意文字，會取得自己的user_id，再回來取得gemini連線。\nAI設定完成後就可以開始聊天囉!",
     // 🌟 核心自由畫布：
         extra: `
           <div class="master-text">
@@ -533,9 +594,11 @@
       `
       },
       b2: {
-        title: "如何有一個自己的聊天機器人?",
+        title: "如何有一個自己的聊天夥伴?",
         desc: "為什麼不用Line當作聊天室?\n因為Line的token取得比較複雜。",
-        extra: "" // 其他頁面設為空字串，就不會顯示
+        extra: `
+        <img src="/static/bot-1.jpg" alt="操作指引" class="guide-img">
+        `
       },
       b3: {
         title: "如何讓機器人模擬真人?",
@@ -543,18 +606,18 @@
         extra: ""
       },
       b4: {
-        title: "系統架構說明文件",
-        desc: "歡迎查閱系統配置。本介面不論在電腦的大型顯示器或是智慧型手機都能維持美學。",
+        title: "你可以跟喜歡的明星聊天!",
+        desc: "你想跟車銀優聊天嗎?",
         extra: ""
       },
       b5: {
-        title: "核心數據分析中心",
-        desc: "即時數據動態圖表已同步，結構一致化設定完成。",
+        title: "Telemini說明",
+        desc: "其實就是開發者搞威",
         extra: ""
       },
       b6: {
-        title: "核心數據分析中心",
-        desc: "即時數據動態圖表已同步，結構一致化設定完成。",
+        title: "資料庫說明",
+        desc: "開發者沒興趣看各位的聊天紀錄",
         extra: ""
       }
       // test6, test7 同理，extra 留空即可
@@ -579,17 +642,24 @@
             item.classList.add('active');
             lastActiveTab = item; 
 
-        // 🌟 這裡開始是您的第 491 行
+            // 🌟 覆蓋掉原本的 if (contentData[target]) { ... } 整個區塊
             if (contentData[target]) {
               titleElement.textContent = contentData[target].title;
               descElement.textContent = contentData[target].desc;
 
-              // 🧼 核心大掃除：切換分頁時，先把上一頁殘留的所有灰色卡片、自訂文字全部拔掉！
-              document.querySelectorAll('.metrics-box, .setup-step-box, .master-text').forEach(el => el.remove());
+              // 🧹 終極無差別大掃除：一勞永逸解決無限複製問題！
+              const tabContent = document.querySelector('.tab-content');
+              // 把 tab-content 裡面的所有東西巡視一遍
+              Array.from(tabContent.children).forEach(child => {
+                // 只要它不是標題 (cardTitle)，也不是描述 (cardDesc)，就直接無情拔除！
+                if (child.id !== 'cardTitle' && child.id !== 'cardDesc') {
+                  child.remove();
+                }
+              });
 
-              // 🔮 自由流控制：只有當這一頁的 extra 有寫東西時，才會長出來（沒寫就不會憑空出現！）
+              // 🔮 乾淨的畫布準備好後，才把新的 extra 長出來
               if (contentData[target].extra) {
-                document.querySelector('.tab-content').insertAdjacentHTML('beforeend', contentData[target].extra);
+                tabContent.insertAdjacentHTML('beforeend', contentData[target].extra);
               }
             } // 🌟 覆蓋到這個結束的大括號
           });
@@ -706,6 +776,5 @@
       }
     });
   </script>
-
 </body>
 </html>

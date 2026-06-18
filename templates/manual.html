@@ -457,6 +457,18 @@
     .card-desc, .desc, p { 
       white-space: pre-wrap !important; 
     }
+    
+    /* 📸 大師特調：操作指引圖片優化 */
+    .guide-img {
+      width: 100%;             /* 🌟 核心：寬度自動填滿卡片內部，絕不超出邊框 */
+      max-width: 100%;         /* 強制鎖死最大寬度，防跑版 */
+      height: auto;            /* 🌟 核心：高度依比例自動縮放，圖片絕對不變形 */
+      border-radius: 12px;     /* 加上漂亮的圓角，呼應您的 iPad 風格 */
+      border: 1px solid rgba(255, 255, 255, 0.1); /* 隱隱約約的科技感邊框 */
+      box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);   /* 給圖片一點立體陰影，質感大加分 */
+      margin: 15px 0 20px 0;   /* 上下留點呼吸空間，不要跟文字或輸入框擠在一起 */
+      display: block;          /* 確保圖片獨立一行 */
+    }
   </style>
 </head>
 <body>
@@ -512,7 +524,7 @@
             
             <div class="metric-item">
               <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
-              <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+              <div class="metric-desc">我讓Gemini參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
             </div>
         </div>  
     </div>
@@ -544,14 +556,14 @@
                 
                 <div class="metric-item">
                 <div class="metric-title"><i class="fa-solid fa-eye"></i> 完美視覺</div>
-                <div class="metric-desc">我讓AI參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
+                <div class="metric-desc">我讓Gemini參考Apple的黃金弧度做成四個角的圓弧，但我不知道它有沒有聽懂。</div>
                 </div>
             </div>  
         </div>`
       },
       b7: {
         title: "建立擬真聊天機器人",
-        desc: "利用telegram通訊軟體連接gemini。自由設定人物性格，你可以跟任何人聊天。\n先建立bot，在telegram嘗試輸入任意文字，後台回傳user_id後回來取得gemini連線。\nAI設定完成後就可以開始聊天囉!",
+        desc: "利用telegram通訊軟體連接gemini。自由設定人物性格，你可以跟任何人聊天。\n先新增bot，然後在telegram聊天室輸入任意文字，會取得自己的user_id，再回來取得gemini連線。\nAI設定完成後就可以開始聊天囉!",
     // 🌟 核心自由畫布：
         extra: `
           <div class="master-text">
@@ -582,9 +594,11 @@
       `
       },
       b2: {
-        title: "如何有一個自己的聊天機器人?",
+        title: "如何有一個自己的聊天夥伴?",
         desc: "為什麼不用Line當作聊天室?\n因為Line的token取得比較複雜。",
-        extra: "" // 其他頁面設為空字串，就不會顯示
+        extra: `
+        <img src="/static/bot-1.jpg" alt="操作指引" class="guide-img">
+        `
       },
       b3: {
         title: "如何讓機器人模擬真人?",
@@ -628,17 +642,24 @@
             item.classList.add('active');
             lastActiveTab = item; 
 
-        // 🌟 這裡開始是您的第 491 行
+            // 🌟 覆蓋掉原本的 if (contentData[target]) { ... } 整個區塊
             if (contentData[target]) {
               titleElement.textContent = contentData[target].title;
               descElement.textContent = contentData[target].desc;
 
-              // 🧼 核心大掃除：切換分頁時，先把上一頁殘留的所有灰色卡片、自訂文字全部拔掉！
-              document.querySelectorAll('.metrics-box, .setup-step-box, .master-text').forEach(el => el.remove());
+              // 🧹 終極無差別大掃除：一勞永逸解決無限複製問題！
+              const tabContent = document.querySelector('.tab-content');
+              // 把 tab-content 裡面的所有東西巡視一遍
+              Array.from(tabContent.children).forEach(child => {
+                // 只要它不是標題 (cardTitle)，也不是描述 (cardDesc)，就直接無情拔除！
+                if (child.id !== 'cardTitle' && child.id !== 'cardDesc') {
+                  child.remove();
+                }
+              });
 
-              // 🔮 自由流控制：只有當這一頁的 extra 有寫東西時，才會長出來（沒寫就不會憑空出現！）
+              // 🔮 乾淨的畫布準備好後，才把新的 extra 長出來
               if (contentData[target].extra) {
-                document.querySelector('.tab-content').insertAdjacentHTML('beforeend', contentData[target].extra);
+                tabContent.insertAdjacentHTML('beforeend', contentData[target].extra);
               }
             } // 🌟 覆蓋到這個結束的大括號
           });
@@ -755,6 +776,5 @@
       }
     });
   </script>
-
 </body>
 </html>
