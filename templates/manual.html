@@ -486,7 +486,7 @@
       </div>
       <div class="tab-item" data-target="b3">
         <i class="fa-solid fa-atom"></i>
-        <span>取得<br>Gemini</span>
+        <span>取得<br>AI</span>
       </div>
       <div class="tab-item" data-target="b7">
         <i class="fa-solid fa-wifi"></i>
@@ -597,28 +597,7 @@
         title: "如何有一個自己的聊天夥伴?",
         desc: "為什麼不用Line當作聊天室?\n因為Line的token取得比較複雜。",
         extra: `
-        <div class="master-text">
-            在telegram聊天室列表下滑或右下角的搜尋輸入botfather<br></div>
-        <img src="/static/bot-1.jpg" alt="操作指引" class="guide-img">
-        <div class="master-text">
-            點擊開啟botfather<br></div>
-        <img src="/static/bot-2.jpg" alt="操作指引" class="guide-img">
-        <div class="master-text">
-            建立新的bot<br></div>
-        <img src="/static/bot-3.jpg" alt="操作指引" class="guide-img">
-        <div class="master-text">
-            第一欄填入的名稱是聊天對象的名稱，建立後可以再修改<br>
-            第三欄填入bot的專屬名稱，用於Telemini獲取webhook<br></div>
-        <img src="/static/bot-4.jpg" alt="操作指引" class="guide-img">
-        <div class="master-text">
-            第三欄位有些不可用字元以及名稱是否被使用過的範例<br></div>
-        <img src="/static/bot-4-1.jpg" alt="操作指引" class="guide-img">
-        <img src="/static/bot-4-2.jpg" alt="操作指引" class="guide-img">
-        <div class="master-text">
-            將bot名稱(剛才第三欄輸入的名稱)以及token輸入進網頁中的 {建立Telemini}<br>
-            bot名稱可以不帶 @<br>
-            提醒: 先在 {建立Telemini} 建立bot，再去參考 {取得Gemini} 取得 api key 後，再回到 {建立Telemini} 設定AI</div>
-        <img src="/static/bot-5.jpg" alt="操作指引" class="guide-img">
+        <img src="static/bot-1.jpg" alt="操作指引" class="guide-img">
         `
       },
       b3: {
@@ -634,14 +613,7 @@
       b5: {
         title: "Telemini說明",
         desc: "其實就是開發者搞威",
-        extra:`
-            <div class="metrics-box">
-                <h3>⏳ 更新日誌：</h3>
-
-                <div class="metric-item">
-                <div class="metric-title"><i class="fa-solid fa-redo"></i> 2026.6.20 更新伺服器</div>
-
-        `
+        extra: ""
       },
       b6: {
         title: "資料庫說明",
@@ -746,61 +718,88 @@
       }
     });
     
-    // ⚡ 大師級防呆與後端傳送邏輯
-    // 🌟 直接全面覆蓋原本的第 647 行到最後！
     document.addEventListener('click', function(e) {
 
-      // 1. 處理 Webhook 按鈕點擊
+      // 📦 1. 處理 Webhook 按鈕點擊 (對應 /admin/manual/add_bot)
       if (e.target && e.target.id === 'webhook-btn') {
-        const botNameInput = document.getElementById('bot-name');
-        const botTokenInput = document.getElementById('bot-token');
+        const botIdInput = document.getElementById('bot-name'); // 抓取您 HTML 的 bot 欄位
+        const tokenInput = document.getElementById('bot-token'); // 抓取您 HTML 的 token 欄位
 
-        // 🛡️ 金鐘罩防禦：萬一 HTML 沒對好，直接攔截不崩潰！
-        if (!botNameInput || !botTokenInput) {
-          alert('⚠️ 偵測到網頁找不到輸入框！請檢查您 HTML 裡輸入框的 id 是不是精確寫著 id="bot-name" 和 id="bot-token"');
-          return;
-        }
+        if (!botIdInput || !tokenInput) return;
 
-        const botName = botNameInput.value.trim();
-        const botToken = botTokenInput.value.trim();
+        const botId = botIdInput.value.trim();
+        const token = tokenInput.value.trim();
 
-        if (botName === '' || botToken === '') {
+        if (botId === '' || token === '') {
           alert('⚠️ 「Bot」和「Token」兩個欄位都必須輸入喔！');
           return;
         }
 
-        console.log('傳送成功！Bot:', botName, 'Token:', botToken);
-        
-        // 🧹 毀屍滅跡魔法：傳送成功後，立刻清空輸入框的內容！
-        botNameInput.value = '';
-        botTokenInput.value = '';
-        
-        e.target.textContent = 'webhook設定完成';
-        e.target.classList.add('success');
+        // 🌟 核心轉換：使用 FormData 來打包，這樣 Flask 的 request.form 才抓得到！
+        const formData = new FormData();
+        formData.append('bot_id', botId); // 名字必須跟 Flask 裡面的 request.form["bot_id"] 一模一樣
+        formData.append('token', token);
+
+        // 發送 POST 請求到您的 Flask 路由
+        fetch('/admin/manual/add_bot', {
+          method: 'POST',
+          body: formData // 直接把表單塞進去，瀏覽器會自動處理 Content-Type
+        })
+        .then(response => response.text()) // 🌟 您的 Flask 是回傳純文字，所以這裡用 .text()
+        .then(text => {
+          // 判斷回傳的文字是否包含「成功」
+          if(text.includes('成功')) {
+            botIdInput.value = '';
+            tokenInput.value = '';
+            e.target.textContent = 'webhook設定完成';
+            e.target.classList.add('success');
+          } else {
+            // 如果失敗（例如回傳了 res.text），就顯示出來讓大師除錯
+            alert('後端回報：\n' + text);
+          }
+        })
+        .catch(error => {
+          console.error('連線錯誤:', error);
+          alert('無法連線到伺服器！');
+        });
       }
 
-      // 2. 處理 AI 設定按鈕點擊
+      // 🧠 2. 處理 AI 設定按鈕點擊 (對應 /admin/manual/add_key)
       if (e.target && e.target.id === 'ai-btn') {
         const userIdInput = document.getElementById('user-id');
         const geminiKeyInput = document.getElementById('gemini-key');
 
-        // 🛡️ 金鐘罩防禦：萬一 HTML 沒對好，直接攔截不崩潰！
-        if (!userIdInput || !geminiKeyInput) {
-          alert('⚠️ 偵測到網頁找不到輸入框！請檢查您 HTML 裡輸入框的 id 是不是精確寫著 id="user-id" 和 id="gemini-key"');
-          return;
-        }
+        if (!userIdInput || !geminiKeyInput) return;
 
         const userId = userIdInput.value.trim();
         const geminiKey = geminiKeyInput.value.trim();
 
         if (userId === '' || geminiKey === '') {
-          alert('⚠️ 「User_id」和「Gemini api key」兩個欄位都必須輸入喔！');
+          alert('⚠️ 「User_id」和「Gemini api key」都必須輸入喔！');
           return;
         }
 
-        console.log('傳送成功！User_id:', userId, 'Key:', geminiKey);
-        e.target.textContent = 'AI設定完成';
-        e.target.classList.add('success');
+        // 🌟 打包成表單格式
+        const formData = new FormData();
+        formData.append('user_id', userId);
+        formData.append('gemini_api_key', geminiKey); // 對應 request.form["gemini_api_key"]
+
+        fetch('/admin/manual/add_key', {
+          method: 'POST',
+          body: formData
+        })
+        .then(response => response.text()) // 解析成純文字
+        .then(text => {
+          if(text.includes('成功')) {
+            userIdInput.value = '';
+            geminiKeyInput.value = '';
+            e.target.textContent = 'AI設定完成';
+            e.target.classList.add('success');
+          } else {
+            alert('後端回報：\n' + text);
+          }
+        })
+        .catch(error => console.error('連線錯誤:', error));
       }
     });
   </script>

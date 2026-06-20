@@ -19,6 +19,53 @@ def get_conn():
 
     #return conn
 
+# =========================
+# 更新 DB 內容
+# =========================
+
+def save_bot(bot_id, token):
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        INSERT INTO bot_config (bot_id, token)
+        VALUES (%s, %s)
+        ON CONFLICT (bot_id)
+        DO UPDATE SET token = EXCLUDED.token
+        """, (bot_id, token))
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close
+
+def update_gemini_key(user_id, gemini_key):
+
+    conn = get_conn
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+        INSERT INTO user_config (user_id, gemini_key)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id)
+        DO UPDATE SET gemini_key = EXCLUDED.gemini_key
+        """, (user_id, gemini_key))
+
+        conn.commit()
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
 
 # =========================
 # 初始化資料表（第一次用）

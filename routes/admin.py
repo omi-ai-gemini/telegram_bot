@@ -1,6 +1,8 @@
 from flask import render_template, request, session, redirect, Blueprint
 from config import ADMIN_PASSWORD
 import os
+import requests
+from services.database import save_bot, update_gemini_key
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -41,9 +43,45 @@ def admin_login_post():
 # admin說明網站
 # =========================
 
-@admin_bp.route("/admin/manual")
+@admin_bp.route("/admin/manual", methods=["GET"])
 def admin_manual():
     return render_template("manual.html")
+
+
+# setwebhook
+@admin_bp.route("/admin/manual/add_bot", methods=["POST"])
+def add_bot_route():
+
+    bot_id = request.form["bot_id"]
+    token = request.form["token"]
+
+    #DB
+    save_bot(bot_id, token)
+
+    #webhook
+    base_url = os.getenv("BASE_URL")
+    webhook_url = f"{base_url}/webhook/{bot_id}"
+
+    telegram_api = f"https://api.telegram.org/bot{token}/setWebhook"
+
+    res = requests.get(telegram_api, params={"url": webhook_url})
+
+    if res.ok:
+        return "webhook設定成功"
+    
+    return res.text
+
+@admin_bp.route("/admin/manual/add_key", methods=["POST"])
+def add_key_route():
+
+    user_id = request.form["user_id"]
+    gemini_api_key = request.form["gemini_api_key"]
+
+    #DB
+    update_gemini_key(user_id, gemini_api_key)
+
+    return "gemini api 設定成功"
+
 
 # =========================
 # admin後台網站
