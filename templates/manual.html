@@ -249,31 +249,33 @@
     }
     
     /* 💖 隱藏彩蛋：IG 風格點讚愛心（完美起飛版） */
+    /* 愛心本身的設定 */
     .like-heart {
-      position: fixed;
-      color: #ff3040;
-      font-size: 4rem;
-      transform: translate(-50%,-50%) scale(0);
-      pointer-events: none;
-      z-index: 9999;
-      filter: drop-shadow(0 0 15px rgba(255,48,64,0.6));
-      animation: heartBurst 0.8s cubic-bezier(0.175,0.885,0.32,1.275) forwards;
+      position: fixed; /* 👈 超級關鍵！讓愛心能精準對齊滑鼠點擊的視窗座標 */
+      pointer-events: none; /* 讓滑鼠點擊穿透，不會擋到其他按鈕 */
+      font-size: 60px;
+      z-index: 9999; /* 確保它飛在所有畫面的最上層 */
+
+      /* 設定動畫：名稱 floatUp，播放 1.6秒 (配合你的 JS setTimeout)，速度曲線 ease-out */
+      animation: floatUp 1.6s ease-out forwards; 
     }
 
-    @keyframes heartBurst {
+    /* 愛心起飛的動畫軌跡 */
+    @keyframes floatUp {
       0% {
-        transform: translate(-50%,-50%) scale(0);
         opacity: 1;
+        /* translate(-50%, -50%) 是為了讓愛心的正中心對準滑鼠游標 */
+        transform: translate(-50%, -50%) scale(0.5); 
       }
-      15% {
-        transform: translate(-50%,-50%) scale(1.2);
-      }
-      30% {
-        transform: translate(-50%,-50%) scale(1);
+      50% {
+        opacity: 1;
+        /* 往上飄 (Y軸 -100px) 並且稍微放大 */
+        transform: translate(-50%, -100px) scale(1.2); 
       }
       100% {
-        transform: translate(-50%,-150px) scale(0.8);
-        opacity: 0;
+        opacity: 0; /* 最後慢慢隱形 */
+        /* 繼續往上飄 (Y軸 -150px) 變回原本大小 */
+        transform: translate(-50%, -150px) scale(1); 
       }
     }
     
@@ -632,7 +634,7 @@
       },
       b4: {
         title: "你可以跟喜歡的明星聊天!",
-        desc: "你不想跟車銀優聊天嗎?",
+        desc: "你想跟車銀優聊天嗎?",
         extra: ""
       },
       b5: {
@@ -734,27 +736,34 @@
       sidebar.scrollTop = scrollTop - walk;
     });
     
-    // 💖 彩蛋中的彩蛋：在完美視覺模式下，點擊背景出現 IG 愛心
-    document.addEventListener('click', (e) => {
-      // 只有當 mainContainer 身上有 'perfect-visual-mode' 這個 class 時才觸發
-      if (mainContainer.classList.contains('perfect-visual-mode')) {
+    //愛心
+    document.addEventListener('click', function(e) {
 
-        // 1. 創造一個 <i> 標籤，並套用 Font Awesome 的愛心圖示
-        const heart = document.createElement('i');
-        heart.className = 'fa-solid fa-heart like-heart';
+      // 1. 🔍 我們先去網頁裡找出「筆記本容器」
+      const container = document.querySelector('.notebook-container');
 
-        // 2. 把愛心的位置設定在滑鼠/手指點擊的精準座標上
-        heart.style.left = `${e.clientX}px`;
-        heart.style.top = `${e.clientY}px`;
-
-        // 3. 把愛心貼到網頁上
-        document.body.appendChild(heart);
-
-        // 4. 動畫播完後 (約 0.8 秒)，自動把愛心清掉，保持 HTML 乾淨！
-        setTimeout(() => {
-          heart.remove();
-        }, 800);
+      // 2. 🛑 檢查容器存不存在？以及它身上有沒有「完美視覺」的 class？
+      // 如果沒有，就 return (不產生愛心，直接結束)
+      if (!container || !container.classList.contains('perfect-visual-mode')) {
+        return; 
       }
+
+      // 3. 💖 下面是原本完美的愛心生成程式碼
+      const heart = document.createElement('div');
+      heart.innerHTML = '❤️'; 
+
+      // 記得這裡的 L 是大寫喔！
+      heart.classList.add('like-heart'); 
+
+      heart.style.left = e.clientX + 'px';
+      heart.style.top = e.clientY + 'px';
+
+      document.body.appendChild(heart);
+
+      setTimeout(() => {
+        heart.remove();
+      }, 800);
+
     });
     
     document.addEventListener('click', function(e) {
