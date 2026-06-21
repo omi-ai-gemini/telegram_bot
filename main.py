@@ -5,6 +5,7 @@ from handlers.message_handler import run_ai
 from services.memory import add_chat
 from services.database import init_db
 from services.database import get_conn
+from services.commands import should_store_user_message
 from config import SECRET_KEY
 from routes.admin import admin_bp
 
@@ -59,7 +60,8 @@ def webhook(bot_id):
     # =========================
     # 執行AI
     # =========================
-    add_chat(chat_id, "user", user_text)
+    if should_store_user_message(user_text):
+        add_chat(chat_id, "user", user_text)
 
     # 🚀 直接丟背景跑 AI（避免 timeout）
     threading.Thread(

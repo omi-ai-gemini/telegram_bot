@@ -131,6 +131,29 @@ def init_db():
         )
         """)
 
+        # =========================
+        # persona memory
+        # =========================
+        #同一個 bot 在不同聊天室，可以有不同人格。
+        #同一個聊天室裡不同 bot，可以有不同人格。
+        #Telegram 群組劇場多角色不會互相覆蓋設定。
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS persona_memory (
+            bot_id TEXT,
+            chat_id TEXT,
+            mode_setting TEXT DEFAULT '',
+            ai_nickname TEXT DEFAULT '',
+            ai_appearance TEXT DEFAULT '',
+            ai_background TEXT DEFAULT '',
+            ai_reply_style TEXT DEFAULT '',
+            user_nickname TEXT DEFAULT '',
+            user_appearance TEXT DEFAULT '',
+            user_background TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (bot_id, chat_id)
+        )
+        """)
+
         conn.commit()
     except Exception:
         conn.rollback()

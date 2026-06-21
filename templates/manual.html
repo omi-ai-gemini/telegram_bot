@@ -471,6 +471,23 @@
       margin: 15px 0 20px 0;   /* 上下留點呼吸空間，不要跟文字或輸入框擠在一起 */
       display: block;          /* 確保圖片獨立一行 */
     }
+    
+    .master-action-btn {
+      display: flex;          /* 🌟 開啟彈性佈局 */
+      justify-content: center; /* 🌟 水平置中 */
+      align-items: center;     /* 🌟 垂直置中 */
+      gap: 8px;                /* 🌟 讓圖標跟文字之間自動空出漂亮的小間距 */
+
+      text-align: center;      /* 保險防線 */
+      /* 你原本設定的 padding、background-color 等等都維持不變喔！ */
+    }
+    
+    /* 🌟 專屬的範例小字樣式 */
+    .master-small-text {
+      font-size: 13px;       /* 👈 讓字體變小（原本通常是 16px 左右） */
+      color: #1c1c1e;        /* 👈 飽和度很棒的深黑色，質感非常好 */
+      line-height: 1.6;      /* 👈 稍微拉開行距，讓一整坨字看起更舒服、不擠壓 */
+    }
   </style>
 </head>
 <body>
@@ -481,6 +498,10 @@
       <div class="tab-item active" data-target="b1">
         <i class="fa-solid fa-fingerprint"></i>
         <span>標籤<br>操作</span>
+      </div>
+      <div class="tab-item" data-target="b8">
+        <i class="fa-brands fa-telegram"></i>
+        <span>取得<br>Telegram</span>
       </div>
       <div class="tab-item" data-target="b2">
         <i class="fa-solid fa-robot"></i>
@@ -563,6 +584,20 @@
             </div>  
         </div>`
       },
+      b8: {
+        title: "下載Telegram APP",
+        desc: "程式使用Telegram作為聊天室",
+        extra: `
+
+        <a href="https://apps.apple.com/tw/app/telegram-messenger/id686449807" target="_blank" class="master-action-btn">
+          <i class="fa-brands fa-apple"></i>前往 App Store 下載
+        </a>
+
+        <a href="https://play.google.com/store/apps/details?id=org.telegram.messenger" target="_blank" class="master-action-btn">
+          <i class="fa-brands fa-google-play"></i>前往 Google Play 下載
+        </a>
+        `
+      },
       b7: {
         title: "建立擬真聊天機器人",
         desc: "利用telegram通訊軟體連接gemini。自由設定人物性格，你可以跟任何人聊天。\n先新增bot，然後在telegram聊天室輸入任意文字，會取得自己的user_id，再回來取得gemini連線。\nAI設定完成後就可以開始聊天囉!",
@@ -635,7 +670,40 @@
       b4: {
         title: "你可以跟喜歡的明星聊天!",
         desc: "你想跟車銀優聊天嗎?",
-        extra: ""
+        extra: `
+
+        <div class="metrics-box">
+                <h3>⏳ 測試中：測試期間的記憶可能會在改版後刪除</h3>
+
+                <div class="metric-item">
+                <div class="metric-title"><i class="fa-solid fa-vials">設定表單測試</i></div>
+                </div> </div>
+
+        <div class="master-text">1. 設定指令：在聊天室輸入「//設定」開啟設定表單</div>
+        <div class="master-text"></div>
+
+        <div class="master-text">2. 表單項目內容可以空白，表示不需要</div>
+
+        <div class="master-text">3. 劇場模式可以讓自己扮演非自己的角色</div>
+
+        <div class="master-text">4. GPT給你們的範例</div>
+
+        <div class="master-text master-small-text">
+          //設定<br>
+          模式設定(陪伴模式C/劇場模式T): T<br>
+          AI暱稱:小澪<br>
+          AI外觀:黑色長髮，身高約 160 公分，常穿寬鬆針織外套，給人安靜但有點難接近的感覺<br>
+          AI背景:她是住在台北的自由插畫家，平常在咖啡廳工作。她和阿祐是認識很久的朋友，熟到可以互相吐槽。個性溫柔但嘴上不太饒人，會關心阿祐的狀態，但不喜歡講太肉麻的話<br>
+          AI回覆風格:使用台灣口語，句子不要太長。劇場模式時可以描寫場景、表情和動作，但不要替阿祐做決定。可以輕微吐槽，但不要太兇<br>
+          User暱稱:阿祐<br>
+          User外觀:黑色短髮，平常穿帽T或襯衫，看起來有點疲憊但很冷靜<br>
+          User背景:阿祐是工程師，最近工作壓力很大，常常熬夜。喜歡咖啡、安靜的空間和深夜聊天，不喜歡被說教<br></div>
+        <div class="master-text"></div>
+
+        
+        
+
+        `
       },
       b5: {
         title: "Telemini說明",
@@ -648,17 +716,20 @@
                 <div class="metric-title"><i class="fa-solid fa-cat"></i>不一定會打上去，因為我會忘記哈哈哈</div>
 
                 <div class="metric-item">
-                <div class="metric-title"><i class="fa-solid fa-redo"></i>2026.06.21 - 建立telemini已完成</div>
+                <div class="metric-title"><i class="fa-solid fa-redo"></i>2026.06.22 - 人物設定功能上線測試</div>
+
+                <div class="metric-item">
+                <div class="metric-title"><i class="fa-solid fa-redo"></i>2026.06.21 - 建立telemini後台建置完成</div>
                 
                 <div class="metric-item">
-                <div class="metric-title"><i class="fa-solid fa-redo"></i>2026.06.20 - 更換伺服器</div>
+                <div class="metric-title"><i class="fa-solid fa-redo"></i>2026.06.20 - 更換伺服器網址</div>
 
                 </div>
       `
       },
       b6: {
         title: "資料庫說明",
-        desc: "開發者沒興趣看各位的聊天紀錄",
+        desc: "bot設定和記憶都寫在資料庫，可以長期保存",
         extra: ""
       }
       // test6, test7 同理，extra 留空即可
