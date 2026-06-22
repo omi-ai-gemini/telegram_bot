@@ -8,12 +8,21 @@ from services.database import get_conn
 from config import SECRET_KEY
 from routes.admin import admin_bp
 
-init_db()
+#init_db()
 
 app = Flask(__name__)
 
 app.secret_key = SECRET_KEY
 app.register_blueprint(admin_bp)
+
+db_initialized = False
+
+@app.before_request
+def init_once():
+    global db_initialized
+    if not db_initialized:
+        init_db()
+        db_initialized = True
 
 # =========================
 # Webhook（核心入口）
