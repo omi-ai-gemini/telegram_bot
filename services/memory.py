@@ -217,6 +217,37 @@ def get_facts(bot_id, chat_id, scope):
 
     return [row[0] for row in rows]
 
+def get_recent_chat(bot_id, chat_id, limit=30):
+
+    chat_id = str(chat_id)
+    scope = "group" if int(chat_id) < 0 else "private"
+
+    conn = get_conn()
+    cursor = conn.cursor()
+
+    cursor.execute("""
+        SELECT role, text
+        FROM chat_memory
+        WHERE bot_id = %s
+          AND chat_id = %s
+          AND scope = %s
+        ORDER BY id DESC
+        LIMIT %s
+    """, (
+        bot_id,
+        chat_id,
+        scope,
+        limit
+    ))
+
+    rows = cursor.fetchall()
+
+    conn.close()
+
+    rows.reverse()
+
+    return rows
+
 # =========================
 # 短期記憶
 # =========================
