@@ -100,15 +100,15 @@ def init_db():
         # 短期記憶
         # =========================
         cursor.execute("""
-        CREATE TABLE chat_memory (
+        CREATE TABLE IF NOT EXISTS chat_memory (
             id SERIAL PRIMARY KEY,
             bot_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
-            scope TEXT NOT NULL,  -- private / group
+            scope TEXT NOT NULL,
             role TEXT,
             text TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
+        );
         """)
 
         # =========================
