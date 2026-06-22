@@ -265,11 +265,15 @@ def add_chat(bot_id, chat_id, role, text):
     # =========================
     if scope == "group":
         cursor.execute("""
-            INSERT INTO chat_memory
-            (bot_id, chat_id, scope, role, text)
-            VALUES (%s, %s, %s, %s, %s)
+            INSERT INTO chat_memory (
+                bot_id,
+                chat_id,
+                scope,
+                role,
+                text
+            ) VALUES (%s, %s, %s, %s, %s)
         """, (
-            "shared",   # 🔥 重點：group 不吃 bot_id
+            bot_id,
             chat_id,
             scope,
             role,
