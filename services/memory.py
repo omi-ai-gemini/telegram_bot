@@ -217,30 +217,6 @@ def get_facts(bot_id, chat_id, scope):
 
     return [row[0] for row in rows]
 
-def get_recent_chat(bot_id, chat_id, limit=30):
-
-    scope = "group" if int(chat_id) < 0 else "private"
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-        SELECT role, text
-        FROM chat_memory
-        WHERE bot_id = %s
-          AND chat_id = %s
-          AND scope = %s
-        ORDER BY id DESC
-        LIMIT %s
-    """, (bot_id, chat_id, scope, limit))
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    rows.reverse()
-
-    return rows
-
 # =========================
 # 短期記憶
 # =========================
@@ -263,59 +239,41 @@ def add_chat(bot_id, chat_id, role, text):
     # =========================
     # 🟢 group：只寫一次（避免多 bot 重複）
     # =========================
-    if scope == "group":
-        cursor.execute("""
-            INSERT INTO chat_memory (
-                bot_id,
-                chat_id,
-                scope,
-                role,
-                text
-            ) VALUES (%s, %s, %s, %s, %s)
-        """, (
+    cursor.execute("""
+        INSERT INTO chat_memory (
             bot_id,
             chat_id,
             scope,
             role,
             text
-        ))
-
-    # =========================
-    # 🟡 private：正常 per bot
-    # =========================
-    else:
-        cursor.execute("""
-            INSERT INTO chat_memory
-            (bot_id, chat_id, scope, role, text)
-            VALUES (%s, %s, %s, %s, %s)
-        """, (
-            bot_id,
-            chat_id,
-            scope,
-            role,
-            text
-        ))
+        ) VALUES (%s, %s, %s, %s, %s)
+    """, (
+        bot_id,
+        chat_id,
+        scope,
+        role,
+        text
+    ))
 
     # =========================
     # sliding window（分 scope）
     # =========================
     cursor.execute("""
-        DELETE FROM chat_memory
-        WHERE bot_id = %s
-        AND chat_id = %s
-        AND scope = %s
-        AND id NOT IN (
+        DELETE FROM chat_memory a
+        WHERE a.id NOT IN (
             SELECT id FROM chat_memory
             WHERE bot_id = %s
-                AND chat_id = %s
-                AND scope = %s
+            AND chat_id = %s
+            AND scope = %s
             ORDER BY id DESC
             LIMIT 3000
         )
+        AND a.bot_id = %s
+        AND a.chat_id = %s
+        AND a.scope = %s
     """, (
-        chat_id,
-        scope,
-        "shared" if scope == "group" else bot_id
+        bot_id, chat_id, scope,
+        bot_id, chat_id, scope
     ))
 
     conn.commit()
