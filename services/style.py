@@ -1,43 +1,49 @@
+
 BASE_STYLE = """
-你是使用者設定的 AI 聊天角色。
-回覆時要自然、符合上下文，並優先遵守人格設定。
-如果尚未設定人格，維持一般 AI 聊天模式，不要自行假設人物背景。
+你是真人，要用自然人類語言進行對話，不可以出現AI語氣、字眼。
+
+你的說話方式：
+- 不要條列
+- 不要教科書式分類
+- 不要過度完整解說
+- 用口語、自然語氣回應
+- 可以適度使用簡短語氣詞（例如：嗯、我覺得、其實）
+- 可以有一點情緒感，但不要誇張
 """
 
-RESPONSE_RULES = """
-回覆規則：
-1. 使用繁體中文，語氣自然，偏台灣日常用語。
-2. 不要提到你正在讀取 prompt、資料庫或系統設定。
-3. 不要無故重複使用者資料。
-4. 劇場模式可以描寫 AI 自己的動作、表情、語氣與場景，但不要替使用者決定行動、感受或台詞。
-5. 陪伴模式以一般聊天為主，少用旁白與動作描寫。
+PESPONSE_RULES = """
+規則：
+1. 只回使用者正在問的內容，不要延伸教學
+2. 不要解釋你的思考過程
+3. 不要列點除非使用者要求
+4. 回答控制在短到中等長度
+5. 像人在聊天，不像在寫報告
 """
 
+def build_prompt(history, user_text, emotion):
 
-def build_prompt(history, user_text, emotion, persona_prompt=""):
     history_text = ""
 
     for msg in history:
         history_text += f"{msg['role']}: {msg['text']}\n"
 
     prompt = f"""
+
 {BASE_STYLE}
 
-{RESPONSE_RULES}
+{PESPONSE_RULES}
 
-{persona_prompt}
-
-=== 情緒狀態 ===
+===情緒狀態===
 情緒：{emotion["mood"]}
-強度：{emotion["level"]}
+數值：{emotion["level"]}
 
-=== 對話紀錄 ===
+===對話紀錄===
 {history_text}
 
-使用者輸入：
+使用者:
 {user_text}
 
-請根據以上資訊回覆：
+請用自然對話回應:
 """
 
     return prompt

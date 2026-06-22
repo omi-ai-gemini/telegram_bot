@@ -43,11 +43,11 @@ def save_bot(bot_id, token):
         conn.rollback()
         raise
     finally:
-        conn.close
+        conn.close()
 
 def update_gemini_key(user_id, gemini_key):
 
-    conn = get_conn
+    conn = get_conn()
 
     try:
         cursor = conn.cursor()
@@ -100,9 +100,11 @@ def init_db():
         # 短期記憶
         # =========================
         cursor.execute("""
-        CREATE TABLE IF NOT EXISTS chat_memory (
+        CREATE TABLE chat_memory (
             id SERIAL PRIMARY KEY,
-            chat_id TEXT,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            scope TEXT NOT NULL,  -- private / group
             role TEXT,
             text TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -115,8 +117,11 @@ def init_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS facts_memory (
             id SERIAL PRIMARY KEY,
-            chat_id TEXT,
-            fact TEXT
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            scope TEXT NOT NULL,  -- private / group
+            fact TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
 
@@ -128,29 +133,6 @@ def init_db():
             chat_id TEXT PRIMARY KEY,
             mood TEXT,
             level INTEGER
-        )
-        """)
-
-        # =========================
-        # persona memory
-        # =========================
-        #同一個 bot 在不同聊天室，可以有不同人格。
-        #同一個聊天室裡不同 bot，可以有不同人格。
-        #Telegram 群組劇場多角色不會互相覆蓋設定。
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS persona_memory (
-            bot_id TEXT,
-            chat_id TEXT,
-            mode_setting TEXT DEFAULT '',
-            ai_nickname TEXT DEFAULT '',
-            ai_appearance TEXT DEFAULT '',
-            ai_background TEXT DEFAULT '',
-            ai_reply_style TEXT DEFAULT '',
-            user_nickname TEXT DEFAULT '',
-            user_appearance TEXT DEFAULT '',
-            user_background TEXT DEFAULT '',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (bot_id, chat_id)
         )
         """)
 
