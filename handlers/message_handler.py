@@ -4,6 +4,7 @@ from services.bot_router import get_bot_token
 from services.telegram_service import send_message
 from services.memory import get_recent_chat
 from services.gemini_service import summarize_memory
+from services.commands import send_setting_menu
 from services.memory import(
     add_chat,
     get_chat,
@@ -24,6 +25,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
     try:
 
         gemini_key = get_gemini_key(user_id)
+
         bot_token = get_bot_token(bot_id)
 
         if not gemini_key or not bot_token:
@@ -32,6 +34,12 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
                 chat_id,
                 f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
             )
+            return
+        
+        if user_text == "/setting":
+
+            send_setting_menu(bot_token, chat_id)
+
             return
 
         # =========================

@@ -40,6 +40,17 @@ def webhook(bot_id):
 
     message = data["message"]
 
+    if "callback_query" in data:
+
+        callback = data["callback_query"]
+
+        print(
+        "callback:",
+        callback["data"]
+        )
+
+        return "ok"
+
     if "text" not in message:
         return "ok"
     
