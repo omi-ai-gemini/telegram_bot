@@ -36,7 +36,8 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             )
             return
         
-        if user_text == "/setting":
+        #if user_text == "/setting":
+        if user_text in ["/setting", "/設定"]:
 
             send_setting_menu(bot_token, chat_id)
 
