@@ -32,3 +32,4 @@ def send_setting_menu(bot_token, chat_id):
     }
 
     requests.post(url, json=payload)
+    
