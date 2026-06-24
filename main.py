@@ -1,8 +1,8 @@
 from flask import Flask, request
 import os
 import threading
-from handlers.message_handler import run_ai
-from services.memory import add_chat
+from handlers.message_handler import handle_message
+from handlers.call_handler import handle_ui
 from services.database import init_db
 from services.database import get_conn
 from config import SECRET_KEY
@@ -32,6 +32,21 @@ def webhook(bot_id):
 
     data = request.json
 
+    if not data:
+        return "ok"
+
+    if "callback_query" in data:
+
+        callback = data["callback_query"]
+
+        user_id = callback["from"]["id"]
+        chat_id = str(callback["message"]["chat"]["id"])
+        user_text = callback["data"]
+
+        handle_ui(user_id, bot_id, chat_id, user_text)
+
+        return "ok"
+
     # =========================
     # 解析json
     # =========================
@@ -39,17 +54,6 @@ def webhook(bot_id):
         return "ok"
 
     message = data["message"]
-
-    if "callback_query" in data:
-
-        callback = data["callback_query"]
-
-        print(
-        "callback:",
-        callback["data"]
-        )
-
-        return "ok"
 
     if "text" not in message:
         return "ok"
@@ -79,11 +83,10 @@ def webhook(bot_id):
     # =========================
     # 執行AI
     # =========================
-    add_chat(bot_id, chat_id, "user", user_text)
 
     # 🚀 直接丟背景跑 AI（避免 timeout）
     threading.Thread(
-        target=run_ai,
+        target=handle_message,
         args=(user_id, bot_id, chat_id, user_text)
     ).start()
 

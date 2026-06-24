@@ -1,6 +1,9 @@
 import requests
+from services.bot_router import get_bot_token
 
-def send_setting_menu(bot_token, chat_id):
+def send_setting_menu(bot_id, chat_id):
+
+    bot_token = get_bot_token(bot_id)
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
@@ -12,7 +15,7 @@ def send_setting_menu(bot_token, chat_id):
                 [
                     {
                         "text": "👤 人物設定",
-                        "callback_data": "ai_setting"
+                        "callback_data": "character_setting"
                     }
                 ],
                 [
@@ -33,7 +36,9 @@ def send_setting_menu(bot_token, chat_id):
 
     requests.post(url, json=payload)
 
-def send_character_menu(bot_token, chat_id):
+def send_character_menu(bot_id, chat_id):
+
+    bot_token = get_bot_token(bot_id)
 
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
 
