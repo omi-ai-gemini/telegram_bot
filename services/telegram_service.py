@@ -23,3 +23,24 @@ def send_message(bot_id, chat_id, text):
         },
         timeout=30
     )
+
+# =========================
+# Telegram button loading 加速器
+# =========================
+def answer_callback_query(bot_id, callback_query_id):
+
+    token = get_bot_token(bot_id)
+
+    if not token:
+        print("X token not found")
+        return
+
+    url = f"{TELEGRAM_API_BASE}/bot{token}/answerCallbackQuery"
+
+    requests.post(
+        url,
+        json={
+            "callback_query_id": callback_query_id
+        },
+        timeout=10
+    )

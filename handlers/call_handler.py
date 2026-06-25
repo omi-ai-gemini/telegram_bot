@@ -22,12 +22,12 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
 
     if user_text == "mode_chat":
         update_character_mode(bot_id, chat_id, "聊天模式")
-        send_character_menu(bot_id, chat_id, message_id)
+        send_character_menu(bot_id, chat_id, message_id, mode="聊天模式")
         return
 
     if user_text == "mode_theater":
         update_character_mode(bot_id, chat_id, "劇場模式")
-        send_character_menu(bot_id, chat_id, message_id)
+        send_character_menu(bot_id, chat_id, message_id, mode="劇場模式")
         return
 
     if user_text == "back_setting":

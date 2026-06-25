@@ -5,6 +5,7 @@ from handlers.message_handler import handle_message
 from handlers.call_handler import handle_ui
 from services.database import init_db
 from services.database import get_conn
+from services.telegram_service import answer_callback_query
 from config import SECRET_KEY
 from routes.admin import admin_bp
 
@@ -39,10 +40,13 @@ def webhook(bot_id):
 
         callback = data["callback_query"]
 
+        callback_id = callback["id"]
         user_id = callback["from"]["id"]
         chat_id = str(callback["message"]["chat"]["id"])
         message_id = callback["message"]["message_id"]
         user_text = callback["data"]
+
+        answer_callback_query(bot_id, callback_id)
 
         handle_ui(user_id, bot_id, chat_id, message_id, user_text)
 

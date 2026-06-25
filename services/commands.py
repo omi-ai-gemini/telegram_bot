@@ -47,9 +47,10 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
         ]
     )
 
-def send_character_menu(bot_id, chat_id, message_id=None):
+def send_character_menu(bot_id, chat_id, message_id=None, mode=None):
 
-    mode = get_character_mode(bot_id, chat_id)
+    if mode is None:
+        mode = get_character_mode(bot_id, chat_id)
 
     _send_or_edit(
         bot_id,

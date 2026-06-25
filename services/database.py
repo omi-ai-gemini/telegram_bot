@@ -1,15 +1,88 @@
 import os
 import psycopg2
+import threading
+import time
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 #DB_NAME = os.path.join("/tmp", "app.db")
+
+# =========================
+# DB 連線監控
+# =========================
+_DB_LOCK = threading.Lock()
+_ACTIVE_DB_CONNECTIONS = 0
+_TOTAL_DB_CONNECTIONS = 0
+
+# =========================
+# DB 連線包裝器
+# 用來統計目前同時開啟幾條 DB 連線
+# =========================
+class TrackedConnection:
+
+    def __init__(self, conn, conn_id):
+        self._conn = conn
+        self._conn_id = conn_id
+        self._closed = False
+
+    def close(self):
+        global _ACTIVE_DB_CONNECTIONS
+
+        if self._closed:
+            return
+
+        try:
+            self._conn.close()
+
+        finally:
+            self._closed = True
+
+            with _DB_LOCK:
+                _ACTIVE_DB_CONNECTIONS -= 1
+
+                if _ACTIVE_DB_CONNECTIONS < 0:
+                    _ACTIVE_DB_CONNECTIONS = 0
+
+                print(
+                    f"[DB CLOSE] id={self._conn_id} "
+                    f"active={_ACTIVE_DB_CONNECTIONS}",
+                    flush=True
+                )
+
+    def __getattr__(self, name):
+        return getattr(self._conn, name)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
 
 # =========================
 # 取得 DB 連線
 # =========================
 def get_conn():
 
-    return psycopg2.connect(DATABASE_URL)
+    global _ACTIVE_DB_CONNECTIONS
+    global _TOTAL_DB_CONNECTIONS
+
+    conn = psycopg2.connect(DATABASE_URL)
+
+    with _DB_LOCK:
+        _ACTIVE_DB_CONNECTIONS += 1
+        _TOTAL_DB_CONNECTIONS += 1
+
+        conn_id = _TOTAL_DB_CONNECTIONS
+
+        print(
+            f"[DB OPEN] id={conn_id} "
+            f"active={_ACTIVE_DB_CONNECTIONS} "
+            f"pid={os.getpid()} "
+            f"time={time.strftime('%Y-%m-%d %H:%M:%S')}",
+            flush=True
+        )
+
+    return TrackedConnection(conn, conn_id)
 
     #會消失版
     #conn = sqlite3.connect(DB_NAME)
@@ -18,6 +91,18 @@ def get_conn():
     #conn.row_factory = sqlite3.Row
 
     #return conn
+
+# =========================
+# 取得目前 DB 連線統計
+# =========================
+def get_db_connection_stats():
+
+    with _DB_LOCK:
+        return {
+            "active": _ACTIVE_DB_CONNECTIONS,
+            "total_opened": _TOTAL_DB_CONNECTIONS,
+            "pid": os.getpid()
+        }
 
 # =========================
 # 更新 DB 內容

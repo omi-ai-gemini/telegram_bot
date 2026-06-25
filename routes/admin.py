@@ -3,6 +3,7 @@ from config import ADMIN_PASSWORD
 import os
 import requests
 from services.database import save_bot, update_gemini_key
+from services.bot_router import clear_bot_token_cache
 
 admin_bp = Blueprint("admin", __name__)
 
@@ -57,6 +58,8 @@ def add_bot_route():
 
     #DB
     save_bot(bot_id, token)
+    #清除快取
+    clear_bot_token_cache(bot_id)
 
     #webhook
     base_url = os.getenv("BASE_URL")
