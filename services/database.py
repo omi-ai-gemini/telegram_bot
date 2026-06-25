@@ -136,6 +136,21 @@ def init_db():
         )
         """)
 
+        # =========================
+        # 人物設定
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS character_settings (
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            mode TEXT NOT NULL DEFAULT '聊天模式',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (bot_id, chat_id)
+        )
+        """)
+
+        
+
         conn.commit()
     except Exception:
         conn.rollback()

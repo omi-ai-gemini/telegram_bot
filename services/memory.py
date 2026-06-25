@@ -10,7 +10,6 @@ from services.database import get_conn
 # 情緒記憶
 # =========================
 
-
 def _text_id(value):
     return str(value)
 

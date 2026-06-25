@@ -41,9 +41,10 @@ def webhook(bot_id):
 
         user_id = callback["from"]["id"]
         chat_id = str(callback["message"]["chat"]["id"])
+        message_id = callback["message"]["message_id"]
         user_text = callback["data"]
 
-        handle_ui(user_id, bot_id, chat_id, user_text)
+        handle_ui(user_id, bot_id, chat_id, message_id, user_text)
 
         return "ok"
 
