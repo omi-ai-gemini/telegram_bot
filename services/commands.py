@@ -79,4 +79,3 @@ def send_mode_menu(bot_id, chat_id, message_id=None):
             [{"text": "⬅️ 返回人物設定", "callback_data": "back_character"}]
         ]
     )
-
