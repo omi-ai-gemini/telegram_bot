@@ -2,6 +2,9 @@ import requests
 from services.bot_router import get_bot_token
 from services.character import get_character_mode
 
+# =========================
+# Telegram API POST
+# =========================
 def _telegram_post(bot_id, method, payload):
 
     bot_token = get_bot_token(bot_id)
@@ -17,6 +20,9 @@ def _telegram_post(bot_id, method, payload):
     if not res.ok:
         print("TELEGRAM ERROR:", res.text)
 
+# =========================
+# 發送或編輯同一則訊息
+# =========================
 def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
 
     payload = {
@@ -33,6 +39,9 @@ def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
     else:
         _telegram_post(bot_id, "sendMessage", payload)
 
+# =========================
+# /setting
+# =========================
 def send_setting_menu(bot_id, chat_id, message_id=None):
 
     _send_or_edit(
@@ -47,6 +56,9 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
         ]
     )
 
+# =========================
+# /setting/人物設定
+# =========================
 def send_character_menu(bot_id, chat_id, message_id=None, mode=None):
 
     if mode is None:
@@ -59,14 +71,15 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None):
         "👤 人物設定",
         [
             [{"text": f"🎭 模式｜{mode}", "callback_data": "character_mode"}],
-            [{"text": "📝 角色設定", "callback_data": "edit_role"}],
-            [{"text": "👤 個人設定", "callback_data": "edit_user"}],
-            [{"text": "💬 角色開場白", "callback_data": "edit_opening"}],
+            [{"text": "📖 劇本設定", "callback_data": "script_setting"}],
             [{"text": "🗑️ 刪除所有設定", "callback_data": "delete_character"}],
             [{"text": "⬅️ 返回", "callback_data": "back_setting"}]
         ]
     )
-    
+
+# =========================
+# /setting/人物設定/模式
+# =========================
 def send_mode_menu(bot_id, chat_id, message_id=None):
 
     _send_or_edit(
@@ -80,3 +93,4 @@ def send_mode_menu(bot_id, chat_id, message_id=None):
             [{"text": "⬅️ 返回人物設定", "callback_data": "back_character"}]
         ]
     )
+

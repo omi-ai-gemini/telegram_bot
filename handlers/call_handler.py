@@ -1,7 +1,7 @@
 from services.commands import (
     send_character_menu,
     send_setting_menu,
-    send_mode_menu
+    send_mode_menu,
 )
 from services.character import update_character_mode
 
@@ -12,10 +12,16 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
 
     print("callback", user_text, "message:", message_id)
 
+    # =========================
+    # 第一層：設定中心 → 人物設定
+    # =========================
     if user_text == "character_setting":
         send_character_menu(bot_id, chat_id, message_id)
         return
 
+    # =========================
+    # 模式設定
+    # =========================
     if user_text == "character_mode":
         send_mode_menu(bot_id, chat_id, message_id)
         return
@@ -30,6 +36,9 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
         send_character_menu(bot_id, chat_id, message_id, mode="劇場模式")
         return
 
+    # =========================
+    # 返回
+    # =========================
     if user_text == "back_setting":
         send_setting_menu(bot_id, chat_id, message_id)
         return
