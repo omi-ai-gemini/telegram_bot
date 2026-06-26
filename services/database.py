@@ -222,18 +222,33 @@ def init_db():
         """)
 
         # =========================
-        # 人物設定
+        # 人物 / 劇本設定
         # =========================
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS character_settings (
             bot_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
+
+            -- 模式設定
             mode TEXT NOT NULL DEFAULT '聊天模式',
+
+            -- AI 設定
+            ai_name TEXT DEFAULT '',
+            ai_gender TEXT DEFAULT '',
+            ai_appearance TEXT DEFAULT '',
+            story_background TEXT DEFAULT '',
+            ai_opening TEXT DEFAULT '',
+
+            -- 使用者設定
+            user_gender TEXT DEFAULT '',
+            user_appearance TEXT DEFAULT '',
+            user_other_settings TEXT DEFAULT '',
+
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
             PRIMARY KEY (bot_id, chat_id)
         )
         """)
-
         
 
         conn.commit()
