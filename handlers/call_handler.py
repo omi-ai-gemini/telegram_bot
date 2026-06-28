@@ -16,7 +16,12 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
     # 第一層：設定中心 → 人物設定
     # =========================
     if user_text == "character_setting":
-        send_character_menu(bot_id, chat_id, message_id)
+        send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
         return
 
     # =========================
@@ -28,12 +33,38 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
 
     if user_text == "mode_chat":
         update_character_mode(bot_id, chat_id, "聊天模式")
-        send_character_menu(bot_id, chat_id, message_id, mode="聊天模式")
+        send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            mode="聊天模式",
+            user_id=user_id
+        )
         return
 
     if user_text == "mode_theater":
         update_character_mode(bot_id, chat_id, "劇場模式")
-        send_character_menu(bot_id, chat_id, message_id, mode="劇場模式")
+        send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            mode="劇場模式",
+            user_id=user_id
+        )
+        return
+
+    # =========================
+    # 劇本設定 fallback
+    # 正常情況下不會進來，因為劇本設定會是 url button
+    # 只有 BASE_URL 沒設定時才會變 callback
+    # =========================
+    if user_text == "script_setting":
+        send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
         return
 
     # =========================
@@ -44,5 +75,10 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text):
         return
 
     if user_text == "back_character":
-        send_character_menu(bot_id, chat_id, message_id)
+        send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
         return
