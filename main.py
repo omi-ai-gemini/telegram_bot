@@ -8,6 +8,7 @@ from services.database import get_conn
 from services.telegram_service import answer_callback_query
 from config import SECRET_KEY
 from routes.admin import admin_bp
+from routes.setting import setting_bp
 
 #init_db()
 
@@ -15,6 +16,7 @@ app = Flask(__name__)
 
 app.secret_key = SECRET_KEY
 app.register_blueprint(admin_bp)
+app.register_blueprint(setting_bp)
 
 db_initialized = False
 
