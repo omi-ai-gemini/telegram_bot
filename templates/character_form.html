@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>劇本設定</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #ffffff;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+    }
+
+    .desc {
+      margin: 0 0 24px 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 14px;
+      padding: 13px 14px;
+      font-size: 15px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: rgba(96, 165, 250, 0.9);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
+    }
+
+    textarea {
+      min-height: 110px;
+      resize: vertical;
+      line-height: 1.6;
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.48);
+    }
+
+    .button {
+      width: 100%;
+      margin-top: 24px;
+      padding: 15px;
+      border: none;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      cursor: pointer;
+    }
+
+    .button:active {
+      transform: scale(0.98);
+    }
+
+    .status {
+      display: none;
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      background: rgba(34, 197, 94, 0.16);
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      color: #bbf7d0;
+    }
+
+    .debug {
+      margin-top: 20px;
+      font-size: 12px;
+      line-height: 1.6;
+      color: rgba(255, 255, 255, 0.42);
+      word-break: break-all;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+
+      <h1>📖 劇本設定</h1>
+      <p class="desc">
+        填寫 AI 角色、故事背景、開場白，以及使用者在劇本中的設定。
+        這個頁面之後會直接儲存到資料庫。
+      </p>
+
+      <form id="character-form">
+
+        <input type="hidden" name="bot_id" value="{{ bot_id }}">
+        <input type="hidden" name="chat_id" value="{{ chat_id }}">
+        <input type="hidden" name="user_id" value="{{ user_id }}">
+
+        <div class="section">
+          <div class="section-title">🤖 AI 設定 (必填)</div>
+
+          <div class="field">
+            <label for="ai_name">AI 姓名</label>
+            <input
+              id="ai_name"
+              name="ai_name"
+              type="text"
+              placeholder="例如：小澪、車小優"
+            >
+          </div>
+
+          <div class="field">
+            <label for="ai_gender">AI 性別</label>
+            <select id="ai_gender" name="ai_gender">
+              <option value="">不指定</option>
+              <option value="女性">女性</option>
+              <option value="男性">男性</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="ai_appearance">AI 形象</label>
+            <textarea
+              id="ai_appearance"
+              name="ai_appearance"
+              placeholder="描述 AI 的外貌、氣質、穿著、給人的感覺..."
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="story_background">故事背景</label>
+            <textarea
+              id="story_background"
+              name="story_background"
+              placeholder="描述 AI 與使用者的關係、世界觀、過去經歷、目前狀態..."
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="ai_opening">AI 開場白</label>
+            <textarea
+              id="ai_opening"
+              name="ai_opening"
+              placeholder="第一次互動時，AI 要說的話..."
+            ></textarea>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">👤 使用者設定 (不影響劇本)</div>
+
+          <div class="field">
+            <label for="user_gender">使用者性別</label>
+            <select id="user_gender" name="user_gender">
+              <option value="">不指定</option>
+              <option value="女性">女性</option>
+              <option value="男性">男性</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="user_appearance">使用者形象</label>
+            <textarea
+              id="user_appearance"
+              name="user_appearance"
+              placeholder="描述使用者在劇本裡的外貌、氣質、穿著、狀態..."
+            ></textarea>
+          </div>
+
+          <div class="field">
+            <label for="user_other_settings">使用者其他設定</label>
+            <textarea
+              id="user_other_settings"
+              name="user_other_settings"
+              placeholder="例如：身份、職業、個性、與 AI 的關係、禁止事項..."
+            ></textarea>
+            <div class="hint">這裡可以放任何你想補充給 AI 知道的使用者設定。</div>
+          </div>
+        </div>
+
+        <button type="submit" class="button">確認儲存</button>
+
+        <div id="status" class="status">
+          表單頁已接通。下一步會把這個按鈕接到後端儲存 DB。
+        </div>
+
+      </form>
+
+      <div class="debug">
+        bot_id：{{ bot_id }}<br>
+        chat_id：{{ chat_id }}<br>
+        user_id：{{ user_id }}
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("character-form");
+    const statusBox = document.getElementById("status");
+
+    form.addEventListener("submit", function(e) {
+      e.preventDefault();
+
+      // 這一版先不送 DB，只確認前端表單可以正常操作
+      statusBox.style.display = "block";
+    });
+  </script>
+</body>
+</html>
