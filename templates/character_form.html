@@ -45,6 +45,17 @@
       color: rgba(255, 255, 255, 0.72);
     }
 
+    .required-note {
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.28);
+    }
+
     .section {
       margin-top: 24px;
       padding-top: 18px;
@@ -66,6 +77,11 @@
       margin-bottom: 8px;
       font-size: 14px;
       color: rgba(255, 255, 255, 0.86);
+    }
+
+    .required {
+      color: #fca5a5;
+      font-weight: 700;
     }
 
     input,
@@ -114,6 +130,11 @@
       cursor: pointer;
     }
 
+    .button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
     .button:active {
       transform: scale(0.98);
     }
@@ -125,17 +146,20 @@
       border-radius: 14px;
       font-size: 14px;
       line-height: 1.6;
+    }
+
+    .status.success {
+      display: block;
       background: rgba(34, 197, 94, 0.16);
       border: 1px solid rgba(34, 197, 94, 0.28);
       color: #bbf7d0;
     }
 
-    .debug {
-      margin-top: 20px;
-      font-size: 12px;
-      line-height: 1.6;
-      color: rgba(255, 255, 255, 0.42);
-      word-break: break-all;
+    .status.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.16);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: #fecaca;
     }
   </style>
 </head>
@@ -145,10 +169,15 @@
     <div class="card">
 
       <h1>📖 劇本設定</h1>
+
       <p class="desc">
         填寫 AI 角色、故事背景、開場白，以及使用者在劇本中的設定。
-        這個頁面之後會直接儲存到資料庫。
+        已經填過的內容會自動帶入輸入框。
       </p>
+
+      <div class="required-note">
+        AI 設定為必填；使用者設定可以先空白。
+      </div>
 
       <form id="character-form">
 
@@ -157,66 +186,71 @@
         <input type="hidden" name="user_id" value="{{ user_id }}">
 
         <div class="section">
-          <div class="section-title">🤖 AI 設定 (必填)</div>
+          <div class="section-title">🤖 AI 設定</div>
 
           <div class="field">
-            <label for="ai_name">AI 姓名</label>
+            <label for="ai_name">AI 姓名 <span class="required">*</span></label>
             <input
               id="ai_name"
               name="ai_name"
               type="text"
-              placeholder="例如：小澪、車小優"
+              value="{{ settings.ai_name }}"
+              placeholder="例如：小澪、車銀優、林宇芊"
+              required
             >
           </div>
 
           <div class="field">
-            <label for="ai_gender">AI 性別</label>
-            <select id="ai_gender" name="ai_gender">
-              <option value="">不指定</option>
-              <option value="女性">女性</option>
-              <option value="男性">男性</option>
-              <option value="其他">其他</option>
+            <label for="ai_gender">AI 性別 <span class="required">*</span></label>
+            <select id="ai_gender" name="ai_gender" required>
+              <option value="" {% if settings.ai_gender == "" %}selected{% endif %}>請選擇</option>
+              <option value="女性" {% if settings.ai_gender == "女性" %}selected{% endif %}>女性</option>
+              <option value="男性" {% if settings.ai_gender == "男性" %}selected{% endif %}>男性</option>
+              <option value="其他" {% if settings.ai_gender == "其他" %}selected{% endif %}>其他</option>
             </select>
           </div>
 
           <div class="field">
-            <label for="ai_appearance">AI 形象</label>
+            <label for="ai_appearance">AI 形象 <span class="required">*</span></label>
             <textarea
               id="ai_appearance"
               name="ai_appearance"
               placeholder="描述 AI 的外貌、氣質、穿著、給人的感覺..."
-            ></textarea>
+              required
+            >{{ settings.ai_appearance }}</textarea>
           </div>
 
           <div class="field">
-            <label for="story_background">故事背景</label>
+            <label for="story_background">故事背景 <span class="required">*</span></label>
             <textarea
               id="story_background"
               name="story_background"
               placeholder="描述 AI 與使用者的關係、世界觀、過去經歷、目前狀態..."
-            ></textarea>
+              required
+            >{{ settings.story_background }}</textarea>
           </div>
 
           <div class="field">
-            <label for="ai_opening">AI 開場白</label>
+            <label for="ai_opening">AI 開場白 <span class="required">*</span></label>
             <textarea
               id="ai_opening"
               name="ai_opening"
               placeholder="第一次互動時，AI 要說的話..."
-            ></textarea>
+              required
+            >{{ settings.ai_opening }}</textarea>
           </div>
         </div>
 
         <div class="section">
-          <div class="section-title">👤 使用者設定 (不影響劇本)</div>
+          <div class="section-title">👤 使用者設定</div>
 
           <div class="field">
             <label for="user_gender">使用者性別</label>
             <select id="user_gender" name="user_gender">
-              <option value="">不指定</option>
-              <option value="女性">女性</option>
-              <option value="男性">男性</option>
-              <option value="其他">其他</option>
+              <option value="" {% if settings.user_gender == "" %}selected{% endif %}>不指定</option>
+              <option value="女性" {% if settings.user_gender == "女性" %}selected{% endif %}>女性</option>
+              <option value="男性" {% if settings.user_gender == "男性" %}selected{% endif %}>男性</option>
+              <option value="其他" {% if settings.user_gender == "其他" %}selected{% endif %}>其他</option>
             </select>
           </div>
 
@@ -226,7 +260,7 @@
               id="user_appearance"
               name="user_appearance"
               placeholder="描述使用者在劇本裡的外貌、氣質、穿著、狀態..."
-            ></textarea>
+            >{{ settings.user_appearance }}</textarea>
           </div>
 
           <div class="field">
@@ -235,24 +269,16 @@
               id="user_other_settings"
               name="user_other_settings"
               placeholder="例如：身份、職業、個性、與 AI 的關係、禁止事項..."
-            ></textarea>
+            >{{ settings.user_other_settings }}</textarea>
             <div class="hint">這裡可以放任何你想補充給 AI 知道的使用者設定。</div>
           </div>
         </div>
 
-        <button type="submit" class="button">確認儲存</button>
+        <button id="submit-btn" type="submit" class="button">確認儲存</button>
 
-        <div id="status" class="status">
-          表單頁已接通。下一步會把這個按鈕接到後端儲存 DB。
-        </div>
+        <div id="status" class="status"></div>
 
       </form>
-
-      <div class="debug">
-        bot_id：{{ bot_id }}<br>
-        chat_id：{{ chat_id }}<br>
-        user_id：{{ user_id }}
-      </div>
 
     </div>
   </div>
@@ -260,12 +286,44 @@
   <script>
     const form = document.getElementById("character-form");
     const statusBox = document.getElementById("status");
+    const submitBtn = document.getElementById("submit-btn");
 
-    form.addEventListener("submit", function(e) {
+    function showStatus(type, message) {
+      statusBox.className = "status " + type;
+      statusBox.textContent = message;
+    }
+
+    form.addEventListener("submit", async function(e) {
       e.preventDefault();
 
-      // 這一版先不送 DB，只確認前端表單可以正常操作
-      statusBox.style.display = "block";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "儲存中...";
+
+      const formData = new FormData(form);
+
+      try {
+        const response = await fetch("/setting/character/save", {
+          method: "POST",
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.ok) {
+          showStatus("success", result.message || "劇本設定已儲存，可以關閉此頁。");
+          submitBtn.textContent = "已儲存";
+        } else {
+          showStatus("error", result.message || "儲存失敗，請檢查欄位。");
+          submitBtn.disabled = false;
+          submitBtn.textContent = "確認儲存";
+        }
+
+      } catch (error) {
+        console.error(error);
+        showStatus("error", "無法連線到伺服器，請稍後再試。");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "確認儲存";
+      }
     });
   </script>
 </body>
