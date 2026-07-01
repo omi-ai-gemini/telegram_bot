@@ -5,7 +5,6 @@ from handlers.message_handler import handle_message
 from handlers.call_handler import handle_ui
 from services.database import init_db
 from services.database import get_conn
-from services.telegram_service import answer_callback_query
 from config import SECRET_KEY
 from routes.admin import admin_bp
 from routes.setting import setting_bp
@@ -38,6 +37,9 @@ def webhook(bot_id):
     if not data:
         return "ok"
 
+    # =========================
+    # callback_query
+    # =========================
     if "callback_query" in data:
 
         callback = data["callback_query"]
@@ -48,14 +50,22 @@ def webhook(bot_id):
         message_id = callback["message"]["message_id"]
         user_text = callback["data"]
 
-        answer_callback_query(bot_id, callback_id)
-
-        handle_ui(user_id, bot_id, chat_id, message_id, user_text)
+        # 注意：
+        # 不在 main.py 先 answer_callback_query
+        # 交給 call_handler 控制提示文字
+        handle_ui(
+            user_id,
+            bot_id,
+            chat_id,
+            message_id,
+            user_text,
+            callback_id
+        )
 
         return "ok"
 
     # =========================
-    # 解析json
+    # 解析 message
     # =========================
     if not data or "message" not in data:
         return "ok"
@@ -70,7 +80,7 @@ def webhook(bot_id):
     user_text = message["text"]
 
     # =========================
-    # 自動保存user_id
+    # 自動保存 user_id
     # =========================
     conn = get_conn()
     cursor = conn.cursor()
@@ -79,19 +89,19 @@ def webhook(bot_id):
     INSERT INTO user_config (user_id, gemini_key)
     VALUES (%s, %s)
     ON CONFLICT (user_id) DO NOTHING
-    """, (str(user_id), None))
+    """, (
+        str(user_id),
+        None
+    ))
 
     conn.commit()
     conn.close()
 
     print("DEBUG bot_id:", bot_id)
-    #print("DEBUG token:", get_bot_token(bot_id))
 
     # =========================
-    # 執行AI
+    # 執行 AI
     # =========================
-
-    # 🚀 直接丟背景跑 AI（避免 timeout）
     threading.Thread(
         target=handle_message,
         args=(user_id, bot_id, chat_id, user_text)

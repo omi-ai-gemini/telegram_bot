@@ -13,7 +13,7 @@ def _telegram_post(bot_id, method, payload):
 
     if not bot_token:
         print("X token not found")
-        return
+        return None
 
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
 
@@ -21,6 +21,12 @@ def _telegram_post(bot_id, method, payload):
 
     if not res.ok:
         print("TELEGRAM ERROR:", res.text)
+        return None
+
+    try:
+        return res.json()
+    except Exception:
+        return None
 
 
 # =========================
@@ -58,9 +64,24 @@ def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
 
     if message_id:
         payload["message_id"] = message_id
-        _telegram_post(bot_id, "editMessageText", payload)
-    else:
-        _telegram_post(bot_id, "sendMessage", payload)
+        return _telegram_post(bot_id, "editMessageText", payload)
+
+    return _telegram_post(bot_id, "sendMessage", payload)
+
+
+# =========================
+# 只發送新訊息
+# 用於確認清除 / 確認刪除
+# =========================
+def _send_new_message(bot_id, chat_id, text, inline_keyboard):
+
+    return _send_or_edit(
+        bot_id,
+        chat_id,
+        None,
+        text,
+        inline_keyboard
+    )
 
 
 # =========================
@@ -89,10 +110,10 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
     if mode is None:
         mode = get_character_mode(bot_id, chat_id)
 
-    # 預設 fallback：如果沒有 user_id 或 BASE_URL，先保留 callback，不讓按鈕消失
+    # 預設 fallback
     script_button = [{"text": "📖 劇本設定", "callback_data": "script_setting"}]
 
-    # 有 user_id 時，改成直接開啟 Render 表單頁
+    # 有 user_id + BASE_URL 時，改成網頁按鈕
     if user_id is not None:
         script_url = _build_character_setting_url(bot_id, chat_id, user_id)
 
@@ -127,5 +148,54 @@ def send_mode_menu(bot_id, chat_id, message_id=None):
             [{"text": "聊天模式", "callback_data": "mode_chat"}],
             [{"text": "劇場模式", "callback_data": "mode_theater"}],
             [{"text": "⬅️ 返回人物設定", "callback_data": "back_character"}]
+        ]
+    )
+
+
+# =========================
+# /setting/記憶設定
+# =========================
+def send_memory_menu(bot_id, chat_id, message_id=None):
+
+    _send_or_edit(
+        bot_id,
+        chat_id,
+        message_id,
+        "🧠 記憶設定",
+        [
+            [{"text": "🧹 清除當前記憶", "callback_data": "clear_current_memory"}],
+            [{"text": "⬅️ 返回設定中心", "callback_data": "back_setting"}]
+        ]
+    )
+
+
+# =========================
+# 新增確認訊息：清除當前記憶
+# =========================
+def send_clear_memory_confirm_message(bot_id, chat_id):
+
+    _send_new_message(
+        bot_id,
+        chat_id,
+        "⚠️ 確認清除所有記憶？\n\n會清除：\n- 短期聊天記憶\n- 長期記憶\n- 情緒狀態\n\n不會清除：\n- 劇本設定\n- bot token\n- Gemini API key",
+        [
+            [{"text": "✅ 確認清除", "callback_data": "confirm_clear_current_memory"}],
+            [{"text": "取消清除", "callback_data": "cancel_clear_current_memory"}]
+        ]
+    )
+
+
+# =========================
+# 新增確認訊息：刪除所有設定
+# =========================
+def send_delete_character_confirm_message(bot_id, chat_id):
+
+    _send_new_message(
+        bot_id,
+        chat_id,
+        "⚠️ 確認刪除所有記憶？",
+        [
+            [{"text": "✅ 確認刪除", "callback_data": "confirm_delete_character"}],
+            [{"text": "取消刪除", "callback_data": "cancel_delete_character"}]
         ]
     )

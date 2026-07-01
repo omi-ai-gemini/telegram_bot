@@ -15,7 +15,7 @@ def send_message(bot_id, chat_id, text):
     
     url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
 
-    requests.post(
+    res = requests.post(
         url,
         json={
             "chat_id": chat_id,
@@ -24,10 +24,14 @@ def send_message(bot_id, chat_id, text):
         timeout=30
     )
 
+    if not res.ok:
+        print("TELEGRAM sendMessage ERROR:", res.text)
+
+
 # =========================
-# Telegram button loading 加速器
+# Telegram callback 提示
 # =========================
-def answer_callback_query(bot_id, callback_query_id):
+def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False):
 
     token = get_bot_token(bot_id)
 
@@ -37,10 +41,47 @@ def answer_callback_query(bot_id, callback_query_id):
 
     url = f"{TELEGRAM_API_BASE}/bot{token}/answerCallbackQuery"
 
-    requests.post(
+    payload = {
+        "callback_query_id": callback_query_id
+    }
+
+    if text:
+        payload["text"] = text
+
+    if show_alert:
+        payload["show_alert"] = True
+
+    res = requests.post(
+        url,
+        json=payload,
+        timeout=10
+    )
+
+    if not res.ok:
+        print("TELEGRAM answerCallbackQuery ERROR:", res.text)
+
+
+# =========================
+# Telegram 刪除訊息
+# =========================
+def delete_message(bot_id, chat_id, message_id):
+
+    token = get_bot_token(bot_id)
+
+    if not token:
+        print("X token not found")
+        return
+
+    url = f"{TELEGRAM_API_BASE}/bot{token}/deleteMessage"
+
+    res = requests.post(
         url,
         json={
-            "callback_query_id": callback_query_id
+            "chat_id": chat_id,
+            "message_id": message_id
         },
         timeout=10
     )
+
+    if not res.ok:
+        print("TELEGRAM deleteMessage ERROR:", res.text)

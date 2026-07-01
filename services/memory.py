@@ -1,24 +1,118 @@
 from services.database import get_conn
 
-# =========================
-# 人格記憶
-# =========================
 
+def _text_id(value):
+    return str(value)
+
+
+def _get_scope(chat_id):
+    chat_id = str(chat_id)
+    return "group" if int(chat_id) < 0 else "private"
+
+
+# =========================
+# 清除當前記憶
+# 用於「記憶設定 / 清除當前記憶」
+# =========================
+def delete_current_memory(bot_id, chat_id):
+
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    scope = _get_scope(chat_id)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        # =========================
+        # 群組記憶目前是 chat_id 共用
+        # 所以群組清除時，清掉整個群組的記憶
+        # =========================
+        if scope == "group":
+
+            cursor.execute("""
+                DELETE FROM chat_memory
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (
+                chat_id,
+                scope
+            ))
+
+            cursor.execute("""
+                DELETE FROM facts_memory
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (
+                chat_id,
+                scope
+            ))
+
+        # =========================
+        # 私聊記憶是 bot_id + chat_id 獨立
+        # =========================
+        else:
+
+            cursor.execute("""
+                DELETE FROM chat_memory
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (
+                bot_id,
+                chat_id,
+                scope
+            ))
+
+            cursor.execute("""
+                DELETE FROM facts_memory
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (
+                bot_id,
+                chat_id,
+                scope
+            ))
+
+        # =========================
+        # 情緒記憶目前只有 chat_id
+        # 所以直接清掉當前聊天室情緒
+        # =========================
+        cursor.execute("""
+            DELETE FROM emotion_memory
+            WHERE chat_id = %s
+        """, (
+            chat_id,
+        ))
+
+        conn.commit()
+
+        print("DEBUG current memory deleted:", bot_id, chat_id, scope)
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR delete_current_memory:", e)
+        raise
+
+    finally:
+        conn.close()
+
+
+# =========================
+# 刪除某個 bot / chat 的所有記憶
+# 舊函式保留，避免舊檔案 import 爆掉
+# 實際邏輯直接走 delete_current_memory
+# =========================
+def delete_character_memory(bot_id, chat_id):
+
+    delete_current_memory(bot_id, chat_id)
 
 
 # =========================
 # 情緒記憶
 # =========================
-
-def _text_id(value):
-    return str(value)
-
-#RAN version
-# emotion_memory = defaultdict(lambda: {
-#     "mood": "neutral",      # happy/sad/angry/neutral
-#     "level": 0              # -10~10
-# })
-
 def update_emotion(chat_id, delta):
 
     chat_id = _text_id(chat_id)
@@ -26,7 +120,6 @@ def update_emotion(chat_id, delta):
     emotion = get_emotion(chat_id)
 
     level = emotion["level"] + delta
-
     level = max(-10, min(10, level))
 
     if level >= 5:
@@ -39,86 +132,77 @@ def update_emotion(chat_id, delta):
         mood = "neutral"
 
     conn = get_conn()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO emotion_memory (chat_id, mood, level)
-        VALUES (%s, %s, %s)
-        ON CONFLICT(chat_id)
-        DO UPDATE SET
-        mood=excluded.mood,
-        level=excluded.level
-        """,
-        (
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO emotion_memory (
+                chat_id,
+                mood,
+                level
+            )
+            VALUES (%s, %s, %s)
+
+            ON CONFLICT(chat_id)
+
+            DO UPDATE SET
+                mood = EXCLUDED.mood,
+                level = EXCLUDED.level
+        """, (
             chat_id,
             mood,
             level
-        )
-    )
+        ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
 
-    #RAN version
-    # """
-    # delta:
-    # + 正面情緒
-    # - 負面情緒
-    # """
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR update_emotion:", e)
+        raise
 
-    # emotion = emotion_memory[chat_id]
+    finally:
+        conn.close()
 
-    # emotion["level"] += delta
-
-    # #限制範圍
-    # if emotion["level"] > 10:
-    #     emotion["level"] = 10
-    # if emotion["level"] < -10:
-    #     emotion["level"] = -10
-    
-    # #更新mood
-    # if emotion["level"] >= 5:
-    #     emotion["mood"] = "happy"
-    # elif emotion["level"] <= -5:
-    #     emotion["mood"] = "angry"
-    # else:
-    #     emotion["mood"] = "neutral"
 
 def get_emotion(chat_id):
 
     chat_id = _text_id(chat_id)
     
     conn = get_conn()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        SELECT mood, level
-        FROM emotion_memory
-        WHERE chat_id=%s
-        """,
-        (chat_id,)
-    )
+    try:
+        cursor = conn.cursor()
 
-    row = cursor.fetchone()
+        cursor.execute("""
+            SELECT mood, level
+            FROM emotion_memory
+            WHERE chat_id = %s
+        """, (
+            chat_id,
+        ))
 
-    conn.close()
+        row = cursor.fetchone()
 
-    if row:
+        if row:
+            return {
+                "mood": row[0],
+                "level": row[1]
+            }
 
         return {
-            "mood": row[0],
-            "level": row[1]
+            "mood": "neutral",
+            "level": 0
         }
 
-    return {
-        "mood": "neutral",
-        "level": 0
-    }
+    except Exception as e:
+        print("DB ERROR get_emotion:", e)
+        raise
 
-    #RAN version
-    #return emotion_memory[chat_id]
+    finally:
+        conn.close()
+
 
 def detect_emotion(text: str) -> int:
     """
@@ -140,10 +224,10 @@ def detect_emotion(text: str) -> int:
     
     return score
 
+
 # =========================
 # 長期記憶
 # =========================
-
 memory_triggers = [
     "記憶",
     "記住",
@@ -152,12 +236,12 @@ memory_triggers = [
     "強化記憶"
 ]
 
-#RAN version
-#facts_memory = defaultdict(list)
 
 # 判斷是否為記憶相關指令
 def is_memory_command(text: str) -> bool:
+
     return any(trigger in text for trigger in memory_triggers)
+
 
 def extract_memory_content(text: str) -> str:
     """
@@ -169,198 +253,294 @@ def extract_memory_content(text: str) -> str:
     
     return text.strip()
 
+
 def add_fact(bot_id, chat_id, scope, fact):
 
-    chat_id = _text_id(chat_id)
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    scope = str(scope)
 
     conn = get_conn()
-    cursor = conn.cursor()
 
-    cursor.execute(
-        """
-        INSERT INTO facts_memory
-        (bot_id, chat_id, scope, fact)
-        VALUES (%s, %s, %s, %s)
-        """,
-        (bot_id, chat_id, scope, fact)        
-    )
+    try:
+        cursor = conn.cursor()
 
-    conn.commit()
-    conn.close()
+        cursor.execute("""
+            INSERT INTO facts_memory (
+                bot_id,
+                chat_id,
+                scope,
+                fact
+            )
+            VALUES (%s, %s, %s, %s)
+        """, (
+            bot_id,
+            chat_id,
+            scope,
+            fact
+        ))
 
-    #RAN version
-    #facts_memory[chat_id].append(fact)
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR add_fact:", e)
+        raise
+
+    finally:
+        conn.close()
+
 
 def get_facts(bot_id, chat_id, scope):
 
-    chat_id = _text_id(chat_id)
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    cursor.execute(
-        """
-        SELECT fact
-        FROM facts_memory
-        WHERE bot_id = %s
-          AND chat_id = %s
-          AND scope = %s
-        ORDER BY id DESC
-        """,
-        (bot_id, chat_id, scope)        
-    )
-
-    rows = cursor.fetchall()
-
-    conn.close()
-
-    return [row[0] for row in rows]
-
-def get_recent_chat(bot_id, chat_id, limit=30):
-
+    bot_id = str(bot_id)
     chat_id = str(chat_id)
-    scope = "group" if int(chat_id) < 0 else "private"
+    scope = str(scope)
 
     conn = get_conn()
-    cursor = conn.cursor()
 
-    cursor.execute("""
-        SELECT role, text
-        FROM chat_memory
-        WHERE bot_id = %s
-          AND chat_id = %s
-          AND scope = %s
-        ORDER BY id DESC
-        LIMIT %s
-    """, (
-        bot_id,
-        chat_id,
-        scope,
-        limit
-    ))
+    try:
+        cursor = conn.cursor()
 
-    rows = cursor.fetchall()
+        cursor.execute("""
+            SELECT fact
+            FROM facts_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            ORDER BY id DESC
+        """, (
+            bot_id,
+            chat_id,
+            scope
+        ))
 
-    conn.close()
+        rows = cursor.fetchall()
 
-    rows.reverse()
+        return [row[0] for row in rows]
 
-    return rows
+    except Exception as e:
+        print("DB ERROR get_facts:", e)
+        raise
+
+    finally:
+        conn.close()
+
 
 # =========================
 # 短期記憶
 # =========================
-
-#RAN version
-# chat_memory = defaultdict(lambda:                         
-#                            deque(
-#                                maxlen=100
-#                                )
-#                            )
-
 def add_chat(bot_id, chat_id, role, text):
 
+    bot_id = str(bot_id)
     chat_id = str(chat_id)
-    scope = "group" if int(chat_id) < 0 else "private"
+    scope = _get_scope(chat_id)
 
     conn = get_conn()
-    cursor = conn.cursor()
 
-    # =========================
-    # 🟢 group：只寫一次（避免多 bot 重複）
-    # =========================
-    cursor.execute("""
-        INSERT INTO chat_memory (
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO chat_memory (
+                bot_id,
+                chat_id,
+                scope,
+                role,
+                text
+            )
+            VALUES (%s, %s, %s, %s, %s)
+        """, (
             bot_id,
             chat_id,
             scope,
             role,
             text
-        ) VALUES (%s, %s, %s, %s, %s)
-    """, (
-        bot_id,
-        chat_id,
-        scope,
-        role,
-        text
-    ))
+        ))
 
-    # =========================
-    # sliding window（分 scope）
-    # =========================
-    cursor.execute("""
-        DELETE FROM chat_memory a
-        WHERE a.id NOT IN (
-            SELECT id FROM chat_memory
-            WHERE bot_id = %s
-            AND chat_id = %s
-            AND scope = %s
-            ORDER BY id DESC
-            LIMIT 3000
-        )
-        AND a.bot_id = %s
-        AND a.chat_id = %s
-        AND a.scope = %s
-    """, (
-        bot_id, chat_id, scope,
-        bot_id, chat_id, scope
-    ))
+        # =========================
+        # sliding window
+        # 私聊：bot_id + chat_id + scope 保留 3000 筆
+        # 群組：chat_id + scope 共用保留 3000 筆
+        # =========================
+        if scope == "group":
 
-    conn.commit()
-    conn.close()
+            cursor.execute("""
+                DELETE FROM chat_memory a
+                WHERE a.id NOT IN (
+                    SELECT id FROM chat_memory
+                    WHERE chat_id = %s
+                      AND scope = %s
+                    ORDER BY id DESC
+                    LIMIT 3000
+                )
+                AND a.chat_id = %s
+                AND a.scope = %s
+            """, (
+                chat_id,
+                scope,
+                chat_id,
+                scope
+            ))
 
-    #RAN version
-    #chat_memory[chat_id].append({
+        else:
 
-    #    "role": role,
-    #    "text": text
+            cursor.execute("""
+                DELETE FROM chat_memory a
+                WHERE a.id NOT IN (
+                    SELECT id FROM chat_memory
+                    WHERE bot_id = %s
+                      AND chat_id = %s
+                      AND scope = %s
+                    ORDER BY id DESC
+                    LIMIT 3000
+                )
+                AND a.bot_id = %s
+                AND a.chat_id = %s
+                AND a.scope = %s
+            """, (
+                bot_id,
+                chat_id,
+                scope,
+                bot_id,
+                chat_id,
+                scope
+            ))
 
-    #})
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR add_chat:", e)
+        raise
+
+    finally:
+        conn.close()
+
 
 def get_chat(bot_id, chat_id):
 
+    bot_id = str(bot_id)
     chat_id = str(chat_id)
-    scope = "group" if int(chat_id) < 0 else "private"
+    scope = _get_scope(chat_id)
 
     conn = get_conn()
-    cursor = conn.cursor()
 
-    # =========================
-    # group → 共用 memory
-    # =========================
-    if scope == "group":
-        cursor.execute("""
-            SELECT role, text
-            FROM chat_memory
-            WHERE chat_id = %s 
-              AND scope = %s
-            ORDER BY id DESC
-            LIMIT 100
-        """, (chat_id, scope))
+    try:
+        cursor = conn.cursor()
 
-    # =========================
-    # private → bot 專屬 memory
-    # =========================
-    else:
-        cursor.execute("""
-            SELECT role, text
-            FROM chat_memory
-            WHERE chat_id = %s AND scope = %s AND bot_id = %s
-            ORDER BY id DESC
-            LIMIT 100
-        """, (chat_id, scope, bot_id))
+        # =========================
+        # group → 共用 memory
+        # =========================
+        if scope == "group":
 
-    rows = cursor.fetchall()
-    conn.close()
+            cursor.execute("""
+                SELECT role, text
+                FROM chat_memory
+                WHERE chat_id = %s 
+                  AND scope = %s
+                ORDER BY id DESC
+                LIMIT 100
+            """, (
+                chat_id,
+                scope
+            ))
 
-    rows.reverse()
+        # =========================
+        # private → bot 專屬 memory
+        # =========================
+        else:
 
-    return [
-        {"role": r[0], "text": r[1]}
-        for r in rows
-    ]
+            cursor.execute("""
+                SELECT role, text
+                FROM chat_memory
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+                ORDER BY id DESC
+                LIMIT 100
+            """, (
+                bot_id,
+                chat_id,
+                scope
+            ))
 
-    #RAN version
-    #return list(
-    #    chat_memory[chat_id]
-    #)
+        rows = cursor.fetchall()
+        rows.reverse()
+
+        return [
+            {
+                "role": r[0],
+                "text": r[1]
+            }
+            for r in rows
+        ]
+
+    except Exception as e:
+        print("DB ERROR get_chat:", e)
+        raise
+
+    finally:
+        conn.close()
+
+
+def get_recent_chat(bot_id, chat_id, limit=30):
+
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    scope = _get_scope(chat_id)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        # =========================
+        # group → 共用 memory
+        # =========================
+        if scope == "group":
+
+            cursor.execute("""
+                SELECT role, text
+                FROM chat_memory
+                WHERE chat_id = %s
+                  AND scope = %s
+                ORDER BY id DESC
+                LIMIT %s
+            """, (
+                chat_id,
+                scope,
+                limit
+            ))
+
+        # =========================
+        # private → bot 專屬 memory
+        # =========================
+        else:
+
+            cursor.execute("""
+                SELECT role, text
+                FROM chat_memory
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+                ORDER BY id DESC
+                LIMIT %s
+            """, (
+                bot_id,
+                chat_id,
+                scope,
+                limit
+            ))
+
+        rows = cursor.fetchall()
+        rows.reverse()
+
+        return rows
+
+    except Exception as e:
+        print("DB ERROR get_recent_chat:", e)
+        raise
+
+    finally:
+        conn.close()
