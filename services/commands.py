@@ -98,7 +98,8 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
         [
             [{"text": "👤 人物設定", "callback_data": "character_setting"}],
             [{"text": "🧠 記憶設定", "callback_data": "memory_setting"}],
-            [{"text": "🔑 API設定", "callback_data": "api_setting"}]
+            [{"text": "🔑 API設定", "callback_data": "api_setting"}],
+            [{"text": "❌ 結束設定", "callback_data": "close_setting_menu"}]
         ]
     )
 
@@ -111,13 +112,23 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
     if mode is None:
         mode = get_character_mode(bot_id, chat_id)
 
-    setting_button = [{"text": "📖 劇本設定", "callback_data": "script_setting"}]
+    # =========================
+    # 設定表單按鈕文字跟著模式變動
+    # 聊天模式 → 聊天對象
+    # 劇場模式 → 劇本設定
+    # =========================
+    if mode == "聊天模式":
+        setting_text = "💬 聊天對象"
+    else:
+        setting_text = "📖 劇本設定"
+
+    setting_button = [{"text": setting_text, "callback_data": "script_setting"}]
 
     if user_id is not None:
         setting_url = _build_persona_setting_url(bot_id, chat_id, user_id)
 
         if setting_url:
-            setting_button = [{"text": "📖 劇本設定", "url": setting_url}]
+            setting_button = [{"text": setting_text, "url": setting_url}]
 
     _send_or_edit(
         bot_id,

@@ -25,6 +25,25 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     print("callback", user_text, "message:", message_id)
 
     # =========================
+    # 結束設定
+    # 直接刪除目前這則設定選單訊息
+    # =========================
+    if user_text == "close_setting_menu":
+
+        delete_message(
+            bot_id,
+            chat_id,
+            message_id
+        )
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="已結束設定"
+        )
+        return
+
+    # =========================
     # 第一層：設定中心 → 人物設定
     # =========================
     if user_text == "character_setting":
@@ -180,7 +199,8 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認刪除所有設定
-    # 會刪：
+    # 目前不分聊天模式 / 劇場模式
+    # 會一起刪：
     # - 聊天模式人物設定
     # - 劇本設定
     # - 短期記憶
