@@ -10,6 +10,7 @@ from services.character import (
     update_character_mode,
     delete_character_settings,
 )
+from services.chat_persona import delete_chat_persona_settings
 from services.memory import delete_current_memory
 from services.telegram_service import (
     answer_callback_query,
@@ -67,6 +68,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認清除當前記憶
+    # 只刪記憶，不刪人物 / 劇本設定
     # =========================
     if user_text == "confirm_clear_current_memory":
 
@@ -144,8 +146,8 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
-    # 劇本設定 fallback
-    # 正常情況下不會進來，因為劇本設定會是 url button
+    # 表單 fallback
+    # 正常情況下不會進來，因為設定按鈕會是 url button
     # =========================
     if user_text == "script_setting":
 
@@ -178,8 +180,16 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認刪除所有設定
+    # 會刪：
+    # - 聊天模式人物設定
+    # - 劇本設定
+    # - 短期記憶
+    # - 長期記憶
+    # - 情緒狀態
     # =========================
     if user_text == "confirm_delete_character":
+
+        delete_chat_persona_settings(bot_id, chat_id)
 
         delete_character_settings(bot_id, chat_id)
 

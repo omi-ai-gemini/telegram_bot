@@ -4,7 +4,6 @@ import threading
 import time
 
 DATABASE_URL = os.environ["DATABASE_URL"]
-#DB_NAME = os.path.join("/tmp", "app.db")
 
 # =========================
 # DB 連線監控
@@ -12,6 +11,7 @@ DATABASE_URL = os.environ["DATABASE_URL"]
 _DB_LOCK = threading.Lock()
 _ACTIVE_DB_CONNECTIONS = 0
 _TOTAL_DB_CONNECTIONS = 0
+
 
 # =========================
 # DB 連線包裝器
@@ -84,13 +84,6 @@ def get_conn():
 
     return TrackedConnection(conn, conn_id)
 
-    #會消失版
-    #conn = sqlite3.connect(DB_NAME)
-
-    # 讓 row 可以用 dict 方式讀
-    #conn.row_factory = sqlite3.Row
-
-    #return conn
 
 # =========================
 # 取得目前 DB 連線統計
@@ -104,10 +97,10 @@ def get_db_connection_stats():
             "pid": os.getpid()
         }
 
-# =========================
-# 更新 DB 內容
-# =========================
 
+# =========================
+# 更新 bot token
+# =========================
 def save_bot(bot_id, token):
 
     conn = get_conn()
@@ -120,16 +113,24 @@ def save_bot(bot_id, token):
         VALUES (%s, %s)
         ON CONFLICT (bot_id)
         DO UPDATE SET token = EXCLUDED.token
-        """, (bot_id, token))
+        """, (
+            bot_id,
+            token
+        ))
 
         conn.commit()
 
     except Exception:
         conn.rollback()
         raise
+
     finally:
         conn.close()
 
+
+# =========================
+# 更新 Gemini API key
+# =========================
 def update_gemini_key(user_id, gemini_key):
 
     conn = get_conn()
@@ -142,22 +143,28 @@ def update_gemini_key(user_id, gemini_key):
         VALUES (%s, %s)
         ON CONFLICT (user_id)
         DO UPDATE SET gemini_key = EXCLUDED.gemini_key
-        """, (user_id, gemini_key))
+        """, (
+            user_id,
+            gemini_key
+        ))
 
         conn.commit()
 
     except Exception:
         conn.rollback()
         raise
+
     finally:
         conn.close()
 
+
 # =========================
-# 初始化資料表（第一次用）
+# 初始化資料表
 # =========================
 def init_db():
 
     conn = get_conn()
+
     try:
         cursor = conn.cursor()
 
@@ -193,7 +200,7 @@ def init_db():
             role TEXT,
             text TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
+        )
         """)
 
         # =========================
@@ -204,7 +211,7 @@ def init_db():
             id SERIAL PRIMARY KEY,
             bot_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
-            scope TEXT NOT NULL,  -- private / group
+            scope TEXT NOT NULL,
             fact TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
@@ -222,24 +229,21 @@ def init_db():
         """)
 
         # =========================
-        # 人物 / 劇本設定
+        # 劇本模式設定
         # =========================
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS character_settings (
             bot_id TEXT NOT NULL,
             chat_id TEXT NOT NULL,
 
-            -- 模式設定
             mode TEXT NOT NULL DEFAULT '聊天模式',
 
-            -- AI 設定
             ai_name TEXT DEFAULT '',
             ai_gender TEXT DEFAULT '',
             ai_appearance TEXT DEFAULT '',
             story_background TEXT DEFAULT '',
             ai_opening TEXT DEFAULT '',
 
-            -- 使用者設定
             user_gender TEXT DEFAULT '',
             user_appearance TEXT DEFAULT '',
             user_other_settings TEXT DEFAULT '',
@@ -249,11 +253,30 @@ def init_db():
             PRIMARY KEY (bot_id, chat_id)
         )
         """)
-        
+
+        # =========================
+        # 聊天模式人物設定
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS chat_persona_settings (
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+
+            persona_name TEXT DEFAULT '',
+            persona_gender TEXT DEFAULT '',
+            persona_background TEXT DEFAULT '',
+
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            PRIMARY KEY (bot_id, chat_id)
+        )
+        """)
 
         conn.commit()
+
     except Exception:
         conn.rollback()
         raise
+
     finally:
         conn.close()

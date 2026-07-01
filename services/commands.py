@@ -30,9 +30,10 @@ def _telegram_post(bot_id, method, payload):
 
 
 # =========================
-# 建立劇本設定網址
+# 建立人物 / 劇本設定網址
+# 由後端 route 自動依 mode 分流
 # =========================
-def _build_character_setting_url(bot_id, chat_id, user_id):
+def _build_persona_setting_url(bot_id, chat_id, user_id):
 
     base_url = os.getenv("BASE_URL", "").rstrip("/")
 
@@ -46,7 +47,7 @@ def _build_character_setting_url(bot_id, chat_id, user_id):
         "user_id": str(user_id)
     })
 
-    return f"{base_url}/setting/character?{query}"
+    return f"{base_url}/setting/persona?{query}"
 
 
 # =========================
@@ -110,15 +111,13 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
     if mode is None:
         mode = get_character_mode(bot_id, chat_id)
 
-    # 預設 fallback
-    script_button = [{"text": "📖 劇本設定", "callback_data": "script_setting"}]
+    setting_button = [{"text": "📖 劇本設定", "callback_data": "script_setting"}]
 
-    # 有 user_id + BASE_URL 時，改成網頁按鈕
     if user_id is not None:
-        script_url = _build_character_setting_url(bot_id, chat_id, user_id)
+        setting_url = _build_persona_setting_url(bot_id, chat_id, user_id)
 
-        if script_url:
-            script_button = [{"text": "📖 劇本設定", "url": script_url}]
+        if setting_url:
+            setting_button = [{"text": "📖 劇本設定", "url": setting_url}]
 
     _send_or_edit(
         bot_id,
@@ -127,7 +126,7 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
         "👤 人物設定",
         [
             [{"text": f"🎭 模式｜{mode}", "callback_data": "character_mode"}],
-            script_button,
+            setting_button,
             [{"text": "🗑️ 刪除所有設定", "callback_data": "delete_character"}],
             [{"text": "⬅️ 返回", "callback_data": "back_setting"}]
         ]

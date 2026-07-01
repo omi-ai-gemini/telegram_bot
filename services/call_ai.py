@@ -4,9 +4,12 @@ from services.bot_router import get_bot_token
 from services.telegram_service import send_message
 from services.memory import get_recent_chat
 from services.gemini_service import summarize_memory
-from services.memory import(
+from services.character import get_character_settings
+from services.chat_persona import get_chat_persona_settings
+from services.memory import (
     add_chat,
     get_chat,
+    get_facts,
     is_memory_command,
     extract_memory_content,
     add_fact,
@@ -15,17 +18,15 @@ from services.memory import(
     get_emotion
 )
 
+
 # =========================
-# 取得AI回覆並發送
+# 取得 AI 回覆並發送
 # =========================
 def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
-
-    add_chat(bot_id, chat_id, "user", user_text)
 
     try:
 
         gemini_key = get_gemini_key(user_id)
-
         bot_token = get_bot_token(bot_id)
 
         if not gemini_key or not bot_token:
@@ -35,13 +36,16 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
                 f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
             )
             return
-        
-        #if user_text == "/setting":
-        #if user_text in ["/setting", "/設定"]:
 
-        #    send_setting_menu(bot_token, chat_id)
+        # =========================
+        # scope 判斷
+        # =========================
+        scope = "group" if int(chat_id) < 0 else "private"
 
-        #    return
+        # =========================
+        # 先寫入使用者短期記憶
+        # =========================
+        add_chat(bot_id, chat_id, "user", user_text)
 
         # =========================
         # 情緒記憶
@@ -56,9 +60,9 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         if is_memory_command(user_text):
 
             fact = extract_memory_content(user_text)
-            scope = "group" if int(chat_id) < 0 else "private"
 
-            add_fact(bot_id, chat_id, scope, fact)
+            if fact:
+                add_fact(bot_id, chat_id, scope, fact)
 
             send_message(bot_id, chat_id, "已記住")
             return
@@ -69,7 +73,23 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         history = get_chat(bot_id, chat_id)
 
         # =========================
-        # 🧠 摘要觸發
+        # 長期記憶
+        # =========================
+        facts = get_facts(bot_id, chat_id, scope)
+
+        # =========================
+        # 人物 / 劇本設定
+        # =========================
+        character_settings = get_character_settings(bot_id, chat_id)
+        mode = character_settings.get("mode", "聊天模式")
+
+        chat_persona_settings = None
+
+        if mode == "聊天模式":
+            chat_persona_settings = get_chat_persona_settings(bot_id, chat_id)
+
+        # =========================
+        # 摘要觸發
         # =========================
         if len(history) >= 30:
 
@@ -84,16 +104,17 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
 
             if summary:
 
-                scope = "group" if int(chat_id) < 0 else "private"
+                summary_facts = summary.split("\n")
 
-                facts = summary.split("\n")
-
-                for f in facts:
+                for f in summary_facts:
                     f = f.strip("- ").strip()
+
                     if not f:
                         continue
 
                     add_fact(bot_id, chat_id, scope, f)
+
+                facts = get_facts(bot_id, chat_id, scope)
 
         # =========================
         # Gemini 回覆
@@ -102,11 +123,15 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             gemini_key=gemini_key,
             history=history,
             user_text=user_text,
-            emotion=emotion
+            emotion=emotion,
+            mode=mode,
+            chat_persona_settings=chat_persona_settings,
+            character_settings=character_settings,
+            facts=facts
         )
 
         # =========================
-        # 寫入短期記憶（✔ 修正重點）
+        # 寫入 AI 短期記憶
         # =========================
         add_chat(bot_id, chat_id, "assistant", reply)
 

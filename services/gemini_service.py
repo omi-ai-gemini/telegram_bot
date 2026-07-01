@@ -3,21 +3,36 @@ from services.style import build_prompt
 from config import GEMINI_MODEL
 
 # =========================
-# 取得 gemini 回覆（新版）
+# 取得 Gemini 回覆
 # =========================
-def ask_gemini(gemini_key, history, user_text, emotion):
+def ask_gemini(
+    gemini_key,
+    history,
+    user_text,
+    emotion,
+    mode="聊天模式",
+    chat_persona_settings=None,
+    character_settings=None,
+    facts=None
+):
 
     # =========================
-    # 1. 動態初始化（每個 user 都可能不同 key）
+    # 組 prompt
     # =========================
-    # =========================
-    # 2. 組 prompt
-    # =========================
-    prompt = build_prompt(history, user_text, emotion)
+    prompt = build_prompt(
+        history=history,
+        user_text=user_text,
+        emotion=emotion,
+        mode=mode,
+        chat_persona_settings=chat_persona_settings,
+        character_settings=character_settings,
+        facts=facts
+    )
 
+    print("DEBUG prompt preview:", prompt[:1200])
 
     # =========================
-    # 3. 呼叫 Gemini
+    # 呼叫 Gemini
     # =========================
     with genai.Client(api_key=gemini_key) as client:
         response = client.models.generate_content(
@@ -29,6 +44,10 @@ def ask_gemini(gemini_key, history, user_text, emotion):
 
     return response.text
 
+
+# =========================
+# 摘要短期記憶成長期記憶
+# =========================
 def summarize_memory(gemini_key, chat_text):
 
     prompt = f"""
