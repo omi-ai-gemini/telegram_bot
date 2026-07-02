@@ -8,6 +8,15 @@ from services.chat_persona import (
     get_chat_persona_settings,
     update_chat_persona_settings
 )
+from services.reply_style import (
+    get_reply_style_settings,
+    update_reply_style_settings,
+    normalize_style_type
+)
+from services.style import (
+    DEFAULT_CHAT_REPLY_STYLE,
+    DEFAULT_THEATER_REPLY_STYLE
+)
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -45,7 +54,7 @@ def persona_setting_page():
         )
 
     # =========================
-    # 聊天模式 → 新聊天人物表單
+    # 聊天模式 → 聊天人物表單
     # =========================
     settings = get_chat_persona_settings(bot_id, chat_id)
 
@@ -81,8 +90,80 @@ def character_setting_page():
 
 
 # =========================
+# 回覆風格設定表單
+# style_type：chat / theater
+# =========================
+@setting_bp.route("/setting/reply_style", methods=["GET"])
+def reply_style_setting_page():
+
+    bot_id = request.args.get("bot_id", "")
+    chat_id = request.args.get("chat_id", "")
+    user_id = request.args.get("user_id", "")
+    style_type = normalize_style_type(request.args.get("style_type", "chat"))
+
+    if not bot_id or not chat_id:
+        return "缺少 bot_id 或 chat_id", 400
+
+    settings = get_reply_style_settings(bot_id, chat_id, style_type)
+
+    if style_type == "theater":
+        title = "劇場回覆風格"
+        subtitle = "這裡只控制劇場模式的輸出長相，不會跟劇本綁定。"
+        default_style = DEFAULT_THEATER_REPLY_STYLE.strip()
+    else:
+        title = "聊天回覆風格"
+        subtitle = "這裡只控制聊天模式的輸出長相，不會跟聊天對象綁定。"
+        default_style = DEFAULT_CHAT_REPLY_STYLE.strip()
+
+    return render_template(
+        "reply_style_form.html",
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        style_type=style_type,
+        title=title,
+        subtitle=subtitle,
+        default_style=default_style,
+        settings=settings
+    )
+
+
+# =========================
+# 儲存回覆風格設定
+# 空白代表使用系統預設
+# =========================
+@setting_bp.route("/setting/reply_style/save", methods=["POST"])
+def save_reply_style_setting():
+
+    bot_id = request.form.get("bot_id", "").strip()
+    chat_id = request.form.get("chat_id", "").strip()
+    style_type = normalize_style_type(request.form.get("style_type", "chat"))
+
+    if not bot_id or not chat_id:
+        return jsonify({
+            "ok": False,
+            "message": "缺少 bot_id 或 chat_id"
+        }), 400
+
+    reply_style = request.form.get("reply_style", "").strip()
+
+    update_reply_style_settings(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        style_type=style_type,
+        reply_style=reply_style
+    )
+
+    return jsonify({
+        "ok": True,
+        "message": "回覆風格已儲存，可以關閉此頁。"
+    })
+
+
+# =========================
 # 儲存聊天模式人物設定
 # 不必填，允許全部空白
+# 回覆風格已獨立，不在這裡儲存
 # =========================
 @setting_bp.route("/setting/chat_persona/save", methods=["POST"])
 def save_chat_persona_setting():
@@ -112,6 +193,7 @@ def save_chat_persona_setting():
 
 # =========================
 # 儲存劇本設定
+# 回覆風格已獨立，不在這裡儲存
 # =========================
 @setting_bp.route("/setting/character/save", methods=["POST"])
 def save_character_setting():

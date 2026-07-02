@@ -51,6 +51,28 @@ def _build_persona_setting_url(bot_id, chat_id, user_id):
 
 
 # =========================
+# 建立回覆風格設定網址
+# style_type：chat / theater
+# =========================
+def _build_reply_style_url(bot_id, chat_id, user_id, style_type):
+
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+
+    if not base_url:
+        print("X BASE_URL not found")
+        return None
+
+    query = urlencode({
+        "bot_id": str(bot_id),
+        "chat_id": str(chat_id),
+        "user_id": str(user_id),
+        "style_type": str(style_type)
+    })
+
+    return f"{base_url}/setting/reply_style?{query}"
+
+
+# =========================
 # 發送或編輯同一則訊息
 # =========================
 def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
@@ -97,6 +119,7 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
         "⚙️ 設定中心",
         [
             [{"text": "👤 人物設定", "callback_data": "character_setting"}],
+            [{"text": "🎨 回覆風格", "callback_data": "reply_style_setting"}],
             [{"text": "🧠 記憶設定", "callback_data": "memory_setting"}],
             [{"text": "🔑 API設定", "callback_data": "api_setting"}],
             [{"text": "❌ 結束設定", "callback_data": "close_setting_menu"}]
@@ -112,15 +135,10 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
     if mode is None:
         mode = get_character_mode(bot_id, chat_id)
 
-    # =========================
-    # 設定表單按鈕文字跟著模式變動
-    # 聊天模式 → 聊天對象
-    # 劇場模式 → 劇本設定
-    # =========================
-    if mode == "聊天模式":
-        setting_text = "💬 聊天對象"
-    else:
+    if mode == "劇場模式":
         setting_text = "📖 劇本設定"
+    else:
+        setting_text = "💬 聊天對象"
 
     setting_button = [{"text": setting_text, "callback_data": "script_setting"}]
 
@@ -139,6 +157,38 @@ def send_character_menu(bot_id, chat_id, message_id=None, mode=None, user_id=Non
             [{"text": f"🎭 模式｜{mode}", "callback_data": "character_mode"}],
             setting_button,
             [{"text": "🗑️ 刪除所有設定", "callback_data": "delete_character"}],
+            [{"text": "⬅️ 返回", "callback_data": "back_setting"}]
+        ]
+    )
+
+
+# =========================
+# /setting/回覆風格
+# =========================
+def send_reply_style_menu(bot_id, chat_id, message_id=None, user_id=None):
+
+    chat_button = [{"text": "自訂風格 | 聊天", "callback_data": "reply_style_chat"}]
+    theater_button = [{"text": "自訂風格 | 劇場", "callback_data": "reply_style_theater"}]
+
+    if user_id is not None:
+        chat_url = _build_reply_style_url(bot_id, chat_id, user_id, "chat")
+        theater_url = _build_reply_style_url(bot_id, chat_id, user_id, "theater")
+
+        if chat_url:
+            chat_button = [{"text": "自訂風格 | 聊天", "url": chat_url}]
+
+        if theater_url:
+            theater_button = [{"text": "自訂風格 | 劇場", "url": theater_url}]
+
+    _send_or_edit(
+        bot_id,
+        chat_id,
+        message_id,
+        "🎨 回覆風格",
+        [
+            chat_button,
+            theater_button,
+            [{"text": "🗑️ 刪除自訂風格", "callback_data": "delete_reply_style"}],
             [{"text": "⬅️ 返回", "callback_data": "back_setting"}]
         ]
     )
@@ -187,7 +237,7 @@ def send_clear_memory_confirm_message(bot_id, chat_id):
     _send_new_message(
         bot_id,
         chat_id,
-        "⚠️ 確認清除所有記憶？\n\n會清除：\n- 短期聊天記憶\n- 長期記憶\n- 情緒狀態\n\n不會清除：\n- 劇本設定\n- bot token\n- Gemini API key",
+        "⚠️ 確認清除所有記憶？\n\n會清除：\n- 短期聊天記憶\n- 長期記憶\n- 情緒狀態\n\n不會清除：\n- 聊天對象\n- 劇本設定\n- 回覆風格\n- bot token\n- Gemini API key",
         [
             [{"text": "✅ 確認清除", "callback_data": "confirm_clear_current_memory"}],
             [{"text": "取消清除", "callback_data": "cancel_clear_current_memory"}]
@@ -196,16 +246,33 @@ def send_clear_memory_confirm_message(bot_id, chat_id):
 
 
 # =========================
-# 新增確認訊息：刪除所有設定
+# 新增確認訊息：刪除所有人物 / 劇本設定
+# 注意：不刪回覆風格，讓風格可以傳承
 # =========================
 def send_delete_character_confirm_message(bot_id, chat_id):
 
     _send_new_message(
         bot_id,
         chat_id,
-        "⚠️ 確認刪除所有記憶？",
+        "⚠️ 確認刪除人物 / 劇本設定？\n\n會刪除：\n- 聊天對象\n- 劇本設定\n- 短期記憶\n- 長期記憶\n- 情緒狀態\n\n不會刪除：\n- 回覆風格\n- bot token\n- Gemini API key",
         [
             [{"text": "✅ 確認刪除", "callback_data": "confirm_delete_character"}],
             [{"text": "取消刪除", "callback_data": "cancel_delete_character"}]
+        ]
+    )
+
+
+# =========================
+# 新增確認訊息：刪除回覆風格
+# =========================
+def send_delete_reply_style_confirm_message(bot_id, chat_id):
+
+    _send_new_message(
+        bot_id,
+        chat_id,
+        "⚠️ 確認刪除自訂回覆風格？\n\n會刪除：\n- 自訂風格 | 聊天\n- 自訂風格 | 劇場\n\n不會刪除：\n- 聊天對象\n- 劇本設定\n- 記憶",
+        [
+            [{"text": "✅ 確認刪除", "callback_data": "confirm_delete_reply_style"}],
+            [{"text": "取消刪除", "callback_data": "cancel_delete_reply_style"}]
         ]
     )

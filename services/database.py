@@ -230,6 +230,7 @@ def init_db():
 
         # =========================
         # 劇本模式設定
+        # reply_style 保留舊欄位相容性，但新流程不再把風格存在這張表
         # =========================
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS character_settings (
@@ -243,6 +244,7 @@ def init_db():
             ai_appearance TEXT DEFAULT '',
             story_background TEXT DEFAULT '',
             ai_opening TEXT DEFAULT '',
+            reply_style TEXT DEFAULT '',
 
             user_gender TEXT DEFAULT '',
             user_appearance TEXT DEFAULT '',
@@ -254,8 +256,14 @@ def init_db():
         )
         """)
 
+        cursor.execute("""
+        ALTER TABLE character_settings
+        ADD COLUMN IF NOT EXISTS reply_style TEXT DEFAULT ''
+        """)
+
         # =========================
         # 聊天模式人物設定
+        # reply_style 保留舊欄位相容性，但新流程不再把風格存在這張表
         # =========================
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS chat_persona_settings (
@@ -265,10 +273,33 @@ def init_db():
             persona_name TEXT DEFAULT '',
             persona_gender TEXT DEFAULT '',
             persona_background TEXT DEFAULT '',
+            reply_style TEXT DEFAULT '',
 
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
 
             PRIMARY KEY (bot_id, chat_id)
+        )
+        """)
+
+        cursor.execute("""
+        ALTER TABLE chat_persona_settings
+        ADD COLUMN IF NOT EXISTS reply_style TEXT DEFAULT ''
+        """)
+
+        # =========================
+        # 回覆風格設定
+        # 與人物 / 劇本分離，換人物或換劇本時風格仍可保留
+        # style_type：chat / theater
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS reply_style_settings (
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            style_type TEXT NOT NULL,
+            reply_style TEXT DEFAULT '',
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            PRIMARY KEY (bot_id, chat_id, style_type)
         )
         """)
 

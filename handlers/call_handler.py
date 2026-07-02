@@ -3,14 +3,17 @@ from services.commands import (
     send_setting_menu,
     send_mode_menu,
     send_memory_menu,
+    send_reply_style_menu,
     send_clear_memory_confirm_message,
     send_delete_character_confirm_message,
+    send_delete_reply_style_confirm_message,
 )
 from services.character import (
     update_character_mode,
     delete_character_settings,
 )
 from services.chat_persona import delete_chat_persona_settings
+from services.reply_style import delete_reply_style_settings
 from services.memory import delete_current_memory
 from services.telegram_service import (
     answer_callback_query,
@@ -25,7 +28,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     print("callback", user_text, "message:", message_id)
 
     # =========================
-    # 結束設定
+    # 最上層：結束設定
     # 直接刪除目前這則設定選單訊息
     # =========================
     if user_text == "close_setting_menu":
@@ -59,6 +62,93 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
+    # 第一層：設定中心 → 回覆風格
+    # =========================
+    if user_text == "reply_style_setting":
+
+        answer_callback_query(bot_id, callback_id)
+
+        send_reply_style_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
+        return
+
+    # =========================
+    # 回覆風格表單 fallback
+    # 正常情況下不會進來，因為設定按鈕會是 url button
+    # =========================
+    if user_text in ["reply_style_chat", "reply_style_theater"]:
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="BASE_URL 尚未設定，無法開啟表單"
+        )
+
+        send_reply_style_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
+        return
+
+    # =========================
+    # 回覆風格 → 新增刪除確認訊息
+    # =========================
+    if user_text == "delete_reply_style":
+
+        answer_callback_query(bot_id, callback_id)
+
+        send_delete_reply_style_confirm_message(
+            bot_id,
+            chat_id
+        )
+        return
+
+    # =========================
+    # 確認刪除回覆風格
+    # 只刪回覆風格，不刪人物 / 劇本 / 記憶
+    # =========================
+    if user_text == "confirm_delete_reply_style":
+
+        delete_reply_style_settings(bot_id, chat_id)
+
+        delete_message(
+            bot_id,
+            chat_id,
+            message_id
+        )
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="✅ 已刪除自訂回覆風格"
+        )
+        return
+
+    # =========================
+    # 取消刪除回覆風格
+    # =========================
+    if user_text == "cancel_delete_reply_style":
+
+        delete_message(
+            bot_id,
+            chat_id,
+            message_id
+        )
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="已取消刪除"
+        )
+        return
+
+    # =========================
     # 第一層：設定中心 → 記憶設定
     # =========================
     if user_text == "memory_setting":
@@ -87,7 +177,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認清除當前記憶
-    # 只刪記憶，不刪人物 / 劇本設定
+    # 只刪記憶，不刪人物 / 劇本 / 回覆風格
     # =========================
     if user_text == "confirm_clear_current_memory":
 
@@ -165,7 +255,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
-    # 表單 fallback
+    # 人物 / 劇本表單 fallback
     # 正常情況下不會進來，因為設定按鈕會是 url button
     # =========================
     if user_text == "script_setting":
@@ -198,14 +288,15 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
-    # 確認刪除所有設定
-    # 目前不分聊天模式 / 劇場模式
-    # 會一起刪：
+    # 確認刪除人物 / 劇本設定
+    # 會刪：
     # - 聊天模式人物設定
     # - 劇本設定
     # - 短期記憶
     # - 長期記憶
     # - 情緒狀態
+    # 不會刪：
+    # - 回覆風格
     # =========================
     if user_text == "confirm_delete_character":
 
@@ -224,12 +315,12 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="✅ 已刪除所有設定與記憶"
+            text="✅ 已刪除人物 / 劇本設定與記憶"
         )
         return
 
     # =========================
-    # 取消刪除所有設定
+    # 取消刪除人物 / 劇本設定
     # =========================
     if user_text == "cancel_delete_character":
 

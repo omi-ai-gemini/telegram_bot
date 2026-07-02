@@ -13,6 +13,7 @@ def ask_gemini(
     mode="聊天模式",
     chat_persona_settings=None,
     character_settings=None,
+    reply_style_settings=None,
     facts=None
 ):
 
@@ -26,6 +27,7 @@ def ask_gemini(
         mode=mode,
         chat_persona_settings=chat_persona_settings,
         character_settings=character_settings,
+        reply_style_settings=reply_style_settings,
         facts=facts
     )
 

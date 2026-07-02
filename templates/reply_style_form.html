@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>{{ title }}</title>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #ffffff;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 640px;
+      margin: 0 auto;
+    }
+
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+
+    h1 {
+      margin: 0 0 8px 0;
+      font-size: 26px;
+    }
+
+    .desc {
+      margin: 0 0 20px 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.72);
+    }
+
+    .note {
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #bfdbfe;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.28);
+    }
+
+    .default-box {
+      margin-top: 10px;
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 12px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      color: rgba(255, 255, 255, 0.68);
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .section-title {
+      font-size: 18px;
+      font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.86);
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 220px;
+      resize: vertical;
+      line-height: 1.6;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 14px;
+      padding: 13px 14px;
+      font-size: 15px;
+      color: #ffffff;
+      background: rgba(255, 255, 255, 0.08);
+      outline: none;
+    }
+
+    textarea:focus {
+      border-color: rgba(96, 165, 250, 0.9);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
+    }
+
+    .hint {
+      margin-top: 6px;
+      font-size: 12px;
+      line-height: 1.5;
+      color: rgba(255, 255, 255, 0.48);
+    }
+
+    .button {
+      width: 100%;
+      margin-top: 24px;
+      padding: 15px;
+      border: none;
+      border-radius: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #ffffff;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      cursor: pointer;
+    }
+
+    .button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    .button:active {
+      transform: scale(0.98);
+    }
+
+    .status {
+      display: none;
+      margin-top: 14px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .status.success {
+      display: block;
+      background: rgba(34, 197, 94, 0.16);
+      border: 1px solid rgba(34, 197, 94, 0.28);
+      color: #bbf7d0;
+    }
+
+    .status.error {
+      display: block;
+      background: rgba(239, 68, 68, 0.16);
+      border: 1px solid rgba(239, 68, 68, 0.28);
+      color: #fecaca;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="page">
+    <div class="card">
+
+      <h1>🎨 {{ title }}</h1>
+
+      <p class="desc">
+        {{ subtitle }}
+      </p>
+
+      <div class="note">
+        這裡不是設定人物，也不是設定劇本；只設定回覆時的樣子。空白儲存時會使用系統預設樣式。
+      </div>
+
+      <div class="section">
+        <div class="section-title">系統預設樣式</div>
+        <div class="default-box">{{ default_style }}</div>
+      </div>
+
+      <form id="reply-style-form">
+
+        <input type="hidden" name="bot_id" value="{{ bot_id }}">
+        <input type="hidden" name="chat_id" value="{{ chat_id }}">
+        <input type="hidden" name="user_id" value="{{ user_id }}">
+        <input type="hidden" name="style_type" value="{{ style_type }}">
+
+        <div class="section">
+          <div class="section-title">自訂風格</div>
+
+          <div class="field">
+            <label for="reply_style">回覆風格</label>
+            <textarea
+              id="reply_style"
+              name="reply_style"
+              placeholder="例如：使用括號描寫動作，但每次最多一段；語氣要自然，避免太長。"
+            >{{ settings.reply_style }}</textarea>
+            <div class="hint">留白代表使用上方系統預設樣式。</div>
+          </div>
+        </div>
+
+        <button id="submit-btn" type="submit" class="button">確認儲存</button>
+
+        <div id="status" class="status"></div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById("reply-style-form");
+    const statusBox = document.getElementById("status");
+    const submitBtn = document.getElementById("submit-btn");
+
+    function showStatus(type, message) {
+      statusBox.className = "status " + type;
+      statusBox.textContent = message;
+    }
+
+    form.addEventListener("submit", async function(e) {
+      e.preventDefault();
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "儲存中...";
+
+      const formData = new FormData(form);
+
+      try {
+        const response = await fetch("/setting/reply_style/save", {
+          method: "POST",
+          body: formData
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.ok) {
+          showStatus("success", result.message || "回覆風格已儲存，可以關閉此頁。");
+          submitBtn.textContent = "已儲存";
+        } else {
+          showStatus("error", result.message || "儲存失敗，請檢查欄位。");
+          submitBtn.disabled = false;
+          submitBtn.textContent = "確認儲存";
+        }
+
+      } catch (error) {
+        console.error(error);
+        showStatus("error", "無法連線到伺服器，請稍後再試。");
+        submitBtn.disabled = false;
+        submitBtn.textContent = "確認儲存";
+      }
+    });
+  </script>
+</body>
+</html>

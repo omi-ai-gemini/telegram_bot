@@ -6,6 +6,7 @@ from services.memory import get_recent_chat
 from services.gemini_service import summarize_memory
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
+from services.reply_style import get_reply_style_settings
 from services.memory import (
     add_chat,
     get_chat,
@@ -89,6 +90,16 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             chat_persona_settings = get_chat_persona_settings(bot_id, chat_id)
 
         # =========================
+        # 獨立回覆風格設定
+        # 聊天 / 劇場各自保存，不跟人物或劇本綁定
+        # =========================
+        reply_style_settings = get_reply_style_settings(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            style_type=mode
+        )
+
+        # =========================
         # 摘要觸發
         # =========================
         if len(history) >= 30:
@@ -127,6 +138,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             mode=mode,
             chat_persona_settings=chat_persona_settings,
             character_settings=character_settings,
+            reply_style_settings=reply_style_settings,
             facts=facts
         )
 

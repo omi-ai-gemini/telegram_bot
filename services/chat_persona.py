@@ -14,6 +14,7 @@ def _text_id(value):
 
 # =========================
 # 檢查是否有設定聊天人物
+# 注意：回覆風格已移到 reply_style_settings，不算聊天人物本體
 # =========================
 def has_chat_persona_settings(settings):
 
@@ -74,6 +75,7 @@ def get_chat_persona_settings(bot_id, chat_id):
 
 # =========================
 # 更新聊天模式人物設定
+# 不更新 reply_style，避免換聊天對象時覆蓋獨立風格設定
 # =========================
 def update_chat_persona_settings(bot_id, chat_id, settings):
 
@@ -132,6 +134,7 @@ def update_chat_persona_settings(bot_id, chat_id, settings):
 
 # =========================
 # 刪除聊天模式人物設定
+# 不刪 reply_style_settings，讓聊天風格可以傳承
 # =========================
 def delete_chat_persona_settings(bot_id, chat_id):
 

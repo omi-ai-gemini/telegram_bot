@@ -3,6 +3,7 @@ from services.database import get_conn
 
 # =========================
 # 預設劇本設定
+# 回覆風格已移到 reply_style_settings，不再跟劇本綁定
 # =========================
 DEFAULT_CHARACTER_SETTINGS = {
     "mode": "聊天模式",
@@ -140,6 +141,7 @@ def get_character_settings(bot_id, chat_id):
 
 # =========================
 # 更新完整劇本設定
+# 不更新 reply_style，避免換劇本時覆蓋獨立風格設定
 # =========================
 def update_character_settings(bot_id, chat_id, settings):
 
@@ -235,6 +237,7 @@ def update_character_settings(bot_id, chat_id, settings):
 
 # =========================
 # 刪除劇本設定
+# 不刪 reply_style_settings，讓劇場風格可以傳承
 # =========================
 def delete_character_settings(bot_id, chat_id):
 
