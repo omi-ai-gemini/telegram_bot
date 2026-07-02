@@ -2,7 +2,7 @@ import os
 import requests
 from urllib.parse import urlencode
 from services.bot_router import get_bot_token
-from services.character import get_character_mode
+from services.character import get_character_mode, get_script_opening_status
 
 # =========================
 # Telegram API POST
@@ -112,6 +112,9 @@ def _send_new_message(bot_id, chat_id, text, inline_keyboard):
 # =========================
 def send_setting_menu(bot_id, chat_id, message_id=None):
 
+    opening_status = get_script_opening_status(bot_id, chat_id)
+    start_script_text = opening_status.get("button_text", "▶️ 開始劇本 | 無開場白")
+
     _send_or_edit(
         bot_id,
         chat_id,
@@ -121,7 +124,7 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
             [{"text": "👤 人物設定", "callback_data": "character_setting"}],
             [{"text": "🎨 回覆風格", "callback_data": "reply_style_setting"}],
             [{"text": "🧠 記憶設定", "callback_data": "memory_setting"}],
-            [{"text": "🔑 API設定", "callback_data": "api_setting"}],
+            [{"text": start_script_text, "callback_data": "start_script"}],
             [{"text": "❌ 結束設定", "callback_data": "close_setting_menu"}]
         ]
     )
@@ -190,6 +193,23 @@ def send_reply_style_menu(bot_id, chat_id, message_id=None, user_id=None):
             theater_button,
             [{"text": "🗑️ 刪除自訂風格", "callback_data": "delete_reply_style"}],
             [{"text": "⬅️ 返回", "callback_data": "back_setting"}]
+        ]
+    )
+
+
+# =========================
+# /setting/開始劇本/再次發送確認
+# =========================
+def send_start_script_confirm_menu(bot_id, chat_id, message_id=None):
+
+    _send_or_edit(
+        bot_id,
+        chat_id,
+        message_id,
+        "⚠️ 此劇本已經開場過。\n\n確定再次發送開場白？",
+        [
+            [{"text": "✅ 確定再次發送開場白", "callback_data": "confirm_restart_script"}],
+            [{"text": "⬅️ 回上一頁", "callback_data": "back_setting"}]
         ]
     )
 

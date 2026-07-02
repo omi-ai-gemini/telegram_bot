@@ -227,8 +227,7 @@ def save_character_setting():
         "ai_name": "AI姓名",
         "ai_gender": "AI性別",
         "ai_appearance": "AI形象",
-        "story_background": "故事背景",
-        "ai_opening": "AI開場白"
+        "story_background": "故事背景"
     }
 
     missing_fields = []

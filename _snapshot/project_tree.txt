@@ -1,0 +1,41 @@
+📁 .agents/
+📄 __init__.py
+📄 api.py
+📄 check_db.py
+📄 config.py
+📁 handlers/
+  📄 __init__.py
+  📄 call_handler.py
+  📄 message_handler.py
+📄 main.py
+📄 requirements.txt
+📁 routes/
+  📄 admin.py
+  📄 setting.py
+📁 services/
+  📄 __init__.py
+  📄 bot_router.py
+  📄 call_ai.py
+  📄 character.py
+  📄 chat_persona.py
+  📄 commands.py
+  📄 database.py
+  📄 gemini_service.py
+  📄 memory.py
+  📄 reply_style.py
+  📄 style.py
+  📄 telegram_service.py
+  📄 user_router.py
+📁 static/
+📁 templates/
+  📄 character_form.html
+  📄 chat_persona_form.html
+  📄 developer.html
+  📄 index.html
+  📄 login.html
+  📄 manual.html
+  📄 reply_style_form.html
+📄 test_db.py
+📁 tools/
+  📄 project_snapshot.py
+📄 模式-使用說明.txt

@@ -185,7 +185,7 @@
       </p>
 
       <div class="required-note">
-        AI 設定為必填；使用者設定可以先空白。
+        AI 姓名、性別、形象、故事背景為必填；開場白與使用者設定可以先空白。
       </div>
 
       <form id="character-form">
@@ -240,12 +240,11 @@
           </div>
 
           <div class="field">
-            <label for="ai_opening">AI 開場白 <span class="required">*</span></label>
+            <label for="ai_opening">AI 開場白</label>
             <textarea
               id="ai_opening"
               name="ai_opening"
-              placeholder="第一次互動時，AI 要說的話..."
-              required
+              placeholder="按下「開始劇本」時要送出的第一句話，可以空白..."
             >{{ settings.ai_opening }}</textarea>
           </div>
         </div>

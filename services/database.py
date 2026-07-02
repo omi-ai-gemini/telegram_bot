@@ -244,6 +244,8 @@ def init_db():
             ai_appearance TEXT DEFAULT '',
             story_background TEXT DEFAULT '',
             ai_opening TEXT DEFAULT '',
+            opening_sent BOOLEAN DEFAULT FALSE,
+            script_hash TEXT DEFAULT '',
             reply_style TEXT DEFAULT '',
 
             user_gender TEXT DEFAULT '',
@@ -254,6 +256,16 @@ def init_db():
 
             PRIMARY KEY (bot_id, chat_id)
         )
+        """)
+
+        cursor.execute("""
+        ALTER TABLE character_settings
+        ADD COLUMN IF NOT EXISTS opening_sent BOOLEAN DEFAULT FALSE
+        """)
+
+        cursor.execute("""
+        ALTER TABLE character_settings
+        ADD COLUMN IF NOT EXISTS script_hash TEXT DEFAULT ''
         """)
 
         cursor.execute("""

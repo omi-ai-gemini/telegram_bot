@@ -1,3 +1,6 @@
+from hashlib import sha256
+import json
+
 from services.database import get_conn
 
 
@@ -16,12 +19,54 @@ DEFAULT_CHARACTER_SETTINGS = {
 
     "user_gender": "",
     "user_appearance": "",
-    "user_other_settings": ""
+    "user_other_settings": "",
+
+    "opening_sent": False,
+    "script_hash": ""
 }
+
+
+# =========================
+# 會影響「是否重新回到未開場」的劇本欄位
+# =========================
+SCRIPT_HASH_KEYS = [
+    "ai_name",
+    "ai_gender",
+    "ai_appearance",
+    "story_background",
+    "ai_opening",
+    "user_gender",
+    "user_appearance",
+    "user_other_settings"
+]
 
 
 def _text_id(value):
     return str(value)
+
+
+def _clean_text(value):
+    return str(value or "").strip()
+
+
+# =========================
+# 建立劇本指紋
+# 用途：判斷劇本是否真的被改動
+# =========================
+def build_script_hash(settings):
+
+    payload = {}
+
+    for key in SCRIPT_HASH_KEYS:
+        payload[key] = _clean_text(settings.get(key, ""))
+
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True
+    )
+
+    return sha256(raw.encode("utf-8")).hexdigest()
 
 
 # =========================
@@ -36,6 +81,7 @@ def get_character_mode(bot_id, chat_id):
 
 # =========================
 # 更新人物模式
+# 不改 opening_sent / script_hash
 # =========================
 def update_character_mode(bot_id, chat_id, mode):
 
@@ -103,7 +149,9 @@ def get_character_settings(bot_id, chat_id):
                 ai_opening,
                 user_gender,
                 user_appearance,
-                user_other_settings
+                user_other_settings,
+                opening_sent,
+                script_hash
             FROM character_settings
             WHERE bot_id = %s
               AND chat_id = %s
@@ -128,7 +176,10 @@ def get_character_settings(bot_id, chat_id):
 
             "user_gender": row[6] or "",
             "user_appearance": row[7] or "",
-            "user_other_settings": row[8] or ""
+            "user_other_settings": row[8] or "",
+
+            "opening_sent": bool(row[9]),
+            "script_hash": row[10] or ""
         }
 
     except Exception as e:
@@ -140,8 +191,90 @@ def get_character_settings(bot_id, chat_id):
 
 
 # =========================
+# 取得開場白狀態
+# 回傳：
+# - no_opening：沒有填開場白
+# - not_started：有開場白，尚未開場
+# - started：有開場白，已開場
+# =========================
+def get_script_opening_status(bot_id, chat_id):
+
+    settings = get_character_settings(bot_id, chat_id)
+    opening_text = _clean_text(settings.get("ai_opening", ""))
+
+    if not opening_text:
+        return {
+            "status": "no_opening",
+            "button_text": "▶️ 開始劇本 | 無開場白",
+            "opening_text": "",
+            "opening_sent": False
+        }
+
+    opening_sent = bool(settings.get("opening_sent", False))
+
+    if opening_sent:
+        return {
+            "status": "started",
+            "button_text": "▶️ 開始劇本 | 已開場",
+            "opening_text": opening_text,
+            "opening_sent": True
+        }
+
+    return {
+        "status": "not_started",
+        "button_text": "▶️ 開始劇本 | 未開場",
+        "opening_text": opening_text,
+        "opening_sent": False
+    }
+
+
+# =========================
+# 標記劇本已經送出開場白
+# =========================
+def mark_script_opening_sent(bot_id, chat_id):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+
+    settings = get_character_settings(bot_id, chat_id)
+    script_hash = settings.get("script_hash") or build_script_hash(settings)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            UPDATE character_settings
+            SET
+                opening_sent = TRUE,
+                script_hash = %s,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE bot_id = %s
+              AND chat_id = %s
+        """, (
+            script_hash,
+            bot_id,
+            chat_id
+        ))
+
+        conn.commit()
+
+        print("DEBUG script opening marked sent:", bot_id, chat_id)
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR mark_script_opening_sent:", e)
+        raise
+
+    finally:
+        conn.close()
+
+
+# =========================
 # 更新完整劇本設定
 # 不更新 reply_style，避免換劇本時覆蓋獨立風格設定
+# 劇本內容改動時 opening_sent 會自動回到 False
 # =========================
 def update_character_settings(bot_id, chat_id, settings):
 
@@ -160,10 +293,36 @@ def update_character_settings(bot_id, chat_id, settings):
     user_appearance = settings.get("user_appearance", "")
     user_other_settings = settings.get("user_other_settings", "")
 
+    new_hash = build_script_hash(settings)
+    old_hash = ""
+    old_opening_sent = False
+
     conn = get_conn()
 
     try:
         cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT script_hash, opening_sent
+            FROM character_settings
+            WHERE bot_id = %s
+              AND chat_id = %s
+        """, (
+            bot_id,
+            chat_id
+        ))
+
+        row = cursor.fetchone()
+
+        if row:
+            old_hash = row[0] or ""
+            old_opening_sent = bool(row[1])
+
+        # =========================
+        # 劇本真的沒變才保留已開場狀態
+        # 劇本一變，就回到未開場
+        # =========================
+        opening_sent = old_opening_sent if old_hash == new_hash else False
 
         cursor.execute("""
             INSERT INTO character_settings (
@@ -181,12 +340,15 @@ def update_character_settings(bot_id, chat_id, settings):
                 user_appearance,
                 user_other_settings,
 
+                opening_sent,
+                script_hash,
                 updated_at
             )
             VALUES (
                 %s, %s, %s,
                 %s, %s, %s, %s, %s,
                 %s, %s, %s,
+                %s, %s,
                 CURRENT_TIMESTAMP
             )
 
@@ -205,6 +367,8 @@ def update_character_settings(bot_id, chat_id, settings):
                 user_appearance = EXCLUDED.user_appearance,
                 user_other_settings = EXCLUDED.user_other_settings,
 
+                opening_sent = EXCLUDED.opening_sent,
+                script_hash = EXCLUDED.script_hash,
                 updated_at = CURRENT_TIMESTAMP
         """, (
             bot_id,
@@ -219,12 +383,21 @@ def update_character_settings(bot_id, chat_id, settings):
 
             user_gender,
             user_appearance,
-            user_other_settings
+            user_other_settings,
+
+            opening_sent,
+            new_hash
         ))
 
         conn.commit()
 
-        print("DEBUG character settings updated:", bot_id, chat_id)
+        print(
+            "DEBUG character settings updated:",
+            bot_id,
+            chat_id,
+            "opening_sent=",
+            opening_sent
+        )
 
     except Exception as e:
         conn.rollback()

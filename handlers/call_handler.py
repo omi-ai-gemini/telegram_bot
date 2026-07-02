@@ -4,21 +4,61 @@ from services.commands import (
     send_mode_menu,
     send_memory_menu,
     send_reply_style_menu,
+    send_start_script_confirm_menu,
     send_clear_memory_confirm_message,
     send_delete_character_confirm_message,
     send_delete_reply_style_confirm_message,
 )
 from services.character import (
+    get_script_opening_status,
+    mark_script_opening_sent,
     update_character_mode,
     delete_character_settings,
 )
 from services.chat_persona import delete_chat_persona_settings
 from services.reply_style import delete_reply_style_settings
-from services.memory import delete_current_memory
+from services.memory import add_chat, delete_current_memory
 from services.telegram_service import (
+    send_message,
     answer_callback_query,
     delete_message,
 )
+
+
+# =========================
+# 傳送劇本開場白
+# - 傳送到 Telegram
+# - 寫入短期記憶 role=assistant
+# - 標記 opening_sent=True
+# =========================
+def _send_script_opening(bot_id, chat_id):
+
+    opening_status = get_script_opening_status(bot_id, chat_id)
+    opening_text = opening_status.get("opening_text", "").strip()
+
+    if not opening_text:
+        return False
+
+    send_message(
+        bot_id,
+        chat_id,
+        opening_text
+    )
+
+    add_chat(
+        bot_id,
+        chat_id,
+        "assistant",
+        opening_text
+    )
+
+    mark_script_opening_sent(
+        bot_id,
+        chat_id
+    )
+
+    return True
+
 
 # =========================
 # callback_query
@@ -43,6 +83,90 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
             bot_id,
             callback_id,
             text="已結束設定"
+        )
+        return
+
+    # =========================
+    # 第一層：設定中心 → 開始劇本
+    # =========================
+    if user_text == "start_script":
+
+        opening_status = get_script_opening_status(bot_id, chat_id)
+        status = opening_status.get("status")
+
+        # =========================
+        # 沒有開場白：只刪選單，不傳訊息
+        # =========================
+        if status == "no_opening":
+
+            delete_message(
+                bot_id,
+                chat_id,
+                message_id
+            )
+
+            answer_callback_query(
+                bot_id,
+                callback_id,
+                text="此劇本沒有開場白"
+            )
+            return
+
+        # =========================
+        # 已開場：進入再次發送確認選單
+        # =========================
+        if status == "started":
+
+            answer_callback_query(bot_id, callback_id)
+
+            send_start_script_confirm_menu(
+                bot_id,
+                chat_id,
+                message_id
+            )
+            return
+
+        # =========================
+        # 未開場：刪選單、傳開場白、寫短期記憶
+        # =========================
+        delete_message(
+            bot_id,
+            chat_id,
+            message_id
+        )
+
+        sent = _send_script_opening(
+            bot_id,
+            chat_id
+        )
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="劇本已開始" if sent else "此劇本沒有開場白"
+        )
+        return
+
+    # =========================
+    # 確認再次發送開場白
+    # =========================
+    if user_text == "confirm_restart_script":
+
+        delete_message(
+            bot_id,
+            chat_id,
+            message_id
+        )
+
+        sent = _send_script_opening(
+            bot_id,
+            chat_id
+        )
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="已再次發送開場白" if sent else "此劇本沒有開場白"
         )
         return
 
