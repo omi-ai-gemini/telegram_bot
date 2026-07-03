@@ -211,6 +211,8 @@ C:\Projects\telemini
 - `list_encrypted_metadata()`
 
 ### `services\gemini_service.py`
+- `_extract_finish_reason()`
+- `_safe_response_text()`
 - `ask_gemini()`
 - `summarize_memory()`
 

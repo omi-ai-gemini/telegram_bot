@@ -217,6 +217,16 @@ def init_db():
         )
         """)
 
+        cursor.execute("""
+        ALTER TABLE facts_memory
+        ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_facts_memory_lookup
+        ON facts_memory (bot_id, chat_id, scope, created_at)
+        """)
+
         # =========================
         # 情緒記憶
         # =========================
