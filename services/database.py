@@ -244,8 +244,6 @@ def init_db():
             ai_appearance TEXT DEFAULT '',
             story_background TEXT DEFAULT '',
             ai_opening TEXT DEFAULT '',
-            opening_sent BOOLEAN DEFAULT FALSE,
-            script_hash TEXT DEFAULT '',
             reply_style TEXT DEFAULT '',
 
             user_gender TEXT DEFAULT '',
@@ -256,16 +254,6 @@ def init_db():
 
             PRIMARY KEY (bot_id, chat_id)
         )
-        """)
-
-        cursor.execute("""
-        ALTER TABLE character_settings
-        ADD COLUMN IF NOT EXISTS opening_sent BOOLEAN DEFAULT FALSE
-        """)
-
-        cursor.execute("""
-        ALTER TABLE character_settings
-        ADD COLUMN IF NOT EXISTS script_hash TEXT DEFAULT ''
         """)
 
         cursor.execute("""
@@ -313,6 +301,56 @@ def init_db():
 
             PRIMARY KEY (bot_id, chat_id, style_type)
         )
+        """)
+
+
+        # =========================
+        # 通用加密資料表
+        # 使用者解鎖碼不存 DB；只存加密後的 JSONB payload
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS encrypted_settings (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            data_type TEXT NOT NULL,
+            record_key TEXT NOT NULL DEFAULT 'default',
+            encrypted_payload JSONB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            UNIQUE (user_id, bot_id, chat_id, data_type, record_key)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_encrypted_settings_lookup
+        ON encrypted_settings (user_id, bot_id, chat_id, data_type)
+        """)
+
+        # =========================
+        # 隱私管理權限
+        # 只記錄使用者是否已取得資料庫密碼，不保存密碼明文
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS privacy_access (
+            user_id TEXT NOT NULL,
+            bot_id TEXT NOT NULL,
+            unlock_code_issued BOOLEAN NOT NULL DEFAULT FALSE,
+            delivery_status TEXT NOT NULL DEFAULT 'not_issued',
+            issued_chat_id TEXT,
+            issued_at TIMESTAMP,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            PRIMARY KEY (user_id, bot_id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_privacy_access_lookup
+        ON privacy_access (bot_id, user_id, unlock_code_issued)
         """)
 
         conn.commit()

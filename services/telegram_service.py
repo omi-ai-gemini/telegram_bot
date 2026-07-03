@@ -11,21 +11,28 @@ def send_message(bot_id, chat_id, text):
 
     if not token:
         print("X token not found")
-        return
-    
+        return False
+
     url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
 
-    res = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": text
-        },
-        timeout=30
-    )
+    try:
+        res = requests.post(
+            url,
+            json={
+                "chat_id": chat_id,
+                "text": text
+            },
+            timeout=30
+        )
+    except Exception as e:
+        print("TELEGRAM sendMessage REQUEST ERROR:", e)
+        return False
 
     if not res.ok:
         print("TELEGRAM sendMessage ERROR:", res.text)
+        return False
+
+    return True
 
 
 # =========================

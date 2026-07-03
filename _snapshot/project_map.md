@@ -16,6 +16,7 @@ C:\Projects\telemini
 - `api.py`
 - `check_db.py`
 - `config.py`
+- `docs\PRIVACY_ACCESS_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -29,9 +30,12 @@ C:\Projects\telemini
 - `services\character.py`
 - `services\chat_persona.py`
 - `services\commands.py`
+- `services\crypto_box.py`
 - `services\database.py`
+- `services\encrypted_store.py`
 - `services\gemini_service.py`
 - `services\memory.py`
+- `services\privacy_access.py`
 - `services\reply_style.py`
 - `services\style.py`
 - `services\telegram_service.py`
@@ -46,6 +50,7 @@ C:\Projects\telemini
 - `test_db.py`
 - `tools\project_snapshot.py`
 - `模式-使用說明.txt`
+- `開場-更新說明.txt`
 
 ## Python 路由總覽
 
@@ -85,6 +90,7 @@ C:\Projects\telemini
 - `get_users()`
 
 ### `handlers\call_handler.py`
+- `_send_script_opening()`
 - `handle_ui()`
 
 ### `handlers\message_handler.py`
@@ -123,9 +129,13 @@ C:\Projects\telemini
 
 ### `services\character.py`
 - `_text_id()`
+- `_clean_text()`
+- `build_script_hash()`
 - `get_character_mode()`
 - `update_character_mode()`
 - `get_character_settings()`
+- `get_script_opening_status()`
+- `mark_script_opening_sent()`
 - `update_character_settings()`
 - `delete_character_settings()`
 
@@ -145,11 +155,21 @@ C:\Projects\telemini
 - `send_setting_menu()`
 - `send_character_menu()`
 - `send_reply_style_menu()`
+- `send_start_script_confirm_menu()`
 - `send_mode_menu()`
 - `send_memory_menu()`
 - `send_clear_memory_confirm_message()`
 - `send_delete_character_confirm_message()`
 - `send_delete_reply_style_confirm_message()`
+
+### `services\crypto_box.py`
+- `generate_unlock_code()`
+- `build_aad()`
+- `_b64_encode()`
+- `_b64_decode()`
+- `derive_key()`
+- `encrypt_payload()`
+- `decrypt_payload()`
 
 ### `services\database.py`
 - `get_conn()`
@@ -162,6 +182,13 @@ C:\Projects\telemini
 - `__getattr__()`
 - `__enter__()`
 - `__exit__()`
+
+### `services\encrypted_store.py`
+- `create_user_unlock_code()`
+- `save_encrypted_payload()`
+- `get_encrypted_payload()`
+- `delete_encrypted_payload()`
+- `list_encrypted_metadata()`
 
 ### `services\gemini_service.py`
 - `ask_gemini()`
@@ -182,6 +209,19 @@ C:\Projects\telemini
 - `add_chat()`
 - `get_chat()`
 - `get_recent_chat()`
+
+### `services\privacy_access.py`
+- `_text_id()`
+- `_is_group_chat()`
+- `_cache_key()`
+- `_is_pending_private_notice_cached()`
+- `_mark_pending_private_notice()`
+- `_mark_issued_cache()`
+- `_is_issued_cached()`
+- `build_privacy_password_message()`
+- `_send_unlock_code_safely()`
+- `ensure_privacy_password_issued()`
+- `has_privacy_password_issued()`
 
 ### `services\reply_style.py`
 - `_text_id()`

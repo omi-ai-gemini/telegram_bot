@@ -3,6 +3,8 @@
 📄 api.py
 📄 check_db.py
 📄 config.py
+📁 docs/
+  📄 PRIVACY_ACCESS_README.md
 📁 handlers/
   📄 __init__.py
   📄 call_handler.py
@@ -19,9 +21,12 @@
   📄 character.py
   📄 chat_persona.py
   📄 commands.py
+  📄 crypto_box.py
   📄 database.py
+  📄 encrypted_store.py
   📄 gemini_service.py
   📄 memory.py
+  📄 privacy_access.py
   📄 reply_style.py
   📄 style.py
   📄 telegram_service.py
@@ -39,3 +44,4 @@
 📁 tools/
   📄 project_snapshot.py
 📄 模式-使用說明.txt
+📄 開場-更新說明.txt

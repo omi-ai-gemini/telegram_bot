@@ -206,6 +206,100 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 ================================================================================
 
+# docs\PRIVACY_ACCESS_README.md
+
+- 類型：.md
+- 行數：103
+
+## preview
+```text
+# Telemini 隱私管理權限 / 資料庫密碼自動補發包
+
+## 這包做了什麼
+
+新增：
+
+- `services/crypto_box.py`
+- `services/encrypted_store.py`
+- `services/privacy_access.py`
+- `docs/PRIVACY_ACCESS_README.md`
+
+覆蓋：
+
+- `services/database.py`
+- `services/telegram_service.py`
+- `handlers/message_handler.py`
+- `requirements.txt`
+
+## 使用者取得密碼流程
+
+每次文字訊息進入 `handle_message()` 時，會先呼叫：
+
+```python
+ensure_privacy_password_issued(user_id, bot_id, chat_id)
+```
+
+但它不是每次都查 DB：
+
+1. 同一個 Render process 內，已發放者會進 `_ISSUED_CACHE`。
+2. 已發放後後續訊息直接略過。
+3. Render 重啟後，第一次會查 DB，查到已發放後又進快取。
+
+## 私聊
+
+使用者下一次私聊 bot，只要還沒拿過，就會自動收到：
+
+```text
+資料庫新增隱私管理權限
+個別資料庫密碼：
+XXXXXXXXXXXXXX
+
+妥善保存密碼，遺失就無法後台修改。
+隱私保護項目：記憶資料、劇本資料、風格資料、人物設定資料、後續納入隱私保護的資料
+
+注意：系統不會保存這組密碼明文，之後也不會再次顯示。
+```
+
+## 群組
+
+群組內不公開傳密碼。
+
+流程：
+
+1. 使用者在群組傳訊息。
+2. 系統嘗試私訊該使用者。
+3. 如果私訊成功，密碼送到私聊。
+4. 如果私訊失敗，群組只提示使用者先去私訊 bot。
+
+## DB 狀態表
+
+```sql
+privacy_access
+- user_id
+- bot_id
+- unlock_code_issued
+- delivery_status
+- issued_chat_id
+- issued_at
+- created_at
+- updated_at
+```
+
+注意：DB 不保存明文密碼，只記錄是否已發放。
+
+## 加密資料表
+
+```sql
+encrypted_settings
+- user_id
+- bot_id
+...
+... 已省略 23 行
+```
+
+
+================================================================================
+
 # handlers\__init__.py
 
 - 類型：.py
@@ -221,10 +315,12 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：369
+- 行數：493
 
 ## imports
 - services.character.delete_character_settings
+- services.character.get_script_opening_status
+- services.character.mark_script_opening_sent
 - services.character.update_character_mode
 - services.chat_persona.delete_chat_persona_settings
 - services.commands.send_character_menu
@@ -235,12 +331,16 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 - services.commands.send_mode_menu
 - services.commands.send_reply_style_menu
 - services.commands.send_setting_menu
+- services.commands.send_start_script_confirm_menu
+- services.memory.add_chat
 - services.memory.delete_current_memory
 - services.reply_style.delete_reply_style_settings
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
+- services.telegram_service.send_message
 
 ## functions
+- _send_script_opening
 - handle_ui
 
 ## preview
@@ -251,21 +351,61 @@ from services.commands import (
     send_mode_menu,
     send_memory_menu,
     send_reply_style_menu,
+    send_start_script_confirm_menu,
     send_clear_memory_confirm_message,
     send_delete_character_confirm_message,
     send_delete_reply_style_confirm_message,
 )
 from services.character import (
+    get_script_opening_status,
+    mark_script_opening_sent,
     update_character_mode,
     delete_character_settings,
 )
 from services.chat_persona import delete_chat_persona_settings
 from services.reply_style import delete_reply_style_settings
-from services.memory import delete_current_memory
+from services.memory import add_chat, delete_current_memory
 from services.telegram_service import (
+    send_message,
     answer_callback_query,
     delete_message,
 )
+
+
+# =========================
+# 傳送劇本開場白
+# - 傳送到 Telegram
+# - 寫入短期記憶 role=assistant
+# - 標記 opening_sent=True
+# =========================
+def _send_script_opening(bot_id, chat_id):
+
+    opening_status = get_script_opening_status(bot_id, chat_id)
+    opening_text = opening_status.get("opening_text", "").strip()
+
+    if not opening_text:
+        return False
+
+    send_message(
+        bot_id,
+        chat_id,
+        opening_text
+    )
+
+    add_chat(
+        bot_id,
+        chat_id,
+        "assistant",
+        opening_text
+    )
+
+    mark_script_opening_sent(
+        bot_id,
+        chat_id
+    )
+
+    return True
+
 
 # =========================
 # callback_query
@@ -285,48 +425,8 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
             chat_id,
             message_id
         )
-
-        answer_callback_query(
-            bot_id,
-            callback_id,
-            text="已結束設定"
-        )
-        return
-
-    # =========================
-    # 第一層：設定中心 → 人物設定
-    # =========================
-    if user_text == "character_setting":
-
-        answer_callback_query(bot_id, callback_id)
-
-        send_character_menu(
-            bot_id,
-            chat_id,
-            message_id,
-            user_id=user_id
-        )
-        return
-
-    # =========================
-    # 第一層：設定中心 → 回覆風格
-    # =========================
-    if user_text == "reply_style_setting":
-
-        answer_callback_query(bot_id, callback_id)
-
-        send_reply_style_menu(
-            bot_id,
-            chat_id,
-            message_id,
-            user_id=user_id
-        )
-        return
-
-    # =========================
-    # 回覆風格表單 fallback
 ...
-... 已省略 289 行
+... 已省略 413 行
 ```
 
 
@@ -335,11 +435,12 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：11
+- 行數：19
 
 ## imports
 - services.call_ai.run_ai
 - services.commands.send_setting_menu
+- services.privacy_access.ensure_privacy_password_issued
 
 ## functions
 - handle_message
@@ -348,15 +449,23 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 ```text
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
+from services.privacy_access import ensure_privacy_password_issued
 
-def handle_message(user_id, bot_id, chat_id, user_text): 
+
+def handle_message(user_id, bot_id, chat_id, user_text):
+
+    # =========================
+    # 隱私管理密碼補發
+    # =========================
+    # 每個 user_id + bot_id 只會真正發一次。
+    # 已發放者會進記憶體快取，避免每次 Gemini 回應前都查 DB。
+    ensure_privacy_password_issued(user_id, bot_id, chat_id)
 
     if user_text in ["/setting", "/設定"]:
         send_setting_menu(bot_id, chat_id)
         return
-    
-    else:
-        run_ai(user_id, bot_id, chat_id, user_text)
+
+    run_ai(user_id, bot_id, chat_id, user_text)
 ```
 
 
@@ -481,7 +590,7 @@ def webhook(bot_id):
 # requirements.txt
 
 - 類型：.txt
-- 行數：5
+- 行數：6
 
 ## preview
 ```text
@@ -490,6 +599,7 @@ requests
 gunicorn
 google-genai
 psycopg2-binary
+cryptography
 ```
 
 
@@ -623,7 +733,7 @@ def add_key_route():
 # routes\setting.py
 
 - 類型：.py
-- 行數：251
+- 行數：250
 
 ## imports
 - flask.Blueprint
@@ -740,7 +850,7 @@ def character_setting_page():
     user_id = request.args.get("user_id", "")
 
 ...
-... 已省略 171 行
+... 已省略 170 行
 ```
 
 
@@ -976,21 +1086,30 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
 # services\character.py
 
 - 類型：.py
-- 行數：271
+- 行數：444
 
 ## imports
+- hashlib.sha256
+- json
 - services.database.get_conn
 
 ## functions
 - _text_id
+- _clean_text
+- build_script_hash
 - get_character_mode
 - update_character_mode
 - get_character_settings
+- get_script_opening_status
+- mark_script_opening_sent
 - update_character_settings
 - delete_character_settings
 
 ## preview
 ```text
+from hashlib import sha256
+import json
+
 from services.database import get_conn
 
 
@@ -1009,12 +1128,54 @@ DEFAULT_CHARACTER_SETTINGS = {
 
     "user_gender": "",
     "user_appearance": "",
-    "user_other_settings": ""
+    "user_other_settings": "",
+
+    "opening_sent": False,
+    "script_hash": ""
 }
+
+
+# =========================
+# 會影響「是否重新回到未開場」的劇本欄位
+# =========================
+SCRIPT_HASH_KEYS = [
+    "ai_name",
+    "ai_gender",
+    "ai_appearance",
+    "story_background",
+    "ai_opening",
+    "user_gender",
+    "user_appearance",
+    "user_other_settings"
+]
 
 
 def _text_id(value):
     return str(value)
+
+
+def _clean_text(value):
+    return str(value or "").strip()
+
+
+# =========================
+# 建立劇本指紋
+# 用途：判斷劇本是否真的被改動
+# =========================
+def build_script_hash(settings):
+
+    payload = {}
+
+    for key in SCRIPT_HASH_KEYS:
+        payload[key] = _clean_text(settings.get(key, ""))
+
+    raw = json.dumps(
+        payload,
+        ensure_ascii=False,
+        sort_keys=True
+    )
+
+    return sha256(raw.encode("utf-8")).hexdigest()
 
 
 # =========================
@@ -1026,53 +1187,8 @@ def get_character_mode(bot_id, chat_id):
 
     return settings.get("mode") or "聊天模式"
 
-
-# =========================
-# 更新人物模式
-# =========================
-def update_character_mode(bot_id, chat_id, mode):
-
-    bot_id = _text_id(bot_id)
-    chat_id = _text_id(chat_id)
-
-    conn = get_conn()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            INSERT INTO character_settings (
-                bot_id,
-                chat_id,
-                mode,
-                updated_at
-            )
-            VALUES (%s, %s, %s, CURRENT_TIMESTAMP)
-
-            ON CONFLICT (bot_id, chat_id)
-
-            DO UPDATE SET
-                mode = EXCLUDED.mode,
-                updated_at = CURRENT_TIMESTAMP
-        """, (
-            bot_id,
-            chat_id,
-            mode
-        ))
-
-        conn.commit()
-
-        print("DEBUG character mode updated:", bot_id, chat_id, mode)
-
-    except Exception as e:
-        conn.rollback()
-        print("DB ERROR update_character_mode:", e)
-        raise
-
-    finally:
-        conn.close()
 ...
-... 已省略 191 行
+... 已省略 364 行
 ```
 
 
@@ -1185,13 +1301,14 @@ def update_chat_persona_settings(bot_id, chat_id, settings):
 # services\commands.py
 
 - 類型：.py
-- 行數：278
+- 行數：298
 
 ## imports
 - os
 - requests
 - services.bot_router.get_bot_token
 - services.character.get_character_mode
+- services.character.get_script_opening_status
 - urllib.parse.urlencode
 
 ## functions
@@ -1203,6 +1320,7 @@ def update_chat_persona_settings(bot_id, chat_id, settings):
 - send_setting_menu
 - send_character_menu
 - send_reply_style_menu
+- send_start_script_confirm_menu
 - send_mode_menu
 - send_memory_menu
 - send_clear_memory_confirm_message
@@ -1215,7 +1333,7 @@ import os
 import requests
 from urllib.parse import urlencode
 from services.bot_router import get_bot_token
-from services.character import get_character_mode
+from services.character import get_character_mode, get_script_opening_status
 
 # =========================
 # Telegram API POST
@@ -1292,7 +1410,124 @@ def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
 
     payload = {
 ...
-... 已省略 198 行
+... 已省略 218 行
+```
+
+
+================================================================================
+
+# services\crypto_box.py
+
+- 類型：.py
+- 行數：161
+
+## imports
+- base64
+- cryptography.exceptions.InvalidTag
+- cryptography.hazmat.primitives.ciphers.aead.AESGCM
+- cryptography.hazmat.primitives.hashes
+- cryptography.hazmat.primitives.kdf.pbkdf2.PBKDF2HMAC
+- json
+- secrets
+- typing.Any
+- typing.Dict
+
+## classes
+- UnlockCodeError
+
+## functions
+- generate_unlock_code
+- build_aad
+- _b64_encode
+- _b64_decode
+- derive_key
+- encrypt_payload
+- decrypt_payload
+
+## preview
+```text
+import base64
+import json
+import secrets
+from typing import Any, Dict
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+
+
+# =========================
+# 使用者端解鎖碼加密工具
+# =========================
+# 設計原則：
+# 1. 伺服器不需要 ENCRYPTION_KEY
+# 2. Render / 環境變數不保存解密密鑰
+# 3. DB 不保存明文解鎖碼
+# 4. 解鎖碼遺失，密文就無法還原
+# 5. 加密單位是 JSON payload，方便你開發階段調整欄位
+
+KDF_ITERATIONS = 600_000
+KEY_LENGTH = 32
+SALT_LENGTH = 16
+NONCE_LENGTH = 12
+VERSION = 1
+
+
+class UnlockCodeError(Exception):
+    """解鎖碼錯誤、密文被改過，或 AAD 條件不一致時丟出。"""
+
+
+def generate_unlock_code() -> str:
+    """
+    產生給使用者保存的解鎖碼。
+
+    注意：
+    - 只顯示給使用者一次
+    - 不要存 DB 明文
+    - 使用者遺失後，原密文無法救回
+    """
+
+    return secrets.token_urlsafe(32)
+
+
+def build_aad(
+    user_id: Any,
+    bot_id: Any,
+    chat_id: Any,
+    data_type: str,
+    record_key: str = "default",
+) -> str:
+    """
+    AAD 不會被加密，但會被驗證。
+    用途：防止有人把 A 使用者的密文搬到 B 使用者底下混用。
+    """
+
+    return f"{user_id}:{bot_id}:{chat_id}:{data_type}:{record_key}"
+
+
+def _b64_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+
+def _b64_decode(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text.encode("utf-8"))
+
+
+def derive_key(unlock_code: str, salt: bytes) -> bytes:
+    """由使用者解鎖碼 + salt 派生 AES-256 key。"""
+
+    if not unlock_code:
+        raise ValueError("unlock_code is required")
+
+    kdf = PBKDF2HMAC(
+        algorithm=hashes.SHA256(),
+        length=KEY_LENGTH,
+        salt=salt,
+        iterations=KDF_ITERATIONS,
+    )
+...
+... 已省略 81 行
 ```
 
 
@@ -1301,7 +1536,7 @@ def _send_or_edit(bot_id, chat_id, message_id, text, inline_keyboard):
 # services\database.py
 
 - 類型：.py
-- 行數：313
+- 行數：363
 
 ## imports
 - os
@@ -1407,7 +1642,121 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 233 行
+... 已省略 283 行
+```
+
+
+================================================================================
+
+# services\encrypted_store.py
+
+- 類型：.py
+- 行數：280
+
+## imports
+- json
+- psycopg2.extras.Json
+- services.crypto_box.build_aad
+- services.crypto_box.decrypt_payload
+- services.crypto_box.encrypt_payload
+- services.crypto_box.generate_unlock_code
+- services.database.get_conn
+- typing.Any
+- typing.Dict
+- typing.List
+- typing.Optional
+
+## functions
+- create_user_unlock_code
+- save_encrypted_payload
+- get_encrypted_payload
+- delete_encrypted_payload
+- list_encrypted_metadata
+
+## preview
+```text
+import json
+from typing import Any, Dict, List, Optional
+
+from psycopg2.extras import Json
+
+from services.crypto_box import (
+    build_aad,
+    decrypt_payload,
+    encrypt_payload,
+    generate_unlock_code,
+)
+from services.database import get_conn
+
+
+# =========================
+# 通用加密資料存取層
+# =========================
+# 用法：
+# - 明文欄位只保留 user_id / bot_id / chat_id / data_type / record_key
+# - 真正內容全部包成 payload dict 後加密
+# - 未來你改欄位，只改 payload 裡的 key，不用改加密流程
+
+
+def create_user_unlock_code() -> str:
+    """
+    產生使用者解鎖碼。
+    這個值只能顯示給使用者，不要存 DB 明文。
+    """
+
+    return generate_unlock_code()
+
+
+def save_encrypted_payload(
+    user_id: Any,
+    bot_id: Any,
+    chat_id: Any,
+    data_type: str,
+    unlock_code: str,
+    payload: Dict[str, Any],
+    record_key: str = "default",
+) -> None:
+    """
+    新增 / 更新一筆加密資料。
+
+    data_type 範例：
+    - chat_persona
+    - character
+    - reply_style
+    - memory
+    - api_key
+
+    record_key 用途：
+    - 同一個 data_type 如果只有一筆，用 default
+    - 如果同類型有多筆，例如 memory，可用 memory_id 或 uuid
+    """
+
+    user_id = str(user_id)
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    data_type = str(data_type)
+    record_key = str(record_key or "default")
+
+    aad = build_aad(user_id, bot_id, chat_id, data_type, record_key)
+    encrypted_payload = encrypt_payload(unlock_code, payload, aad=aad)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute(
+            """
+            INSERT INTO encrypted_settings (
+                user_id,
+                bot_id,
+                chat_id,
+                data_type,
+                record_key,
+                encrypted_payload,
+                updated_at
+...
+... 已省略 200 行
 ```
 
 
@@ -1623,6 +1972,123 @@ def delete_current_memory(bot_id, chat_id):
 
 ================================================================================
 
+# services\privacy_access.py
+
+- 類型：.py
+- 行數：275
+
+## imports
+- services.database.get_conn
+- services.encrypted_store.create_user_unlock_code
+- services.telegram_service.send_message
+- threading
+- time
+- typing.Any
+- typing.Optional
+- typing.Tuple
+
+## functions
+- _text_id
+- _is_group_chat
+- _cache_key
+- _is_pending_private_notice_cached
+- _mark_pending_private_notice
+- _mark_issued_cache
+- _is_issued_cached
+- build_privacy_password_message
+- _send_unlock_code_safely
+- ensure_privacy_password_issued
+- has_privacy_password_issued
+
+## preview
+```text
+import threading
+import time
+from typing import Any, Optional, Tuple
+
+from services.database import get_conn
+from services.encrypted_store import create_user_unlock_code
+from services.telegram_service import send_message
+
+
+# =========================
+# 隱私管理權限 / 資料庫密碼自動補發
+# =========================
+# 設計原則：
+# 1. 不存明文密碼
+# 2. 每個 user_id + bot_id 只發一次
+# 3. 已發放狀態放 DB：privacy_access.unlock_code_issued
+# 4. 已發放結果放記憶體快取，避免每次 Gemini 回覆前都查 DB
+# 5. 群組內不公開丟密碼，會優先私訊使用者
+
+_ISSUED_CACHE = set()
+_PENDING_PRIVATE_CACHE = {}
+_CACHE_LOCK = threading.Lock()
+PENDING_PRIVATE_TTL_SECONDS = 600
+
+
+PRIVACY_ITEMS_TEXT = "記憶資料、劇本資料、風格資料、人物設定資料、後續納入隱私保護的資料"
+
+
+def _text_id(value: Any) -> str:
+    return str(value)
+
+
+def _is_group_chat(chat_id: Any) -> bool:
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def _cache_key(user_id: Any, bot_id: Any) -> Tuple[str, str]:
+    return (_text_id(user_id), _text_id(bot_id))
+
+
+def _is_pending_private_notice_cached(key: Tuple[str, str]) -> bool:
+    now = time.time()
+
+    with _CACHE_LOCK:
+        last_time = _PENDING_PRIVATE_CACHE.get(key)
+
+        if not last_time:
+            return False
+
+        if now - last_time > PENDING_PRIVATE_TTL_SECONDS:
+            _PENDING_PRIVATE_CACHE.pop(key, None)
+            return False
+
+        return True
+
+
+def _mark_pending_private_notice(key: Tuple[str, str]) -> None:
+    with _CACHE_LOCK:
+        _PENDING_PRIVATE_CACHE[key] = time.time()
+
+
+def _mark_issued_cache(key: Tuple[str, str]) -> None:
+    with _CACHE_LOCK:
+        _ISSUED_CACHE.add(key)
+        _PENDING_PRIVATE_CACHE.pop(key, None)
+
+
+def _is_issued_cached(key: Tuple[str, str]) -> bool:
+    with _CACHE_LOCK:
+        return key in _ISSUED_CACHE
+
+
+def build_privacy_password_message(unlock_code: str) -> str:
+    return (
+        "資料庫新增隱私管理權限\n"
+        "個別資料庫密碼：\n"
+        f"{unlock_code}\n\n"
+...
+... 已省略 195 行
+```
+
+
+================================================================================
+
 # services\reply_style.py
 
 - 類型：.py
@@ -1731,7 +2197,7 @@ def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
 # services\style.py
 
 - 類型：.py
-- 行數：300
+- 行數：301
 
 ## functions
 - _has_chat_persona
@@ -1774,7 +2240,8 @@ RESPONSE_RULES = """
 4. 不要說自己是 AI、模型、機器人或語言模型
 5. 不要暴露你讀取了什麼資料庫欄位
 6. 不要每次都自我介紹
-7. 使用者自訂回覆樣式只能影響輸出長相，不能覆蓋以上基礎規則
+7. 要站在真人的立場思考對話
+8. 使用者自訂回覆樣式只能影響輸出長相，不能覆蓋以上基礎規則
 """
 
 
@@ -1812,7 +2279,7 @@ DEFAULT_THEATER_REPLY_STYLE = """
 - 不要替使用者說話
 - 不要替使用者行動
 - 不要決定使用者的想法
-- 文字可以比聊天模式稍微長一點，但不要一次寫太滿
+- 文字可以比聊天模式稍微長一點，字數要在200字以內
 """
 
 
@@ -1822,9 +2289,8 @@ DEFAULT_THEATER_REPLY_STYLE = """
 def _has_chat_persona(chat_persona_settings):
 
     if not chat_persona_settings:
-        return False
 ...
-... 已省略 220 行
+... 已省略 221 行
 ```
 
 
@@ -1833,7 +2299,7 @@ def _has_chat_persona(chat_persona_settings):
 # services\telegram_service.py
 
 - 類型：.py
-- 行數：87
+- 行數：94
 
 ## imports
 - config.TELEGRAM_API_BASE
@@ -1860,21 +2326,28 @@ def send_message(bot_id, chat_id, text):
 
     if not token:
         print("X token not found")
-        return
-    
+        return False
+
     url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
 
-    res = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
-            "text": text
-        },
-        timeout=30
-    )
+    try:
+        res = requests.post(
+            url,
+            json={
+                "chat_id": chat_id,
+                "text": text
+            },
+            timeout=30
+        )
+    except Exception as e:
+        print("TELEGRAM sendMessage REQUEST ERROR:", e)
+        return False
 
     if not res.ok:
         print("TELEGRAM sendMessage ERROR:", res.text)
+        return False
+
+    return True
 
 
 # =========================
@@ -1920,15 +2393,8 @@ def delete_message(bot_id, chat_id, message_id):
     if not token:
         print("X token not found")
         return
-
-    url = f"{TELEGRAM_API_BASE}/bot{token}/deleteMessage"
-
-    res = requests.post(
-        url,
-        json={
-            "chat_id": chat_id,
 ...
-... 已省略 7 行
+... 已省略 14 行
 ```
 
 
@@ -2010,7 +2476,7 @@ def user_has_key(user_id: int) -> bool:
 # templates\character_form.html
 
 - 類型：.html
-- 行數：339
+- 行數：338
 
 ## preview
 ```text
@@ -2095,7 +2561,7 @@ def user_has_key(user_id: int) -> bool:
       color: rgba(255, 255, 255, 0.86);
     }
 ...
-... 已省略 259 行
+... 已省略 258 行
 ```
 
 
@@ -2827,6 +3293,43 @@ Telemini 人物 / 劇本模式更新包
 - Render 需要有 BASE_URL 環境變數。
 - 第一次部署後，init_db() 會自動建立 chat_persona_settings 表。
 - Telegram 舊按鈕可能還是舊 callback，請重新輸入 /設定 產生新的按鈕。
+```
+
+
+================================================================================
+
+# 開場-更新說明.txt
+
+- 類型：.txt
+- 行數：25
+
+## preview
+```text
+Telemini 開場白狀態更新包
+
+覆蓋檔案：
+- services/database.py
+- services/character.py
+- services/commands.py
+- handlers/call_handler.py
+- routes/setting.py
+- templates/character_form.html
+
+功能：
+1. AI 開場白改為非必填。
+2. 設定中心原本「API設定」改為「開始劇本」狀態按鈕。
+3. 開始劇本按鈕有三種狀態：
+   - 開始劇本 | 無開場白
+   - 開始劇本 | 未開場
+   - 開始劇本 | 已開場
+4. 未開場時點擊會刪除選單、傳送開場白、寫入短期記憶。
+5. 已開場時點擊會進入確認選單，避免誤觸重發。
+6. 劇本內容真的改動時，會自動回到未開場。
+7. 沒有開場白時，只刪除選單，不傳送訊息。
+
+注意：
+- database.py 已加入 ALTER TABLE，部署後第一次請求會自動補 opening_sent 與 script_hash 欄位。
+- Telegram 舊選單按鈕不會自己更新，請重新輸入 /設定 產生新選單。
 ```
 
 
