@@ -261,6 +261,16 @@ def init_db():
         ADD COLUMN IF NOT EXISTS reply_style TEXT DEFAULT ''
         """)
 
+        cursor.execute("""
+        ALTER TABLE character_settings
+        ADD COLUMN IF NOT EXISTS opening_sent BOOLEAN DEFAULT FALSE
+        """)
+
+        cursor.execute("""
+        ALTER TABLE character_settings
+        ADD COLUMN IF NOT EXISTS script_hash TEXT DEFAULT ''
+        """)
+
         # =========================
         # 聊天模式人物設定
         # reply_style 保留舊欄位相容性，但新流程不再把風格存在這張表

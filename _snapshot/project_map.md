@@ -17,6 +17,7 @@ C:\Projects\telemini
 - `check_db.py`
 - `config.py`
 - `docs\PRIVACY_ACCESS_README.md`
+- `docs\PRIVACY_SYNC_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -36,6 +37,8 @@ C:\Projects\telemini
 - `services\gemini_service.py`
 - `services\memory.py`
 - `services\privacy_access.py`
+- `services\privacy_migration.py`
+- `services\privacy_session.py`
 - `services\reply_style.py`
 - `services\style.py`
 - `services\telegram_service.py`
@@ -94,6 +97,10 @@ C:\Projects\telemini
 - `handle_ui()`
 
 ### `handlers\message_handler.py`
+- `_is_group_chat()`
+- `_extract_unlock_code()`
+- `_handle_unlock_command()`
+- `_handle_lock_command()`
 - `handle_message()`
 
 ### `main.py`
@@ -130,9 +137,12 @@ C:\Projects\telemini
 ### `services\character.py`
 - `_text_id()`
 - `_clean_text()`
+- `_resolve_user_id()`
+- `_get_code()`
 - `build_script_hash()`
 - `get_character_mode()`
 - `update_character_mode()`
+- `_get_legacy_character_row()`
 - `get_character_settings()`
 - `get_script_opening_status()`
 - `mark_script_opening_sent()`
@@ -141,6 +151,8 @@ C:\Projects\telemini
 
 ### `services\chat_persona.py`
 - `_text_id()`
+- `_resolve_user_id()`
+- `_get_code()`
 - `has_chat_persona_settings()`
 - `get_chat_persona_settings()`
 - `update_chat_persona_settings()`
@@ -204,6 +216,9 @@ C:\Projects\telemini
 - `detect_emotion()`
 - `is_memory_command()`
 - `extract_memory_content()`
+- `_resolve_user_id()`
+- `_get_unlock_code_for()`
+- `_decrypt_payload_row()`
 - `add_fact()`
 - `get_facts()`
 - `add_chat()`
@@ -223,8 +238,28 @@ C:\Projects\telemini
 - `ensure_privacy_password_issued()`
 - `has_privacy_password_issued()`
 
+### `services\privacy_migration.py`
+- `_text_id()`
+- `_has_text()`
+- `_save_payload()`
+- `migrate_plaintext_to_encrypted()`
+
+### `services\privacy_session.py`
+- `_text_id()`
+- `_key()`
+- `set_request_context()`
+- `get_current_user_id()`
+- `get_current_bot_id()`
+- `get_current_chat_id()`
+- `set_unlock_code()`
+- `get_unlock_code()`
+- `clear_unlock_code()`
+- `is_unlocked()`
+
 ### `services\reply_style.py`
 - `_text_id()`
+- `_resolve_user_id()`
+- `_get_code()`
 - `normalize_style_type()`
 - `_get_legacy_reply_style()`
 - `get_reply_style_settings()`

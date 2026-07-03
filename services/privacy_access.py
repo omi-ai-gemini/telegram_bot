@@ -5,6 +5,7 @@ from typing import Any, Optional, Tuple
 from services.database import get_conn
 from services.encrypted_store import create_user_unlock_code
 from services.telegram_service import send_message
+from services.privacy_session import set_unlock_code
 
 
 # =========================
@@ -227,6 +228,8 @@ def ensure_privacy_password_issued(user_id: Any, bot_id: Any, chat_id: Any) -> b
 
         conn.commit()
         _mark_issued_cache(key)
+        # 同步：密碼發出去的同一刻，也放進本次 Render 記憶體，後續新寫入才能立刻加密。
+        set_unlock_code(user_id, bot_id, unlock_code)
         return True
 
     except Exception as exc:

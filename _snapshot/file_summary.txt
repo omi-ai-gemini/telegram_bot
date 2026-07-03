@@ -300,6 +300,73 @@ encrypted_settings
 
 ================================================================================
 
+# docs\PRIVACY_SYNC_README.md
+
+- 類型：.md
+- 行數：55
+
+## preview
+```text
+# Telemini 隱私同步加密包
+
+這包不是只有發資料庫密碼，而是把「鑰匙」和「鎖」同步接起來。
+
+## 新增流程
+
+1. 使用者第一次傳訊息時，系統發放個別資料庫密碼。
+2. 同一時間，該密碼會暫存在 Render 記憶體 unlock cache。
+3. 後續新寫入的：
+   - 短期記憶
+   - 長期記憶
+   - 劇本設定
+   - 聊天人物設定
+   - 回覆風格設定
+   會寫入 `encrypted_settings.encrypted_payload`。
+4. 舊明文資料會在使用者解鎖後遷移到 `encrypted_settings`，並從舊明文欄位刪除或清空。
+
+## 重要限制
+
+DB 不保存使用者資料庫密碼明文。
+
+所以 Render 重啟後，系統不會知道使用者密碼。使用者需要私訊 bot：
+
+```text
+/解鎖 你的資料庫密碼
+```
+
+重新解鎖後，才會恢復讀取 / 寫入加密資料。
+
+## 指令
+
+```text
+/解鎖 你的資料庫密碼
+/鎖定
+```
+
+請不要在群組輸入 `/解鎖 密碼`，程式會阻擋並提醒改私訊。
+
+## Supabase 會看到什麼
+
+會看到：
+
+- `privacy_access`：是否已發放密碼，不存密碼明文
+- `encrypted_settings.encrypted_payload`：密文 JSONB
+- 舊資料表的敏感欄位會在遷移後被清空
+
+## 若仍看到明文
+
+代表那筆資料尚未被該使用者解鎖遷移。請讓使用者私訊 bot：
+
+```text
+/解鎖 他的資料庫密碼
+```
+
+然後在對應聊天室傳一則訊息，系統會嘗試遷移目前 bot/chat 的舊明文資料。
+```
+
+
+================================================================================
+
 # handlers\__init__.py
 
 - 類型：.py
@@ -315,7 +382,7 @@ encrypted_settings
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：493
+- 行數：496
 
 ## imports
 - services.character.delete_character_settings
@@ -334,6 +401,7 @@ encrypted_settings
 - services.commands.send_start_script_confirm_menu
 - services.memory.add_chat
 - services.memory.delete_current_memory
+- services.privacy_session.set_request_context
 - services.reply_style.delete_reply_style_settings
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
@@ -370,6 +438,7 @@ from services.telegram_service import (
     answer_callback_query,
     delete_message,
 )
+from services.privacy_session import set_request_context
 
 
 # =========================
@@ -412,6 +481,8 @@ def _send_script_opening(bot_id, chat_id):
 # =========================
 def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
+    set_request_context(user_id, bot_id, chat_id)
+
     print("callback", user_text, "message:", message_id)
 
     # =========================
@@ -422,11 +493,8 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
         delete_message(
             bot_id,
-            chat_id,
-            message_id
-        )
 ...
-... 已省略 413 行
+... 已省略 416 行
 ```
 
 
@@ -435,37 +503,111 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：19
+- 行數：125
 
 ## imports
 - services.call_ai.run_ai
 - services.commands.send_setting_menu
 - services.privacy_access.ensure_privacy_password_issued
+- services.privacy_access.has_privacy_password_issued
+- services.privacy_migration.migrate_plaintext_to_encrypted
+- services.privacy_session.clear_unlock_code
+- services.privacy_session.get_unlock_code
+- services.privacy_session.set_request_context
+- services.privacy_session.set_unlock_code
+- services.telegram_service.send_message
 
 ## functions
+- _is_group_chat
+- _extract_unlock_code
+- _handle_unlock_command
+- _handle_lock_command
 - handle_message
 
 ## preview
 ```text
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
-from services.privacy_access import ensure_privacy_password_issued
+from services.privacy_access import ensure_privacy_password_issued, has_privacy_password_issued
+from services.privacy_migration import migrate_plaintext_to_encrypted
+from services.privacy_session import (
+    clear_unlock_code,
+    get_unlock_code,
+    set_request_context,
+    set_unlock_code,
+)
+from services.telegram_service import send_message
 
 
-def handle_message(user_id, bot_id, chat_id, user_text):
+UNLOCK_COMMANDS = ["/解鎖", "/unlock"]
+LOCK_COMMANDS = ["/鎖定", "/lock"]
 
-    # =========================
-    # 隱私管理密碼補發
-    # =========================
-    # 每個 user_id + bot_id 只會真正發一次。
-    # 已發放者會進記憶體快取，避免每次 Gemini 回應前都查 DB。
-    ensure_privacy_password_issued(user_id, bot_id, chat_id)
 
-    if user_text in ["/setting", "/設定"]:
-        send_setting_menu(bot_id, chat_id)
-        return
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
 
-    run_ai(user_id, bot_id, chat_id, user_text)
+
+def _extract_unlock_code(user_text):
+    text = str(user_text or "").strip()
+
+    for cmd in UNLOCK_COMMANDS:
+        if text == cmd:
+            return ""
+        if text.startswith(cmd + " "):
+            return text[len(cmd):].strip()
+
+    return None
+
+
+def _handle_unlock_command(user_id, bot_id, chat_id, user_text):
+    unlock_code = _extract_unlock_code(user_text)
+
+    if unlock_code is None:
+        return False
+
+    if _is_group_chat(chat_id):
+        send_message(
+            bot_id,
+            chat_id,
+            "資料庫密碼不要丟在群組。請私訊我輸入：/解鎖 你的資料庫密碼"
+        )
+        return True
+
+    if not unlock_code:
+        send_message(
+            bot_id,
+            chat_id,
+            "請輸入：/解鎖 你的資料庫密碼"
+        )
+        return True
+
+    set_unlock_code(user_id, bot_id, unlock_code)
+
+    try:
+        migrate_plaintext_to_encrypted(user_id, bot_id, chat_id, unlock_code)
+    except Exception as exc:
+        print("PRIVACY MIGRATION ERROR after unlock:", exc)
+
+    send_message(
+        bot_id,
+        chat_id,
+        "已解鎖。接下來新的記憶、劇本、風格資料會改用你的資料庫密碼加密儲存。"
+    )
+    return True
+
+
+def _handle_lock_command(user_id, bot_id, chat_id, user_text):
+    text = str(user_text or "").strip()
+
+    if text not in LOCK_COMMANDS:
+        return False
+
+    clear_unlock_code(user_id, bot_id)
+...
+... 已省略 45 行
 ```
 
 
@@ -733,7 +875,7 @@ def add_key_route():
 # routes\setting.py
 
 - 類型：.py
-- 行數：250
+- 行數：276
 
 ## imports
 - flask.Blueprint
@@ -745,6 +887,7 @@ def add_key_route():
 - services.character.update_character_settings
 - services.chat_persona.get_chat_persona_settings
 - services.chat_persona.update_chat_persona_settings
+- services.privacy_session.set_request_context
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
 - services.reply_style.update_reply_style_settings
@@ -788,6 +931,7 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
+from services.privacy_session import set_request_context
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -807,14 +951,16 @@ def persona_setting_page():
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
 
-    mode = get_character_mode(bot_id, chat_id)
+    set_request_context(user_id, bot_id, chat_id)
+
+    mode = get_character_mode(bot_id, chat_id, user_id=user_id)
 
     # =========================
     # 劇場模式 → 原本劇本表單
     # =========================
     if mode == "劇場模式":
 
-        settings = get_character_settings(bot_id, chat_id)
+        settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
         return render_template(
             "character_form.html",
@@ -827,7 +973,7 @@ def persona_setting_page():
     # =========================
     # 聊天模式 → 聊天人物表單
     # =========================
-    settings = get_chat_persona_settings(bot_id, chat_id)
+    settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
 
     return render_template(
         "chat_persona_form.html",
@@ -846,11 +992,8 @@ def persona_setting_page():
 def character_setting_page():
 
     bot_id = request.args.get("bot_id", "")
-    chat_id = request.args.get("chat_id", "")
-    user_id = request.args.get("user_id", "")
-
 ...
-... 已省略 170 行
+... 已省略 196 行
 ```
 
 
@@ -969,7 +1112,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：157
+- 行數：158
 
 ## imports
 - services.bot_router.get_bot_token
@@ -1044,7 +1187,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 先寫入使用者短期記憶
         # =========================
-        add_chat(bot_id, chat_id, "user", user_text)
+        add_chat(bot_id, chat_id, "user", user_text, user_id=user_id)
 
         # =========================
         # 情緒記憶
@@ -1061,7 +1204,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             fact = extract_memory_content(user_text)
 
             if fact:
-                add_fact(bot_id, chat_id, scope, fact)
+                add_fact(bot_id, chat_id, scope, fact, user_id=user_id)
 
             send_message(bot_id, chat_id, "已記住")
             return
@@ -1069,15 +1212,15 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 短期記憶
         # =========================
-        history = get_chat(bot_id, chat_id)
+        history = get_chat(bot_id, chat_id, user_id=user_id)
 
         # =========================
         # 長期記憶
         # =========================
-        facts = get_facts(bot_id, chat_id, scope)
+        facts = get_facts(bot_id, chat_id, scope, user_id=user_id)
 
 ...
-... 已省略 77 行
+... 已省略 78 行
 ```
 
 
@@ -1086,19 +1229,27 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
 # services\character.py
 
 - 類型：.py
-- 行數：444
+- 行數：476
 
 ## imports
 - hashlib.sha256
 - json
 - services.database.get_conn
+- services.encrypted_store.delete_encrypted_payload
+- services.encrypted_store.get_encrypted_payload
+- services.encrypted_store.save_encrypted_payload
+- services.privacy_session.get_current_user_id
+- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
 - _clean_text
+- _resolve_user_id
+- _get_code
 - build_script_hash
 - get_character_mode
 - update_character_mode
+- _get_legacy_character_row
 - get_character_settings
 - get_script_opening_status
 - mark_script_opening_sent
@@ -1111,11 +1262,12 @@ from hashlib import sha256
 import json
 
 from services.database import get_conn
+from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
+from services.privacy_session import get_current_user_id, get_unlock_code
 
 
 # =========================
 # 預設劇本設定
-# 回覆風格已移到 reply_style_settings，不再跟劇本綁定
 # =========================
 DEFAULT_CHARACTER_SETTINGS = {
     "mode": "聊天模式",
@@ -1158,9 +1310,16 @@ def _clean_text(value):
     return str(value or "").strip()
 
 
+def _resolve_user_id(user_id=None):
+    return _text_id(user_id) if user_id is not None else get_current_user_id()
+
+
+def _get_code(user_id, bot_id):
+    return get_unlock_code(user_id, bot_id)
+
+
 # =========================
 # 建立劇本指紋
-# 用途：判斷劇本是否真的被改動
 # =========================
 def build_script_hash(settings):
 
@@ -1179,16 +1338,8 @@ def build_script_hash(settings):
 
 
 # =========================
-# 取得人物模式
-# =========================
-def get_character_mode(bot_id, chat_id):
-
-    settings = get_character_settings(bot_id, chat_id)
-
-    return settings.get("mode") or "聊天模式"
-
 ...
-... 已省略 364 行
+... 已省略 396 行
 ```
 
 
@@ -1197,13 +1348,20 @@ def get_character_mode(bot_id, chat_id):
 # services\chat_persona.py
 
 - 類型：.py
-- 行數：168
+- 行數：215
 
 ## imports
 - services.database.get_conn
+- services.encrypted_store.delete_encrypted_payload
+- services.encrypted_store.get_encrypted_payload
+- services.encrypted_store.save_encrypted_payload
+- services.privacy_session.get_current_user_id
+- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
+- _resolve_user_id
+- _get_code
 - has_chat_persona_settings
 - get_chat_persona_settings
 - update_chat_persona_settings
@@ -1212,6 +1370,8 @@ def get_character_mode(bot_id, chat_id):
 ## preview
 ```text
 from services.database import get_conn
+from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
+from services.privacy_session import get_current_user_id, get_unlock_code
 
 
 DEFAULT_CHAT_PERSONA_SETTINGS = {
@@ -1225,9 +1385,16 @@ def _text_id(value):
     return str(value)
 
 
+def _resolve_user_id(user_id=None):
+    return _text_id(user_id) if user_id is not None else get_current_user_id()
+
+
+def _get_code(user_id, bot_id):
+    return get_unlock_code(user_id, bot_id)
+
+
 # =========================
 # 檢查是否有設定聊天人物
-# 注意：回覆風格已移到 reply_style_settings，不算聊天人物本體
 # =========================
 def has_chat_persona_settings(settings):
 
@@ -1242,13 +1409,37 @@ def has_chat_persona_settings(settings):
 
 
 # =========================
-# 取得聊天模式人物設定
+# 取得聊天模式人物設定（優先讀加密）
 # =========================
-def get_chat_persona_settings(bot_id, chat_id):
+def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_code(user_id, bot_id)
 
+    if user_id and unlock_code:
+        try:
+            payload = get_encrypted_payload(
+                user_id=user_id,
+                bot_id=bot_id,
+                chat_id=chat_id,
+                data_type="chat_persona_settings",
+                unlock_code=unlock_code,
+                record_key="default",
+            )
+
+            if payload:
+                return {
+                    "persona_name": payload.get("persona_name", "") or "",
+                    "persona_gender": payload.get("persona_gender", "") or "",
+                    "persona_background": payload.get("persona_background", "") or "",
+                }
+
+        except Exception as e:
+            print("DECRYPT ERROR get_chat_persona_settings:", e)
+
+    # 舊資料相容：尚未遷移前讀舊表。遷移後舊欄位會被清空。
     conn = get_conn()
 
     try:
@@ -1258,41 +1449,8 @@ def get_chat_persona_settings(bot_id, chat_id):
             SELECT
                 persona_name,
                 persona_gender,
-                persona_background
-            FROM chat_persona_settings
-            WHERE bot_id = %s
-              AND chat_id = %s
-        """, (
-            bot_id,
-            chat_id
-        ))
-
-        row = cursor.fetchone()
-
-        if not row:
-            return DEFAULT_CHAT_PERSONA_SETTINGS.copy()
-
-        return {
-            "persona_name": row[0] or "",
-            "persona_gender": row[1] or "",
-            "persona_background": row[2] or ""
-        }
-
-    except Exception as e:
-        print("DB ERROR get_chat_persona_settings:", e)
-        raise
-
-    finally:
-        conn.close()
-
-
-# =========================
-# 更新聊天模式人物設定
-# 不更新 reply_style，避免換聊天對象時覆蓋獨立風格設定
-# =========================
-def update_chat_persona_settings(bot_id, chat_id, settings):
 ...
-... 已省略 88 行
+... 已省略 135 行
 ```
 
 
@@ -1536,7 +1694,7 @@ def derive_key(unlock_code: str, salt: bytes) -> bytes:
 # services\database.py
 
 - 類型：.py
-- 行數：363
+- 行數：373
 
 ## imports
 - os
@@ -1642,7 +1800,7 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 283 行
+... 已省略 293 行
 ```
 
 
@@ -1862,10 +2020,17 @@ def summarize_memory(gemini_key, chat_text):
 # services\memory.py
 
 - 類型：.py
-- 行數：546
+- 行數：538
 
 ## imports
+- json
+- services.crypto_box.build_aad
+- services.crypto_box.decrypt_payload
 - services.database.get_conn
+- services.encrypted_store.save_encrypted_payload
+- services.privacy_session.get_current_user_id
+- services.privacy_session.get_unlock_code
+- uuid
 
 ## functions
 - _text_id
@@ -1877,6 +2042,9 @@ def summarize_memory(gemini_key, chat_text):
 - detect_emotion
 - is_memory_command
 - extract_memory_content
+- _resolve_user_id
+- _get_unlock_code_for
+- _decrypt_payload_row
 - add_fact
 - get_facts
 - add_chat
@@ -1966,7 +2134,7 @@ def delete_current_memory(bot_id, chat_id):
         # =========================
         # 情緒記憶目前只有 chat_id
 ...
-... 已省略 466 行
+... 已省略 458 行
 ```
 
 
@@ -1975,11 +2143,12 @@ def delete_current_memory(bot_id, chat_id):
 # services\privacy_access.py
 
 - 類型：.py
-- 行數：275
+- 行數：278
 
 ## imports
 - services.database.get_conn
 - services.encrypted_store.create_user_unlock_code
+- services.privacy_session.set_unlock_code
 - services.telegram_service.send_message
 - threading
 - time
@@ -2009,6 +2178,7 @@ from typing import Any, Optional, Tuple
 from services.database import get_conn
 from services.encrypted_store import create_user_unlock_code
 from services.telegram_service import send_message
+from services.privacy_session import set_unlock_code
 
 
 # =========================
@@ -2081,9 +2251,229 @@ def build_privacy_password_message(unlock_code: str) -> str:
     return (
         "資料庫新增隱私管理權限\n"
         "個別資料庫密碼：\n"
-        f"{unlock_code}\n\n"
 ...
-... 已省略 195 行
+... 已省略 198 行
+```
+
+
+================================================================================
+
+# services\privacy_migration.py
+
+- 類型：.py
+- 行數：386
+
+## imports
+- json
+- psycopg2.extras.Json
+- services.crypto_box.build_aad
+- services.crypto_box.encrypt_payload
+- services.database.get_conn
+- typing.Any
+
+## functions
+- _text_id
+- _has_text
+- _save_payload
+- migrate_plaintext_to_encrypted
+
+## preview
+```text
+import json
+from typing import Any
+
+from psycopg2.extras import Json
+
+from services.crypto_box import build_aad, encrypt_payload
+from services.database import get_conn
+
+
+def _text_id(value: Any) -> str:
+    return str(value)
+
+
+def _has_text(value: Any) -> bool:
+    return bool(str(value or "").strip())
+
+
+def _save_payload(cursor, user_id, bot_id, chat_id, data_type, record_key, unlock_code, payload):
+    user_id = _text_id(user_id)
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    data_type = _text_id(data_type)
+    record_key = _text_id(record_key or "default")
+
+    aad = build_aad(user_id, bot_id, chat_id, data_type, record_key)
+    encrypted_payload = encrypt_payload(unlock_code, payload, aad=aad)
+
+    cursor.execute(
+        """
+        INSERT INTO encrypted_settings (
+            user_id,
+            bot_id,
+            chat_id,
+            data_type,
+            record_key,
+            encrypted_payload,
+            updated_at
+        )
+        VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+
+        ON CONFLICT (user_id, bot_id, chat_id, data_type, record_key)
+
+        DO UPDATE SET
+            encrypted_payload = EXCLUDED.encrypted_payload,
+            updated_at = CURRENT_TIMESTAMP
+        """,
+        (
+            user_id,
+            bot_id,
+            chat_id,
+            data_type,
+            record_key,
+            Json(encrypted_payload),
+        ),
+    )
+
+
+def migrate_plaintext_to_encrypted(user_id: Any, bot_id: Any, chat_id: Any, unlock_code: str) -> None:
+    """
+    把目前 user / bot / chat 底下仍存在舊表的明文搬進 encrypted_settings，然後清空或刪除舊明文。
+
+    這個函式是安全的：
+    - 沒有 unlock_code 不執行
+    - 每次解鎖後可重複呼叫
+    - 已經搬過且舊表已清空時不會做事
+    """
+
+    if not user_id or not bot_id or not chat_id or not unlock_code:
+        return
+
+    user_id = _text_id(user_id)
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = "group" if int(chat_id) < 0 else "private"
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+...
+... 已省略 306 行
+```
+
+
+================================================================================
+
+# services\privacy_session.py
+
+- 類型：.py
+- 行數：95
+
+## imports
+- threading
+- time
+- typing.Any
+- typing.Optional
+- typing.Tuple
+
+## functions
+- _text_id
+- _key
+- set_request_context
+- get_current_user_id
+- get_current_bot_id
+- get_current_chat_id
+- set_unlock_code
+- get_unlock_code
+- clear_unlock_code
+- is_unlocked
+
+## preview
+```text
+import threading
+import time
+from typing import Any, Optional, Tuple
+
+# =========================
+# 使用者資料庫密碼臨時解鎖狀態
+# =========================
+# 注意：
+# - 不寫 DB
+# - Render 重啟會消失
+# - 使用者可用 /解鎖 <資料庫密碼> 重新放入記憶體
+
+_UNLOCK_CACHE = {}
+_UNLOCK_LOCK = threading.Lock()
+_REQUEST_CONTEXT = threading.local()
+
+# 12 小時，避免長期常駐在記憶體
+DEFAULT_UNLOCK_TTL_SECONDS = 60 * 60 * 12
+
+
+def _text_id(value: Any) -> str:
+    return str(value)
+
+
+def _key(user_id: Any, bot_id: Any) -> Tuple[str, str]:
+    return (_text_id(user_id), _text_id(bot_id))
+
+
+def set_request_context(user_id: Any = None, bot_id: Any = None, chat_id: Any = None) -> None:
+    _REQUEST_CONTEXT.user_id = None if user_id is None else _text_id(user_id)
+    _REQUEST_CONTEXT.bot_id = None if bot_id is None else _text_id(bot_id)
+    _REQUEST_CONTEXT.chat_id = None if chat_id is None else _text_id(chat_id)
+
+
+def get_current_user_id() -> Optional[str]:
+    return getattr(_REQUEST_CONTEXT, "user_id", None)
+
+
+def get_current_bot_id() -> Optional[str]:
+    return getattr(_REQUEST_CONTEXT, "bot_id", None)
+
+
+def get_current_chat_id() -> Optional[str]:
+    return getattr(_REQUEST_CONTEXT, "chat_id", None)
+
+
+def set_unlock_code(user_id: Any, bot_id: Any, unlock_code: str, ttl_seconds: int = DEFAULT_UNLOCK_TTL_SECONDS) -> None:
+    if not user_id or not bot_id or not unlock_code:
+        return
+
+    expires_at = time.time() + ttl_seconds
+
+    with _UNLOCK_LOCK:
+        _UNLOCK_CACHE[_key(user_id, bot_id)] = {
+            "unlock_code": str(unlock_code),
+            "expires_at": expires_at,
+        }
+
+
+def get_unlock_code(user_id: Any = None, bot_id: Any = None) -> Optional[str]:
+    user_id = _text_id(user_id) if user_id is not None else get_current_user_id()
+    bot_id = _text_id(bot_id) if bot_id is not None else get_current_bot_id()
+
+    if not user_id or not bot_id:
+        return None
+
+    key = _key(user_id, bot_id)
+    now = time.time()
+
+    with _UNLOCK_LOCK:
+        item = _UNLOCK_CACHE.get(key)
+
+        if not item:
+            return None
+
+        if item.get("expires_at", 0) <= now:
+            _UNLOCK_CACHE.pop(key, None)
+            return None
+
+        return item.get("unlock_code")
+...
+... 已省略 15 行
 ```
 
 
@@ -2092,13 +2482,20 @@ def build_privacy_password_message(unlock_code: str) -> str:
 # services\reply_style.py
 
 - 類型：.py
-- 行數：265
+- 行數：278
 
 ## imports
 - services.database.get_conn
+- services.encrypted_store.delete_encrypted_payload
+- services.encrypted_store.get_encrypted_payload
+- services.encrypted_store.save_encrypted_payload
+- services.privacy_session.get_current_user_id
+- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
+- _resolve_user_id
+- _get_code
 - normalize_style_type
 - _get_legacy_reply_style
 - get_reply_style_settings
@@ -2108,6 +2505,8 @@ def build_privacy_password_message(unlock_code: str) -> str:
 ## preview
 ```text
 from services.database import get_conn
+from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
+from services.privacy_session import get_current_user_id, get_unlock_code
 
 
 # =========================
@@ -2126,10 +2525,16 @@ def _text_id(value):
     return str(value)
 
 
+def _resolve_user_id(user_id=None):
+    return _text_id(user_id) if user_id is not None else get_current_user_id()
+
+
+def _get_code(user_id, bot_id):
+    return get_unlock_code(user_id, bot_id)
+
+
 # =========================
 # 正規化風格類型
-# 允許 route 傳 chat/theater
-# 也允許 AI 流程傳 聊天模式/劇場模式
 # =========================
 def normalize_style_type(style_type):
 
@@ -2143,10 +2548,6 @@ def normalize_style_type(style_type):
 
 # =========================
 # 取得舊版風格欄位
-# 用於平滑過渡：
-# 如果你之前已經把 reply_style 存在 character_settings / chat_persona_settings，
-# 新表還沒有資料時，會先讀舊欄位，避免舊資料直接失效。
-# 如果舊欄位不存在，會自動略過。
 # =========================
 def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
 
@@ -2178,17 +2579,13 @@ def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
             return row[0]
 
     except Exception as e:
-        # 舊欄位不存在時會進來，這是正常過渡狀況
         print("DEBUG legacy reply_style not available:", e)
 
     return ""
 
 
-# =========================
-# 取得回覆風格設定
-# =========================
 ...
-... 已省略 185 行
+... 已省略 198 行
 ```
 
 

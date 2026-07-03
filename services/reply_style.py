@@ -1,4 +1,6 @@
 from services.database import get_conn
+from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
+from services.privacy_session import get_current_user_id, get_unlock_code
 
 
 # =========================
@@ -17,10 +19,16 @@ def _text_id(value):
     return str(value)
 
 
+def _resolve_user_id(user_id=None):
+    return _text_id(user_id) if user_id is not None else get_current_user_id()
+
+
+def _get_code(user_id, bot_id):
+    return get_unlock_code(user_id, bot_id)
+
+
 # =========================
 # 正規化風格類型
-# 允許 route 傳 chat/theater
-# 也允許 AI 流程傳 聊天模式/劇場模式
 # =========================
 def normalize_style_type(style_type):
 
@@ -34,10 +42,6 @@ def normalize_style_type(style_type):
 
 # =========================
 # 取得舊版風格欄位
-# 用於平滑過渡：
-# 如果你之前已經把 reply_style 存在 character_settings / chat_persona_settings，
-# 新表還沒有資料時，會先讀舊欄位，避免舊資料直接失效。
-# 如果舊欄位不存在，會自動略過。
 # =========================
 def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
 
@@ -69,20 +73,41 @@ def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
             return row[0]
 
     except Exception as e:
-        # 舊欄位不存在時會進來，這是正常過渡狀況
         print("DEBUG legacy reply_style not available:", e)
 
     return ""
 
 
 # =========================
-# 取得回覆風格設定
+# 取得回覆風格設定（優先讀加密）
 # =========================
-def get_reply_style_settings(bot_id, chat_id, style_type):
+def get_reply_style_settings(bot_id, chat_id, style_type, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     style_type = normalize_style_type(style_type)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_code(user_id, bot_id)
+
+    if user_id and unlock_code:
+        try:
+            payload = get_encrypted_payload(
+                user_id=user_id,
+                bot_id=bot_id,
+                chat_id=chat_id,
+                data_type="reply_style_settings",
+                unlock_code=unlock_code,
+                record_key=style_type,
+            )
+
+            if payload:
+                return {
+                    "style_type": style_type,
+                    "reply_style": payload.get("reply_style", "") or ""
+                }
+
+        except Exception as e:
+            print("DECRYPT ERROR get_reply_style_settings:", e)
 
     conn = get_conn()
 
@@ -109,43 +134,12 @@ def get_reply_style_settings(bot_id, chat_id, style_type):
                 "reply_style": row[0] or ""
             }
 
-        # =========================
-        # 新表沒有資料時，嘗試讀舊欄位
-        # 如果讀到舊版風格，順手搬到新表，避免之後換人物 / 換劇本時遺失
-        # =========================
         legacy_reply_style = _get_legacy_reply_style(
             cursor,
             bot_id,
             chat_id,
             style_type
         )
-
-        if legacy_reply_style:
-            cursor.execute("""
-                INSERT INTO reply_style_settings (
-                    bot_id,
-                    chat_id,
-                    style_type,
-                    reply_style,
-                    updated_at
-                )
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
-
-                ON CONFLICT (bot_id, chat_id, style_type)
-
-                DO UPDATE SET
-                    reply_style = EXCLUDED.reply_style,
-                    updated_at = CURRENT_TIMESTAMP
-            """, (
-                bot_id,
-                chat_id,
-                style_type,
-                legacy_reply_style
-            ))
-
-            conn.commit()
-
-            print("DEBUG legacy reply style migrated:", bot_id, chat_id, style_type)
 
         return {
             "style_type": style_type,
@@ -161,15 +155,32 @@ def get_reply_style_settings(bot_id, chat_id, style_type):
 
 
 # =========================
-# 更新回覆風格設定
-# 空白也允許，空白代表使用系統預設樣式
+# 更新回覆風格設定（加密寫入）
 # =========================
-def update_reply_style_settings(bot_id, chat_id, style_type, reply_style):
+def update_reply_style_settings(bot_id, chat_id, style_type, reply_style, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     style_type = normalize_style_type(style_type)
     reply_style = str(reply_style or "")
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_code(user_id, bot_id)
+
+    if not user_id or not unlock_code:
+        raise ValueError("尚未解鎖資料庫密碼，無法儲存回覆風格")
+
+    save_encrypted_payload(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        data_type="reply_style_settings",
+        unlock_code=unlock_code,
+        payload={
+            "style_type": style_type,
+            "reply_style": reply_style,
+        },
+        record_key=style_type,
+    )
 
     conn = get_conn()
 
@@ -184,29 +195,25 @@ def update_reply_style_settings(bot_id, chat_id, style_type, reply_style):
                 reply_style,
                 updated_at
             )
-            VALUES (
-                %s, %s, %s, %s, CURRENT_TIMESTAMP
-            )
+            VALUES (%s, %s, %s, '', CURRENT_TIMESTAMP)
 
             ON CONFLICT (bot_id, chat_id, style_type)
 
             DO UPDATE SET
-                reply_style = EXCLUDED.reply_style,
+                reply_style = '',
                 updated_at = CURRENT_TIMESTAMP
         """, (
             bot_id,
             chat_id,
             style_type,
-            reply_style
         ))
 
         conn.commit()
-
-        print("DEBUG reply style updated:", bot_id, chat_id, style_type)
+        print("DEBUG encrypted reply style updated:", bot_id, chat_id, style_type)
 
     except Exception as e:
         conn.rollback()
-        print("DB ERROR update_reply_style_settings:", e)
+        print("DB ERROR update_reply_style_settings shell:", e)
         raise
 
     finally:
@@ -215,13 +222,12 @@ def update_reply_style_settings(bot_id, chat_id, style_type, reply_style):
 
 # =========================
 # 刪除回覆風格設定
-# style_type=None → 刪聊天 + 劇場
-# style_type=chat/theater → 只刪指定模式
 # =========================
-def delete_reply_style_settings(bot_id, chat_id, style_type=None):
+def delete_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    user_id = _resolve_user_id(user_id)
 
     conn = get_conn()
 
@@ -254,8 +260,6 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None):
 
         conn.commit()
 
-        print("DEBUG reply style deleted:", bot_id, chat_id, style_type)
-
     except Exception as e:
         conn.rollback()
         print("DB ERROR delete_reply_style_settings:", e)
@@ -263,3 +267,12 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None):
 
     finally:
         conn.close()
+
+    if user_id:
+        if style_type:
+            delete_encrypted_payload(user_id, bot_id, chat_id, "reply_style_settings", style_type)
+        else:
+            delete_encrypted_payload(user_id, bot_id, chat_id, "reply_style_settings", "chat")
+            delete_encrypted_payload(user_id, bot_id, chat_id, "reply_style_settings", "theater")
+
+    print("DEBUG reply style deleted:", bot_id, chat_id, style_type)

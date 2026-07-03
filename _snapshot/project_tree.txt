@@ -5,6 +5,7 @@
 📄 config.py
 📁 docs/
   📄 PRIVACY_ACCESS_README.md
+  📄 PRIVACY_SYNC_README.md
 📁 handlers/
   📄 __init__.py
   📄 call_handler.py
@@ -27,6 +28,8 @@
   📄 gemini_service.py
   📄 memory.py
   📄 privacy_access.py
+  📄 privacy_migration.py
+  📄 privacy_session.py
   📄 reply_style.py
   📄 style.py
   📄 telegram_service.py

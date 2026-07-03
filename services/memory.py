@@ -254,11 +254,81 @@ def extract_memory_content(text: str) -> str:
     return text.strip()
 
 
-def add_fact(bot_id, chat_id, scope, fact):
+
+def _resolve_user_id(user_id=None):
+    if user_id is not None:
+        return _text_id(user_id)
+
+    try:
+        from services.privacy_session import get_current_user_id
+        return get_current_user_id()
+    except Exception:
+        return None
+
+
+def _get_unlock_code_for(user_id, bot_id):
+    try:
+        from services.privacy_session import get_unlock_code
+        return get_unlock_code(user_id, bot_id)
+    except Exception:
+        return None
+
+
+def _decrypt_payload_row(user_id, bot_id, chat_id, data_type, record_key, encrypted_payload, unlock_code):
+    import json
+    from services.crypto_box import build_aad, decrypt_payload
+
+    if isinstance(encrypted_payload, str):
+        encrypted_payload = json.loads(encrypted_payload)
+
+    aad = build_aad(user_id, bot_id, chat_id, data_type, record_key)
+    return decrypt_payload(unlock_code, encrypted_payload, aad=aad)
+
+
+# =========================
+# 長期記憶（加密）
+# =========================
+def add_fact(bot_id, chat_id, scope, fact, user_id=None):
 
     bot_id = str(bot_id)
     chat_id = str(chat_id)
     scope = str(scope)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_unlock_code_for(user_id, bot_id)
+
+    if not user_id or not unlock_code:
+        print("PRIVACY LOCKED add_fact skipped:", bot_id, chat_id)
+        return False
+
+    import uuid
+    from services.encrypted_store import save_encrypted_payload
+
+    save_encrypted_payload(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        data_type="facts_memory",
+        unlock_code=unlock_code,
+        payload={
+            "fact": fact,
+            "scope": scope,
+        },
+        record_key=f"fact_{uuid.uuid4().hex}",
+    )
+
+    return True
+
+
+def get_facts(bot_id, chat_id, scope, user_id=None):
+
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    scope = str(scope)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_unlock_code_for(user_id, bot_id)
+
+    if not user_id or not unlock_code:
+        return []
 
     conn = get_conn()
 
@@ -266,58 +336,42 @@ def add_fact(bot_id, chat_id, scope, fact):
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO facts_memory (
-                bot_id,
-                chat_id,
-                scope,
-                fact
-            )
-            VALUES (%s, %s, %s, %s)
-        """, (
-            bot_id,
-            chat_id,
-            scope,
-            fact
-        ))
-
-        conn.commit()
-
-    except Exception as e:
-        conn.rollback()
-        print("DB ERROR add_fact:", e)
-        raise
-
-    finally:
-        conn.close()
-
-
-def get_facts(bot_id, chat_id, scope):
-
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = str(scope)
-
-    conn = get_conn()
-
-    try:
-        cursor = conn.cursor()
-
-        cursor.execute("""
-            SELECT fact
-            FROM facts_memory
-            WHERE bot_id = %s
+            SELECT record_key, encrypted_payload
+            FROM encrypted_settings
+            WHERE user_id = %s
+              AND bot_id = %s
               AND chat_id = %s
-              AND scope = %s
-            ORDER BY id DESC
+              AND data_type = 'facts_memory'
+            ORDER BY created_at DESC
+            LIMIT 300
         """, (
+            user_id,
             bot_id,
             chat_id,
-            scope
         ))
 
         rows = cursor.fetchall()
+        facts = []
 
-        return [row[0] for row in rows]
+        for record_key, encrypted_payload in rows:
+            try:
+                payload = _decrypt_payload_row(
+                    user_id,
+                    bot_id,
+                    chat_id,
+                    "facts_memory",
+                    record_key,
+                    encrypted_payload,
+                    unlock_code,
+                )
+            except Exception as exc:
+                print("DECRYPT SKIP get_facts:", exc)
+                continue
+
+            if payload.get("scope") == scope and payload.get("fact"):
+                facts.append(payload["fact"])
+
+        return facts
 
     except Exception as e:
         print("DB ERROR get_facts:", e)
@@ -328,13 +382,93 @@ def get_facts(bot_id, chat_id, scope):
 
 
 # =========================
-# 短期記憶
+# 短期記憶（加密）
 # =========================
-def add_chat(bot_id, chat_id, role, text):
+def add_chat(bot_id, chat_id, role, text, user_id=None):
 
     bot_id = str(bot_id)
     chat_id = str(chat_id)
     scope = _get_scope(chat_id)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_unlock_code_for(user_id, bot_id)
+
+    if not user_id or not unlock_code:
+        print("PRIVACY LOCKED add_chat skipped:", bot_id, chat_id, role)
+        return False
+
+    import uuid
+    from services.encrypted_store import save_encrypted_payload
+
+    record_key = f"chat_{uuid.uuid4().hex}"
+
+    save_encrypted_payload(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        data_type="chat_memory",
+        unlock_code=unlock_code,
+        payload={
+            "role": role,
+            "text": text,
+            "scope": scope,
+        },
+        record_key=record_key,
+    )
+
+    # =========================
+    # encrypted sliding window
+    # =========================
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            DELETE FROM encrypted_settings a
+            WHERE a.id NOT IN (
+                SELECT id FROM encrypted_settings
+                WHERE user_id = %s
+                  AND bot_id = %s
+                  AND chat_id = %s
+                  AND data_type = 'chat_memory'
+                ORDER BY created_at DESC
+                LIMIT 3000
+            )
+            AND a.user_id = %s
+            AND a.bot_id = %s
+            AND a.chat_id = %s
+            AND a.data_type = 'chat_memory'
+        """, (
+            user_id,
+            bot_id,
+            chat_id,
+            user_id,
+            bot_id,
+            chat_id,
+        ))
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR encrypted chat sliding window:", e)
+
+    finally:
+        conn.close()
+
+    return True
+
+
+def get_chat(bot_id, chat_id, user_id=None):
+
+    bot_id = str(bot_id)
+    chat_id = str(chat_id)
+    scope = _get_scope(chat_id)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_unlock_code_for(user_id, bot_id)
+
+    if not user_id or not unlock_code:
+        return []
 
     conn = get_conn()
 
@@ -342,139 +476,48 @@ def add_chat(bot_id, chat_id, role, text):
         cursor = conn.cursor()
 
         cursor.execute("""
-            INSERT INTO chat_memory (
-                bot_id,
-                chat_id,
-                scope,
-                role,
-                text
-            )
-            VALUES (%s, %s, %s, %s, %s)
+            SELECT record_key, encrypted_payload
+            FROM encrypted_settings
+            WHERE user_id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND data_type = 'chat_memory'
+            ORDER BY created_at DESC
+            LIMIT 100
         """, (
+            user_id,
             bot_id,
             chat_id,
-            scope,
-            role,
-            text
         ))
-
-        # =========================
-        # sliding window
-        # 私聊：bot_id + chat_id + scope 保留 3000 筆
-        # 群組：chat_id + scope 共用保留 3000 筆
-        # =========================
-        if scope == "group":
-
-            cursor.execute("""
-                DELETE FROM chat_memory a
-                WHERE a.id NOT IN (
-                    SELECT id FROM chat_memory
-                    WHERE chat_id = %s
-                      AND scope = %s
-                    ORDER BY id DESC
-                    LIMIT 3000
-                )
-                AND a.chat_id = %s
-                AND a.scope = %s
-            """, (
-                chat_id,
-                scope,
-                chat_id,
-                scope
-            ))
-
-        else:
-
-            cursor.execute("""
-                DELETE FROM chat_memory a
-                WHERE a.id NOT IN (
-                    SELECT id FROM chat_memory
-                    WHERE bot_id = %s
-                      AND chat_id = %s
-                      AND scope = %s
-                    ORDER BY id DESC
-                    LIMIT 3000
-                )
-                AND a.bot_id = %s
-                AND a.chat_id = %s
-                AND a.scope = %s
-            """, (
-                bot_id,
-                chat_id,
-                scope,
-                bot_id,
-                chat_id,
-                scope
-            ))
-
-        conn.commit()
-
-    except Exception as e:
-        conn.rollback()
-        print("DB ERROR add_chat:", e)
-        raise
-
-    finally:
-        conn.close()
-
-
-def get_chat(bot_id, chat_id):
-
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = _get_scope(chat_id)
-
-    conn = get_conn()
-
-    try:
-        cursor = conn.cursor()
-
-        # =========================
-        # group → 共用 memory
-        # =========================
-        if scope == "group":
-
-            cursor.execute("""
-                SELECT role, text
-                FROM chat_memory
-                WHERE chat_id = %s 
-                  AND scope = %s
-                ORDER BY id DESC
-                LIMIT 100
-            """, (
-                chat_id,
-                scope
-            ))
-
-        # =========================
-        # private → bot 專屬 memory
-        # =========================
-        else:
-
-            cursor.execute("""
-                SELECT role, text
-                FROM chat_memory
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND scope = %s
-                ORDER BY id DESC
-                LIMIT 100
-            """, (
-                bot_id,
-                chat_id,
-                scope
-            ))
 
         rows = cursor.fetchall()
         rows.reverse()
+        history = []
 
-        return [
-            {
-                "role": r[0],
-                "text": r[1]
-            }
-            for r in rows
-        ]
+        for record_key, encrypted_payload in rows:
+            try:
+                payload = _decrypt_payload_row(
+                    user_id,
+                    bot_id,
+                    chat_id,
+                    "chat_memory",
+                    record_key,
+                    encrypted_payload,
+                    unlock_code,
+                )
+            except Exception as exc:
+                print("DECRYPT SKIP get_chat:", exc)
+                continue
+
+            if payload.get("scope") != scope:
+                continue
+
+            history.append({
+                "role": payload.get("role") or "user",
+                "text": payload.get("text") or "",
+            })
+
+        return history
 
     except Exception as e:
         print("DB ERROR get_chat:", e)
@@ -484,63 +527,12 @@ def get_chat(bot_id, chat_id):
         conn.close()
 
 
-def get_recent_chat(bot_id, chat_id, limit=30):
+def get_recent_chat(bot_id, chat_id, limit=30, user_id=None):
 
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = _get_scope(chat_id)
+    history = get_chat(bot_id, chat_id, user_id=user_id)
+    rows = history[-int(limit):]
 
-    conn = get_conn()
-
-    try:
-        cursor = conn.cursor()
-
-        # =========================
-        # group → 共用 memory
-        # =========================
-        if scope == "group":
-
-            cursor.execute("""
-                SELECT role, text
-                FROM chat_memory
-                WHERE chat_id = %s
-                  AND scope = %s
-                ORDER BY id DESC
-                LIMIT %s
-            """, (
-                chat_id,
-                scope,
-                limit
-            ))
-
-        # =========================
-        # private → bot 專屬 memory
-        # =========================
-        else:
-
-            cursor.execute("""
-                SELECT role, text
-                FROM chat_memory
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND scope = %s
-                ORDER BY id DESC
-                LIMIT %s
-            """, (
-                bot_id,
-                chat_id,
-                scope,
-                limit
-            ))
-
-        rows = cursor.fetchall()
-        rows.reverse()
-
-        return rows
-
-    except Exception as e:
-        print("DB ERROR get_recent_chat:", e)
-        raise
-
-    finally:
-        conn.close()
+    return [
+        (item.get("role"), item.get("text"))
+        for item in rows
+    ]

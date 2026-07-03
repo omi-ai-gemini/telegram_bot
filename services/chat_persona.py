@@ -1,4 +1,6 @@
 from services.database import get_conn
+from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
+from services.privacy_session import get_current_user_id, get_unlock_code
 
 
 DEFAULT_CHAT_PERSONA_SETTINGS = {
@@ -12,9 +14,16 @@ def _text_id(value):
     return str(value)
 
 
+def _resolve_user_id(user_id=None):
+    return _text_id(user_id) if user_id is not None else get_current_user_id()
+
+
+def _get_code(user_id, bot_id):
+    return get_unlock_code(user_id, bot_id)
+
+
 # =========================
 # 檢查是否有設定聊天人物
-# 注意：回覆風格已移到 reply_style_settings，不算聊天人物本體
 # =========================
 def has_chat_persona_settings(settings):
 
@@ -29,13 +38,37 @@ def has_chat_persona_settings(settings):
 
 
 # =========================
-# 取得聊天模式人物設定
+# 取得聊天模式人物設定（優先讀加密）
 # =========================
-def get_chat_persona_settings(bot_id, chat_id):
+def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_code(user_id, bot_id)
 
+    if user_id and unlock_code:
+        try:
+            payload = get_encrypted_payload(
+                user_id=user_id,
+                bot_id=bot_id,
+                chat_id=chat_id,
+                data_type="chat_persona_settings",
+                unlock_code=unlock_code,
+                record_key="default",
+            )
+
+            if payload:
+                return {
+                    "persona_name": payload.get("persona_name", "") or "",
+                    "persona_gender": payload.get("persona_gender", "") or "",
+                    "persona_background": payload.get("persona_background", "") or "",
+                }
+
+        except Exception as e:
+            print("DECRYPT ERROR get_chat_persona_settings:", e)
+
+    # 舊資料相容：尚未遷移前讀舊表。遷移後舊欄位會被清空。
     conn = get_conn()
 
     try:
@@ -74,18 +107,35 @@ def get_chat_persona_settings(bot_id, chat_id):
 
 
 # =========================
-# 更新聊天模式人物設定
-# 不更新 reply_style，避免換聊天對象時覆蓋獨立風格設定
+# 更新聊天模式人物設定（加密寫入，舊表只留空殼相容）
 # =========================
-def update_chat_persona_settings(bot_id, chat_id, settings):
+def update_chat_persona_settings(bot_id, chat_id, settings, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    user_id = _resolve_user_id(user_id)
+    unlock_code = _get_code(user_id, bot_id)
 
-    persona_name = settings.get("persona_name", "")
-    persona_gender = settings.get("persona_gender", "")
-    persona_background = settings.get("persona_background", "")
+    if not user_id or not unlock_code:
+        raise ValueError("尚未解鎖資料庫密碼，無法儲存聊天人物設定")
 
+    payload = {
+        "persona_name": settings.get("persona_name", ""),
+        "persona_gender": settings.get("persona_gender", ""),
+        "persona_background": settings.get("persona_background", ""),
+    }
+
+    save_encrypted_payload(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        data_type="chat_persona_settings",
+        unlock_code=unlock_code,
+        payload=payload,
+        record_key="default",
+    )
+
+    # 舊表保留 row 但清空敏感欄位，避免 Supabase 繼續看到明文。
     conn = get_conn()
 
     try:
@@ -100,32 +150,26 @@ def update_chat_persona_settings(bot_id, chat_id, settings):
                 persona_background,
                 updated_at
             )
-            VALUES (
-                %s, %s, %s, %s, %s, CURRENT_TIMESTAMP
-            )
+            VALUES (%s, %s, '', '', '', CURRENT_TIMESTAMP)
 
             ON CONFLICT (bot_id, chat_id)
 
             DO UPDATE SET
-                persona_name = EXCLUDED.persona_name,
-                persona_gender = EXCLUDED.persona_gender,
-                persona_background = EXCLUDED.persona_background,
+                persona_name = '',
+                persona_gender = '',
+                persona_background = '',
                 updated_at = CURRENT_TIMESTAMP
         """, (
             bot_id,
             chat_id,
-            persona_name,
-            persona_gender,
-            persona_background
         ))
 
         conn.commit()
-
-        print("DEBUG chat persona updated:", bot_id, chat_id)
+        print("DEBUG encrypted chat persona updated:", bot_id, chat_id)
 
     except Exception as e:
         conn.rollback()
-        print("DB ERROR update_chat_persona_settings:", e)
+        print("DB ERROR update_chat_persona_settings shell:", e)
         raise
 
     finally:
@@ -134,12 +178,12 @@ def update_chat_persona_settings(bot_id, chat_id, settings):
 
 # =========================
 # 刪除聊天模式人物設定
-# 不刪 reply_style_settings，讓聊天風格可以傳承
 # =========================
-def delete_chat_persona_settings(bot_id, chat_id):
+def delete_chat_persona_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    user_id = _resolve_user_id(user_id)
 
     conn = get_conn()
 
@@ -157,8 +201,6 @@ def delete_chat_persona_settings(bot_id, chat_id):
 
         conn.commit()
 
-        print("DEBUG chat persona deleted:", bot_id, chat_id)
-
     except Exception as e:
         conn.rollback()
         print("DB ERROR delete_chat_persona_settings:", e)
@@ -166,3 +208,8 @@ def delete_chat_persona_settings(bot_id, chat_id):
 
     finally:
         conn.close()
+
+    if user_id:
+        delete_encrypted_payload(user_id, bot_id, chat_id, "chat_persona_settings", "default")
+
+    print("DEBUG chat persona deleted:", bot_id, chat_id)

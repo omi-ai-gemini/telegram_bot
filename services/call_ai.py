@@ -46,7 +46,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 先寫入使用者短期記憶
         # =========================
-        add_chat(bot_id, chat_id, "user", user_text)
+        add_chat(bot_id, chat_id, "user", user_text, user_id=user_id)
 
         # =========================
         # 情緒記憶
@@ -63,7 +63,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             fact = extract_memory_content(user_text)
 
             if fact:
-                add_fact(bot_id, chat_id, scope, fact)
+                add_fact(bot_id, chat_id, scope, fact, user_id=user_id)
 
             send_message(bot_id, chat_id, "已記住")
             return
@@ -71,23 +71,23 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 短期記憶
         # =========================
-        history = get_chat(bot_id, chat_id)
+        history = get_chat(bot_id, chat_id, user_id=user_id)
 
         # =========================
         # 長期記憶
         # =========================
-        facts = get_facts(bot_id, chat_id, scope)
+        facts = get_facts(bot_id, chat_id, scope, user_id=user_id)
 
         # =========================
         # 人物 / 劇本設定
         # =========================
-        character_settings = get_character_settings(bot_id, chat_id)
+        character_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
         mode = character_settings.get("mode", "聊天模式")
 
         chat_persona_settings = None
 
         if mode == "聊天模式":
-            chat_persona_settings = get_chat_persona_settings(bot_id, chat_id)
+            chat_persona_settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
 
         # =========================
         # 獨立回覆風格設定
@@ -96,7 +96,8 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         reply_style_settings = get_reply_style_settings(
             bot_id=bot_id,
             chat_id=chat_id,
-            style_type=mode
+            style_type=mode,
+            user_id=user_id
         )
 
         # =========================
@@ -104,7 +105,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         if len(history) >= 30:
 
-            recent_rows = get_recent_chat(bot_id, chat_id, limit=30)
+            recent_rows = get_recent_chat(bot_id, chat_id, limit=30, user_id=user_id)
 
             raw_text = "\n".join([
                 f"{role}: {text}"
@@ -123,9 +124,9 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
                     if not f:
                         continue
 
-                    add_fact(bot_id, chat_id, scope, f)
+                    add_fact(bot_id, chat_id, scope, f, user_id=user_id)
 
-                facts = get_facts(bot_id, chat_id, scope)
+                facts = get_facts(bot_id, chat_id, scope, user_id=user_id)
 
         # =========================
         # Gemini 回覆
@@ -145,7 +146,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 寫入 AI 短期記憶
         # =========================
-        add_chat(bot_id, chat_id, "assistant", reply)
+        add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
 
         # =========================
         # 回傳 Telegram

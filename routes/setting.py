@@ -17,6 +17,7 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
+from services.privacy_session import set_request_context
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -36,14 +37,16 @@ def persona_setting_page():
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
 
-    mode = get_character_mode(bot_id, chat_id)
+    set_request_context(user_id, bot_id, chat_id)
+
+    mode = get_character_mode(bot_id, chat_id, user_id=user_id)
 
     # =========================
     # 劇場模式 → 原本劇本表單
     # =========================
     if mode == "劇場模式":
 
-        settings = get_character_settings(bot_id, chat_id)
+        settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
         return render_template(
             "character_form.html",
@@ -56,7 +59,7 @@ def persona_setting_page():
     # =========================
     # 聊天模式 → 聊天人物表單
     # =========================
-    settings = get_chat_persona_settings(bot_id, chat_id)
+    settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
 
     return render_template(
         "chat_persona_form.html",
@@ -78,7 +81,9 @@ def character_setting_page():
     chat_id = request.args.get("chat_id", "")
     user_id = request.args.get("user_id", "")
 
-    settings = get_character_settings(bot_id, chat_id)
+    set_request_context(user_id, bot_id, chat_id)
+
+    settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
     return render_template(
         "character_form.html",
@@ -104,7 +109,9 @@ def reply_style_setting_page():
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
 
-    settings = get_reply_style_settings(bot_id, chat_id, style_type)
+    set_request_context(user_id, bot_id, chat_id)
+
+    settings = get_reply_style_settings(bot_id, chat_id, style_type, user_id=user_id)
 
     if style_type == "theater":
         title = "劇場回覆風格"
@@ -138,6 +145,9 @@ def save_reply_style_setting():
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
     style_type = normalize_style_type(request.form.get("style_type", "chat"))
+    user_id = request.form.get("user_id", "").strip()
+
+    set_request_context(user_id, bot_id, chat_id)
 
     if not bot_id or not chat_id:
         return jsonify({
@@ -147,12 +157,16 @@ def save_reply_style_setting():
 
     reply_style = request.form.get("reply_style", "").strip()
 
-    update_reply_style_settings(
-        bot_id=bot_id,
-        chat_id=chat_id,
-        style_type=style_type,
-        reply_style=reply_style
-    )
+    try:
+        update_reply_style_settings(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            style_type=style_type,
+            reply_style=reply_style,
+            user_id=user_id
+        )
+    except ValueError as e:
+        return jsonify({"ok": False, "message": str(e) + "。請先回 Telegram 私訊 bot 輸入 /解鎖 你的資料庫密碼。"}), 403
 
     return jsonify({
         "ok": True,
@@ -170,6 +184,9 @@ def save_chat_persona_setting():
 
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
+    user_id = request.form.get("user_id", "").strip()
+
+    set_request_context(user_id, bot_id, chat_id)
 
     if not bot_id or not chat_id:
         return jsonify({
@@ -183,7 +200,10 @@ def save_chat_persona_setting():
         "persona_background": request.form.get("persona_background", "").strip()
     }
 
-    update_chat_persona_settings(bot_id, chat_id, settings)
+    try:
+        update_chat_persona_settings(bot_id, chat_id, settings, user_id=user_id)
+    except ValueError as e:
+        return jsonify({"ok": False, "message": str(e) + "。請先回 Telegram 私訊 bot 輸入 /解鎖 你的資料庫密碼。"}), 403
 
     return jsonify({
         "ok": True,
@@ -200,6 +220,9 @@ def save_character_setting():
 
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
+    user_id = request.form.get("user_id", "").strip()
+
+    set_request_context(user_id, bot_id, chat_id)
 
     if not bot_id or not chat_id:
         return jsonify({
@@ -207,7 +230,7 @@ def save_character_setting():
             "message": "缺少 bot_id 或 chat_id"
         }), 400
 
-    current_settings = get_character_settings(bot_id, chat_id)
+    current_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
     settings = {
         "mode": current_settings.get("mode", "聊天模式"),
@@ -242,7 +265,10 @@ def save_character_setting():
             "message": "以下欄位必填：" + "、".join(missing_fields)
         }), 400
 
-    update_character_settings(bot_id, chat_id, settings)
+    try:
+        update_character_settings(bot_id, chat_id, settings, user_id=user_id)
+    except ValueError as e:
+        return jsonify({"ok": False, "message": str(e) + "。請先回 Telegram 私訊 bot 輸入 /解鎖 你的資料庫密碼。"}), 403
 
     return jsonify({
         "ok": True,
