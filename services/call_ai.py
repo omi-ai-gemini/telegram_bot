@@ -7,6 +7,7 @@ from services.gemini_service import summarize_memory
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
+from services.user_notice import send_once_user_notice
 from services.memory import (
     add_chat,
     get_chat,
@@ -37,6 +38,12 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
                 f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
             )
             return
+
+        # =========================
+        # 全體使用者一次性公告
+        # 每個 user + bot 只會收到一次
+        # =========================
+        send_once_user_notice(user_id, bot_id, chat_id)
 
         # =========================
         # scope 判斷
@@ -142,6 +149,16 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             reply_style_settings=reply_style_settings,
             facts=facts
         )
+
+        # =========================
+        # Gemini 沒有回傳可用文字時
+        # - 不傳假訊息
+        # - 不寫入短期記憶
+        # - 詳細原因看 Render 的 GEMINI DEBUG log
+        # =========================
+        if not reply:
+            print("AI SKIP SEND: Gemini returned empty reply")
+            return
 
         # =========================
         # 寫入 AI 短期記憶

@@ -373,6 +373,27 @@ def init_db():
         ON privacy_access (bot_id, user_id, unlock_code_issued)
         """)
 
+        # =========================
+        # 一次性使用者公告紀錄
+        # 每個 user + bot + notice_id 只發一次
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS user_notice_log (
+            user_id TEXT NOT NULL,
+            bot_id TEXT NOT NULL,
+            notice_id TEXT NOT NULL,
+            delivered_chat_id TEXT,
+            delivered_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            PRIMARY KEY (user_id, bot_id, notice_id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_user_notice_log_lookup
+        ON user_notice_log (bot_id, notice_id, user_id)
+        """)
+
         conn.commit()
 
     except Exception:

@@ -30,8 +30,38 @@ GEMINI_SAFETY_SETTINGS = [
 
 
 GEMINI_CONFIG = types.GenerateContentConfig(
-    safety_settings=GEMINI_SAFETY_SETTINGS
+    safety_settings=GEMINI_SAFETY_SETTINGS,
+    # 降低候選回覆飄到敏感方向的機率。
+    temperature=0.4,
+    max_output_tokens=512,
 )
+
+
+def _enum_name(value):
+    """
+    把 Gemini SDK 回傳的 Enum / 物件安全轉成可讀文字。
+    不印 prompt 明文，不印 AI 回覆明文。
+    """
+    if value is None:
+        return None
+
+    return getattr(value, "name", str(value))
+
+
+def _read_attr(obj, *names):
+    """
+    同時相容 snake_case / camelCase 欄位名稱。
+    """
+    if obj is None:
+        return None
+
+    for name in names:
+        value = getattr(obj, name, None)
+
+        if value is not None:
+            return value
+
+    return None
 
 
 def _extract_finish_reason(response):
@@ -47,13 +77,98 @@ def _extract_finish_reason(response):
         first = candidates[0]
 
         return (
-            getattr(first, "finish_reason", None)
-            or getattr(first, "finishReason", None)
+            _read_attr(first, "finish_reason", "finishReason")
             or "UNKNOWN"
         )
 
     except Exception as exc:
         return f"READ_FINISH_REASON_ERROR:{exc}"
+
+
+def debug_gemini_response(response, label="GEMINI"):
+    """
+    印出 Gemini 空回覆可追查的原因。
+
+    重點：
+    - 不印 prompt 明文
+    - 不印 AI 回覆明文
+    - 只印 block reason / safety rating / parts 數量 / text 長度
+    """
+    print(f"========== {label} DEBUG START ==========")
+
+    usage = _read_attr(response, "usage_metadata", "usageMetadata")
+
+    if usage:
+        print(f"{label} usage_metadata:", usage)
+
+    feedback = _read_attr(response, "prompt_feedback", "promptFeedback")
+
+    if feedback:
+        block_reason = _read_attr(feedback, "block_reason", "blockReason")
+        print(f"{label} prompt_block_reason:", _enum_name(block_reason))
+
+        safety_ratings = _read_attr(feedback, "safety_ratings", "safetyRatings") or []
+
+        if not safety_ratings:
+            print(f"{label} prompt_safety_ratings: EMPTY")
+
+        for rating in safety_ratings:
+            print(
+                f"{label} prompt_safety:",
+                "category=", _enum_name(_read_attr(rating, "category")),
+                "probability=", _enum_name(_read_attr(rating, "probability")),
+                "blocked=", _read_attr(rating, "blocked"),
+            )
+    else:
+        print(f"{label} prompt_feedback: None")
+
+    candidates = getattr(response, "candidates", None)
+
+    if not candidates:
+        print(f"{label} candidates: EMPTY")
+        print(f"========== {label} DEBUG END ==========")
+        return
+
+    print(f"{label} candidates_count:", len(candidates))
+
+    for index, candidate in enumerate(candidates):
+        finish_reason = _read_attr(candidate, "finish_reason", "finishReason")
+        print(f"{label} candidate[{index}] finish_reason:", _enum_name(finish_reason))
+
+        safety_ratings = _read_attr(candidate, "safety_ratings", "safetyRatings") or []
+
+        if not safety_ratings:
+            print(f"{label} candidate[{index}] safety_ratings: EMPTY")
+
+        for rating in safety_ratings:
+            print(
+                f"{label} candidate[{index}] safety:",
+                "category=", _enum_name(_read_attr(rating, "category")),
+                "probability=", _enum_name(_read_attr(rating, "probability")),
+                "blocked=", _read_attr(rating, "blocked"),
+            )
+
+        content = getattr(candidate, "content", None)
+
+        if not content:
+            print(f"{label} candidate[{index}] content: None")
+            continue
+
+        parts = getattr(content, "parts", None) or []
+        print(f"{label} candidate[{index}] parts_count:", len(parts))
+
+        for part_index, part in enumerate(parts):
+            text = getattr(part, "text", None)
+
+            if text is None:
+                print(f"{label} candidate[{index}] part[{part_index}] text: None")
+            else:
+                print(
+                    f"{label} candidate[{index}] part[{part_index}] text_length:",
+                    len(str(text)),
+                )
+
+    print(f"========== {label} DEBUG END ==========")
 
 
 def _safe_response_text(response):
@@ -117,15 +232,18 @@ def ask_gemini(
 
     # 不印 response 內容，避免 AI 回覆明文進 Render log。
     print("DEBUG gemini response received")
-    print("GEMINI finish_reason:", _extract_finish_reason(response))
+    print("GEMINI finish_reason:", _enum_name(_extract_finish_reason(response)))
+    debug_gemini_response(response, label="GEMINI")
 
     text = _safe_response_text(response)
 
     if text:
         return text
 
-    # 不讓 Telegram 因為 None / 空字串直接沉默。
-    return "……我剛剛卡了一下，妳再說一次。"
+    # Gemini 沒有可用文字時，不回傳假角色訊息。
+    # 讓 run_ai 不寫入記憶、不傳送假回覆；原因看上面的 GEMINI DEBUG。
+    print("GEMINI empty reply: no text returned")
+    return None
 
 
 # =========================
@@ -156,7 +274,8 @@ def summarize_memory(gemini_key, chat_text):
         )
 
     print("DEBUG memory summary received")
-    print("GEMINI summary finish_reason:", _extract_finish_reason(response))
+    print("GEMINI summary finish_reason:", _enum_name(_extract_finish_reason(response)))
+    debug_gemini_response(response, label="GEMINI SUMMARY")
 
     text = _safe_response_text(response)
 
