@@ -1,4 +1,5 @@
 from services.database import get_conn
+from services.crypto_env import encrypt_text, decrypt_text, aad_for, is_encrypted
 
 
 def _text_id(value):
@@ -8,6 +9,14 @@ def _text_id(value):
 def _get_scope(chat_id):
     chat_id = str(chat_id)
     return "group" if int(chat_id) < 0 else "private"
+
+
+def _decrypt_safe(value, aad=""):
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR memory field skipped:", exc)
+        return ""
 
 
 # =========================
@@ -169,7 +178,7 @@ def update_emotion(chat_id, delta):
 def get_emotion(chat_id):
 
     chat_id = _text_id(chat_id)
-    
+
     conn = get_conn()
 
     try:
@@ -217,11 +226,11 @@ def detect_emotion(text: str) -> int:
     for w in positive_words:
         if w in text:
             score += 1
-    
+
     for w in negative_words:
         if w in text:
             score -= 1
-    
+
     return score
 
 
@@ -250,85 +259,21 @@ def extract_memory_content(text: str) -> str:
 
     for trigger in memory_triggers:
         text = text.replace(trigger, "")
-    
+
     return text.strip()
 
 
-
-def _resolve_user_id(user_id=None):
-    if user_id is not None:
-        return _text_id(user_id)
-
-    try:
-        from services.privacy_session import get_current_user_id
-        return get_current_user_id()
-    except Exception:
-        return None
-
-
-def _get_unlock_code_for(user_id, bot_id):
-    try:
-        from services.privacy_session import get_unlock_code
-        return get_unlock_code(user_id, bot_id)
-    except Exception:
-        return None
-
-
-def _decrypt_payload_row(user_id, bot_id, chat_id, data_type, record_key, encrypted_payload, unlock_code):
-    import json
-    from services.crypto_box import build_aad, decrypt_payload
-
-    if isinstance(encrypted_payload, str):
-        encrypted_payload = json.loads(encrypted_payload)
-
-    aad = build_aad(user_id, bot_id, chat_id, data_type, record_key)
-    return decrypt_payload(unlock_code, encrypted_payload, aad=aad)
-
-
 # =========================
-# 長期記憶（加密）
+# 長期記憶：facts_memory.fact 存密文
 # =========================
 def add_fact(bot_id, chat_id, scope, fact, user_id=None):
 
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = str(scope)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_unlock_code_for(user_id, bot_id)
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope)
 
-    if not user_id or not unlock_code:
-        print("PRIVACY LOCKED add_fact skipped:", bot_id, chat_id)
-        return False
-
-    import uuid
-    from services.encrypted_store import save_encrypted_payload
-
-    save_encrypted_payload(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        data_type="facts_memory",
-        unlock_code=unlock_code,
-        payload={
-            "fact": fact,
-            "scope": scope,
-        },
-        record_key=f"fact_{uuid.uuid4().hex}",
-    )
-
-    return True
-
-
-def get_facts(bot_id, chat_id, scope, user_id=None):
-
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = str(scope)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_unlock_code_for(user_id, bot_id)
-
-    if not user_id or not unlock_code:
-        return []
+    aad = aad_for("facts_memory", "fact", bot_id, chat_id, scope)
+    encrypted_fact = encrypt_text(fact, aad=aad)
 
     conn = get_conn()
 
@@ -336,40 +281,67 @@ def get_facts(bot_id, chat_id, scope, user_id=None):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT record_key, encrypted_payload
-            FROM encrypted_settings
-            WHERE user_id = %s
-              AND bot_id = %s
+            INSERT INTO facts_memory (
+                bot_id,
+                chat_id,
+                scope,
+                fact
+            )
+            VALUES (%s, %s, %s, %s)
+        """, (
+            bot_id,
+            chat_id,
+            scope,
+            encrypted_fact
+        ))
+
+        conn.commit()
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR add_fact:", e)
+        raise
+
+    finally:
+        conn.close()
+
+    return True
+
+
+def get_facts(bot_id, chat_id, scope, user_id=None):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT fact
+            FROM facts_memory
+            WHERE bot_id = %s
               AND chat_id = %s
-              AND data_type = 'facts_memory'
+              AND scope = %s
             ORDER BY created_at DESC
             LIMIT 300
         """, (
-            user_id,
             bot_id,
             chat_id,
+            scope
         ))
 
         rows = cursor.fetchall()
+        aad = aad_for("facts_memory", "fact", bot_id, chat_id, scope)
+
         facts = []
 
-        for record_key, encrypted_payload in rows:
-            try:
-                payload = _decrypt_payload_row(
-                    user_id,
-                    bot_id,
-                    chat_id,
-                    "facts_memory",
-                    record_key,
-                    encrypted_payload,
-                    unlock_code,
-                )
-            except Exception as exc:
-                print("DECRYPT SKIP get_facts:", exc)
-                continue
-
-            if payload.get("scope") == scope and payload.get("fact"):
-                facts.append(payload["fact"])
+        for row in rows:
+            fact = _decrypt_safe(row[0], aad=aad)
+            if fact:
+                facts.append(fact)
 
         return facts
 
@@ -382,76 +354,67 @@ def get_facts(bot_id, chat_id, scope, user_id=None):
 
 
 # =========================
-# 短期記憶（加密）
+# 短期記憶：chat_memory.text 存密文
 # =========================
 def add_chat(bot_id, chat_id, role, text, user_id=None):
 
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
     scope = _get_scope(chat_id)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_unlock_code_for(user_id, bot_id)
+    role = _text_id(role)
 
-    if not user_id or not unlock_code:
-        print("PRIVACY LOCKED add_chat skipped:", bot_id, chat_id, role)
-        return False
+    aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+    encrypted_text = encrypt_text(text, aad=aad)
 
-    import uuid
-    from services.encrypted_store import save_encrypted_payload
-
-    record_key = f"chat_{uuid.uuid4().hex}"
-
-    save_encrypted_payload(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        data_type="chat_memory",
-        unlock_code=unlock_code,
-        payload={
-            "role": role,
-            "text": text,
-            "scope": scope,
-        },
-        record_key=record_key,
-    )
-
-    # =========================
-    # encrypted sliding window
-    # =========================
     conn = get_conn()
 
     try:
         cursor = conn.cursor()
 
         cursor.execute("""
-            DELETE FROM encrypted_settings a
-            WHERE a.id NOT IN (
-                SELECT id FROM encrypted_settings
-                WHERE user_id = %s
-                  AND bot_id = %s
-                  AND chat_id = %s
-                  AND data_type = 'chat_memory'
-                ORDER BY created_at DESC
-                LIMIT 3000
+            INSERT INTO chat_memory (
+                bot_id,
+                chat_id,
+                scope,
+                role,
+                text
             )
-            AND a.user_id = %s
-            AND a.bot_id = %s
-            AND a.chat_id = %s
-            AND a.data_type = 'chat_memory'
+            VALUES (%s, %s, %s, %s, %s)
         """, (
-            user_id,
             bot_id,
             chat_id,
-            user_id,
+            scope,
+            role,
+            encrypted_text
+        ))
+
+        # =========================
+        # Sliding window
+        # 每個 bot + chat + scope 保留最近 100 則
+        # =========================
+        cursor.execute("""
+            DELETE FROM chat_memory
+            WHERE id IN (
+                SELECT id
+                FROM chat_memory
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+                ORDER BY created_at DESC
+                OFFSET 100
+            )
+        """, (
             bot_id,
             chat_id,
+            scope
         ))
 
         conn.commit()
 
     except Exception as e:
         conn.rollback()
-        print("DB ERROR encrypted chat sliding window:", e)
+        print("DB ERROR add_chat:", e)
+        raise
 
     finally:
         conn.close()
@@ -461,14 +424,9 @@ def add_chat(bot_id, chat_id, role, text, user_id=None):
 
 def get_chat(bot_id, chat_id, user_id=None):
 
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
     scope = _get_scope(chat_id)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_unlock_code_for(user_id, bot_id)
-
-    if not user_id or not unlock_code:
-        return []
 
     conn = get_conn()
 
@@ -476,45 +434,32 @@ def get_chat(bot_id, chat_id, user_id=None):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT record_key, encrypted_payload
-            FROM encrypted_settings
-            WHERE user_id = %s
-              AND bot_id = %s
+            SELECT role, text
+            FROM chat_memory
+            WHERE bot_id = %s
               AND chat_id = %s
-              AND data_type = 'chat_memory'
-            ORDER BY created_at DESC
-            LIMIT 100
+              AND scope = %s
+            ORDER BY created_at ASC
         """, (
-            user_id,
             bot_id,
             chat_id,
+            scope
         ))
 
         rows = cursor.fetchall()
-        rows.reverse()
         history = []
 
-        for record_key, encrypted_payload in rows:
-            try:
-                payload = _decrypt_payload_row(
-                    user_id,
-                    bot_id,
-                    chat_id,
-                    "chat_memory",
-                    record_key,
-                    encrypted_payload,
-                    unlock_code,
-                )
-            except Exception as exc:
-                print("DECRYPT SKIP get_chat:", exc)
-                continue
+        for role, value in rows:
+            role = role or "user"
+            aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+            text = _decrypt_safe(value, aad=aad)
 
-            if payload.get("scope") != scope:
+            if not text:
                 continue
 
             history.append({
-                "role": payload.get("role") or "user",
-                "text": payload.get("text") or "",
+                "role": role,
+                "text": text
             })
 
         return history

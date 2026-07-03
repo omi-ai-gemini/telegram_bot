@@ -4,6 +4,7 @@
 📄 check_db.py
 📄 config.py
 📁 docs/
+  📄 ENV_ENCRYPTION_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
 📁 handlers/
@@ -23,6 +24,7 @@
   📄 chat_persona.py
   📄 commands.py
   📄 crypto_box.py
+  📄 crypto_env.py
   📄 database.py
   📄 encrypted_store.py
   📄 gemini_service.py
@@ -45,6 +47,8 @@
   📄 reply_style_form.html
 📄 test_db.py
 📁 tools/
+  📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
+  📄 python.txt
 📄 模式-使用說明.txt
 📄 開場-更新說明.txt

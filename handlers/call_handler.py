@@ -23,7 +23,6 @@ from services.telegram_service import (
     answer_callback_query,
     delete_message,
 )
-from services.privacy_session import set_request_context
 
 
 # =========================
@@ -66,7 +65,6 @@ def _send_script_opening(bot_id, chat_id):
 # =========================
 def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
-    set_request_context(user_id, bot_id, chat_id)
 
     print("callback", user_text, "message:", message_id)
 

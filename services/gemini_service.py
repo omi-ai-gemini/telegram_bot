@@ -31,7 +31,8 @@ def ask_gemini(
         facts=facts
     )
 
-    print("DEBUG prompt preview:", prompt[:1200])
+    # 不印 prompt 內容，避免解密後的明文進 Render log。
+    print("DEBUG prompt built")
 
     # =========================
     # 呼叫 Gemini
@@ -42,7 +43,8 @@ def ask_gemini(
             contents=prompt
         )
 
-    print("gemini response:", response.text)
+    # 不印 response 內容，避免 AI 回覆明文進 Render log。
+    print("DEBUG gemini response received")
 
     return response.text
 
@@ -72,5 +74,7 @@ def summarize_memory(gemini_key, chat_text):
             model=GEMINI_MODEL,
             contents=prompt
         )
+
+    print("DEBUG memory summary received")
 
     return response.text

@@ -16,6 +16,7 @@ C:\Projects\telemini
 - `api.py`
 - `check_db.py`
 - `config.py`
+- `docs\ENV_ENCRYPTION_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
 - `handlers\__init__.py`
@@ -32,6 +33,7 @@ C:\Projects\telemini
 - `services\chat_persona.py`
 - `services\commands.py`
 - `services\crypto_box.py`
+- `services\crypto_env.py`
 - `services\database.py`
 - `services\encrypted_store.py`
 - `services\gemini_service.py`
@@ -51,7 +53,9 @@ C:\Projects\telemini
 - `templates\manual.html`
 - `templates\reply_style_form.html`
 - `test_db.py`
+- `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
+- `tools\python.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
 
@@ -97,10 +101,6 @@ C:\Projects\telemini
 - `handle_ui()`
 
 ### `handlers\message_handler.py`
-- `_is_group_chat()`
-- `_extract_unlock_code()`
-- `_handle_unlock_command()`
-- `_handle_lock_command()`
 - `handle_message()`
 
 ### `main.py`
@@ -137,12 +137,11 @@ C:\Projects\telemini
 ### `services\character.py`
 - `_text_id()`
 - `_clean_text()`
-- `_resolve_user_id()`
-- `_get_code()`
+- `_decrypt_field()`
+- `_encrypt_field()`
 - `build_script_hash()`
 - `get_character_mode()`
 - `update_character_mode()`
-- `_get_legacy_character_row()`
 - `get_character_settings()`
 - `get_script_opening_status()`
 - `mark_script_opening_sent()`
@@ -151,8 +150,8 @@ C:\Projects\telemini
 
 ### `services\chat_persona.py`
 - `_text_id()`
-- `_resolve_user_id()`
-- `_get_code()`
+- `_decrypt_field()`
+- `_encrypt_field()`
 - `has_chat_persona_settings()`
 - `get_chat_persona_settings()`
 - `update_chat_persona_settings()`
@@ -183,6 +182,15 @@ C:\Projects\telemini
 - `encrypt_payload()`
 - `decrypt_payload()`
 
+### `services\crypto_env.py`
+- `_get_master_key()`
+- `_b64e()`
+- `_b64d()`
+- `is_encrypted()`
+- `encrypt_text()`
+- `decrypt_text()`
+- `aad_for()`
+
 ### `services\database.py`
 - `get_conn()`
 - `get_db_connection_stats()`
@@ -209,6 +217,7 @@ C:\Projects\telemini
 ### `services\memory.py`
 - `_text_id()`
 - `_get_scope()`
+- `_decrypt_safe()`
 - `delete_current_memory()`
 - `delete_character_memory()`
 - `update_emotion()`
@@ -216,9 +225,6 @@ C:\Projects\telemini
 - `detect_emotion()`
 - `is_memory_command()`
 - `extract_memory_content()`
-- `_resolve_user_id()`
-- `_get_unlock_code_for()`
-- `_decrypt_payload_row()`
 - `add_fact()`
 - `get_facts()`
 - `add_chat()`
@@ -258,8 +264,9 @@ C:\Projects\telemini
 
 ### `services\reply_style.py`
 - `_text_id()`
-- `_resolve_user_id()`
-- `_get_code()`
+- `_decrypt_style()`
+- `_encrypt_style()`
+- `_decrypt_legacy_style()`
 - `normalize_style_type()`
 - `_get_legacy_reply_style()`
 - `get_reply_style_settings()`
@@ -283,6 +290,15 @@ C:\Projects\telemini
 - `_text_id()`
 - `get_gemini_key()`
 - `user_has_key()`
+
+### `tools\encrypt_existing_plaintext.py`
+- `_has_value()`
+- `migrate_chat_memory()`
+- `migrate_facts_memory()`
+- `migrate_character_settings()`
+- `migrate_chat_persona_settings()`
+- `migrate_reply_style_settings()`
+- `main()`
 
 ### `tools\project_snapshot.py`
 - `should_ignore()`

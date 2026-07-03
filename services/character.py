@@ -2,8 +2,7 @@ from hashlib import sha256
 import json
 
 from services.database import get_conn
-from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
-from services.privacy_session import get_current_user_id, get_unlock_code
+from services.crypto_env import encrypt_text, decrypt_text, aad_for
 
 
 # =========================
@@ -41,6 +40,17 @@ SCRIPT_HASH_KEYS = [
     "user_other_settings"
 ]
 
+ENCRYPTED_CHARACTER_FIELDS = [
+    "ai_name",
+    "ai_gender",
+    "ai_appearance",
+    "story_background",
+    "ai_opening",
+    "user_gender",
+    "user_appearance",
+    "user_other_settings",
+]
+
 
 def _text_id(value):
     return str(value)
@@ -50,12 +60,18 @@ def _clean_text(value):
     return str(value or "").strip()
 
 
-def _resolve_user_id(user_id=None):
-    return _text_id(user_id) if user_id is not None else get_current_user_id()
+def _decrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("character_settings", field, bot_id, chat_id)
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR character field:", field, exc)
+        return ""
 
 
-def _get_code(user_id, bot_id):
-    return get_unlock_code(user_id, bot_id)
+def _encrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("character_settings", field, bot_id, chat_id)
+    return encrypt_text(value, aad=aad)
 
 
 # =========================
@@ -134,9 +150,15 @@ def update_character_mode(bot_id, chat_id, mode):
 
 
 # =========================
-# 讀取舊表殼資料
+# 取得完整劇本設定
+# 敏感欄位在 DB 裡可能是 ENCv1 密文，這裡自動解密。
+# 舊明文資料會原樣讀出。
 # =========================
-def _get_legacy_character_row(bot_id, chat_id):
+def get_character_settings(bot_id, chat_id, user_id=None):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+
     conn = get_conn()
 
     try:
@@ -166,62 +188,28 @@ def _get_legacy_character_row(bot_id, chat_id):
         row = cursor.fetchone()
 
         if not row:
-            return None
+            return DEFAULT_CHARACTER_SETTINGS.copy()
 
         return {
             "mode": row[0] or "聊天模式",
-            "ai_name": row[1] or "",
-            "ai_gender": row[2] or "",
-            "ai_appearance": row[3] or "",
-            "story_background": row[4] or "",
-            "ai_opening": row[5] or "",
-            "user_gender": row[6] or "",
-            "user_appearance": row[7] or "",
-            "user_other_settings": row[8] or "",
+            "ai_name": _decrypt_field(bot_id, chat_id, "ai_name", row[1]),
+            "ai_gender": _decrypt_field(bot_id, chat_id, "ai_gender", row[2]),
+            "ai_appearance": _decrypt_field(bot_id, chat_id, "ai_appearance", row[3]),
+            "story_background": _decrypt_field(bot_id, chat_id, "story_background", row[4]),
+            "ai_opening": _decrypt_field(bot_id, chat_id, "ai_opening", row[5]),
+            "user_gender": _decrypt_field(bot_id, chat_id, "user_gender", row[6]),
+            "user_appearance": _decrypt_field(bot_id, chat_id, "user_appearance", row[7]),
+            "user_other_settings": _decrypt_field(bot_id, chat_id, "user_other_settings", row[8]),
             "opening_sent": bool(row[9]),
             "script_hash": row[10] or ""
         }
 
+    except Exception as e:
+        print("DB ERROR get_character_settings:", e)
+        raise
+
     finally:
         conn.close()
-
-
-# =========================
-# 取得完整劇本設定（優先讀加密）
-# =========================
-def get_character_settings(bot_id, chat_id, user_id=None):
-
-    bot_id = _text_id(bot_id)
-    chat_id = _text_id(chat_id)
-    user_id = _resolve_user_id(user_id)
-
-    legacy = _get_legacy_character_row(bot_id, chat_id) or DEFAULT_CHARACTER_SETTINGS.copy()
-    unlock_code = _get_code(user_id, bot_id)
-
-    if user_id and unlock_code:
-        try:
-            payload = get_encrypted_payload(
-                user_id=user_id,
-                bot_id=bot_id,
-                chat_id=chat_id,
-                data_type="character_settings",
-                unlock_code=unlock_code,
-                record_key="default",
-            )
-
-            if payload:
-                result = DEFAULT_CHARACTER_SETTINGS.copy()
-                result.update(payload)
-                # mode / opening 狀態以舊表殼為準，避免按鈕狀態失效。
-                result["mode"] = legacy.get("mode") or result.get("mode") or "聊天模式"
-                result["opening_sent"] = bool(legacy.get("opening_sent", result.get("opening_sent", False)))
-                result["script_hash"] = legacy.get("script_hash") or result.get("script_hash") or ""
-                return result
-
-        except Exception as e:
-            print("DECRYPT ERROR get_character_settings:", e)
-
-    return legacy
 
 
 # =========================
@@ -302,17 +290,13 @@ def mark_script_opening_sent(bot_id, chat_id):
 
 
 # =========================
-# 更新完整劇本設定（加密寫入，舊表只留模式與狀態）
+# 更新完整劇本設定
+# 敏感欄位直接加密後存回原本 character_settings 欄位。
 # =========================
 def update_character_settings(bot_id, chat_id, settings, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_code(user_id, bot_id)
-
-    if not user_id or not unlock_code:
-        raise ValueError("尚未解鎖資料庫密碼，無法儲存劇本設定")
 
     mode = settings.get("mode", "聊天模式")
     new_hash = build_script_hash(settings)
@@ -345,31 +329,11 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
 
     opening_sent = old_opening_sent if old_hash == new_hash else False
 
-    payload = {
-        "mode": mode,
-        "ai_name": settings.get("ai_name", ""),
-        "ai_gender": settings.get("ai_gender", ""),
-        "ai_appearance": settings.get("ai_appearance", ""),
-        "story_background": settings.get("story_background", ""),
-        "ai_opening": settings.get("ai_opening", ""),
-        "user_gender": settings.get("user_gender", ""),
-        "user_appearance": settings.get("user_appearance", ""),
-        "user_other_settings": settings.get("user_other_settings", ""),
-        "opening_sent": opening_sent,
-        "script_hash": new_hash,
+    encrypted = {
+        field: _encrypt_field(bot_id, chat_id, field, settings.get(field, ""))
+        for field in ENCRYPTED_CHARACTER_FIELDS
     }
 
-    save_encrypted_payload(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        data_type="character_settings",
-        unlock_code=unlock_code,
-        payload=payload,
-        record_key="default",
-    )
-
-    # 舊表保留 mode / opening_sent / script_hash，清空敏感欄位。
     conn = get_conn()
 
     try:
@@ -395,7 +359,7 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
             )
             VALUES (
                 %s, %s, %s,
-                '', '', '', '', '', '', '', '', '',
+                %s, %s, %s, %s, %s, '', %s, %s, %s,
                 %s, %s,
                 CURRENT_TIMESTAMP
             )
@@ -404,15 +368,15 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
 
             DO UPDATE SET
                 mode = EXCLUDED.mode,
-                ai_name = '',
-                ai_gender = '',
-                ai_appearance = '',
-                story_background = '',
-                ai_opening = '',
+                ai_name = EXCLUDED.ai_name,
+                ai_gender = EXCLUDED.ai_gender,
+                ai_appearance = EXCLUDED.ai_appearance,
+                story_background = EXCLUDED.story_background,
+                ai_opening = EXCLUDED.ai_opening,
                 reply_style = '',
-                user_gender = '',
-                user_appearance = '',
-                user_other_settings = '',
+                user_gender = EXCLUDED.user_gender,
+                user_appearance = EXCLUDED.user_appearance,
+                user_other_settings = EXCLUDED.user_other_settings,
                 opening_sent = EXCLUDED.opening_sent,
                 script_hash = EXCLUDED.script_hash,
                 updated_at = CURRENT_TIMESTAMP
@@ -420,6 +384,14 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
             bot_id,
             chat_id,
             mode,
+            encrypted["ai_name"],
+            encrypted["ai_gender"],
+            encrypted["ai_appearance"],
+            encrypted["story_background"],
+            encrypted["ai_opening"],
+            encrypted["user_gender"],
+            encrypted["user_appearance"],
+            encrypted["user_other_settings"],
             opening_sent,
             new_hash
         ))
@@ -430,7 +402,7 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
 
     except Exception as e:
         conn.rollback()
-        print("DB ERROR update_character_settings shell:", e)
+        print("DB ERROR update_character_settings:", e)
         raise
 
     finally:
@@ -444,7 +416,6 @@ def delete_character_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
-    user_id = _resolve_user_id(user_id)
 
     conn = get_conn()
 
@@ -469,8 +440,5 @@ def delete_character_settings(bot_id, chat_id, user_id=None):
 
     finally:
         conn.close()
-
-    if user_id:
-        delete_encrypted_payload(user_id, bot_id, chat_id, "character_settings", "default")
 
     print("DEBUG character settings deleted:", bot_id, chat_id)

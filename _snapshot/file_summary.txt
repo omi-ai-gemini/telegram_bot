@@ -206,6 +206,100 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 
 ================================================================================
 
+# docs\ENV_ENCRYPTION_README.md
+
+- 類型：.md
+- 行數：97
+
+## preview
+```text
+# Telemini 環境變數主密鑰加密版
+
+這版改成用 Render Environment Variables 裡的 `APP_ENCRYPTION_SECRET` 做加解密。
+
+## 目標
+
+- 原本 table 照用，不再把短期記憶搬到 `encrypted_settings`。
+- 寫入 Supabase 前加密。
+- 從 Supabase 讀出後自動解密給原本流程使用。
+- 不需要使用者保存資料庫密碼。
+- 不需要 `/解鎖`。
+- Render log 不印 prompt / Gemini response 明文。
+
+## 必填環境變數
+
+在本機或 Render 產生一串密鑰：
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+到 Render 設定：
+
+```text
+APP_ENCRYPTION_SECRET=剛剛產生的一整串
+```
+
+不能放進 GitHub。
+
+## 會加密的欄位
+
+```text
+chat_memory.text
+facts_memory.fact
+character_settings.ai_name
+character_settings.ai_gender
+character_settings.ai_appearance
+character_settings.story_background
+character_settings.ai_opening
+character_settings.user_gender
+character_settings.user_appearance
+character_settings.user_other_settings
+chat_persona_settings.persona_name
+chat_persona_settings.persona_gender
+chat_persona_settings.persona_background
+reply_style_settings.reply_style
+```
+
+## Supabase 會看到什麼
+
+會看到類似：
+
+```text
+ENCv1:{"v":1,"n":"...","c":"..."}
+```
+
+程式讀取時會自動解密，所以 Gemini 還是拿到正常文字。
+
+## 舊明文資料
+
+部署後「新寫入」會是密文。
+
+舊資料不會自動消失。要把舊資料轉成密文，在 Render Shell 或本機有 `DATABASE_URL` / `APP_ENCRYPTION_SECRET` 的環境執行：
+
+```bash
+python tools/encrypt_existing_plaintext.py
+```
+
+先測試可用：
+
+```bash
+python tools/encrypt_existing_plaintext.py --dry-run
+```
+
+## Log 注意
+
+`services/gemini_service.py` 已移除：
+
+```python
+print("DEBUG prompt preview:", prompt[:1200])
+...
+... 已省略 17 行
+```
+
+
+================================================================================
+
 # docs\PRIVACY_ACCESS_README.md
 
 - 類型：.md
@@ -382,7 +476,7 @@ DB 不保存使用者資料庫密碼明文。
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：496
+- 行數：494
 
 ## imports
 - services.character.delete_character_settings
@@ -401,7 +495,6 @@ DB 不保存使用者資料庫密碼明文。
 - services.commands.send_start_script_confirm_menu
 - services.memory.add_chat
 - services.memory.delete_current_memory
-- services.privacy_session.set_request_context
 - services.reply_style.delete_reply_style_settings
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
@@ -438,7 +531,6 @@ from services.telegram_service import (
     answer_callback_query,
     delete_message,
 )
-from services.privacy_session import set_request_context
 
 
 # =========================
@@ -481,7 +573,6 @@ def _send_script_opening(bot_id, chat_id):
 # =========================
 def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
-    set_request_context(user_id, bot_id, chat_id)
 
     print("callback", user_text, "message:", message_id)
 
@@ -493,8 +584,10 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
         delete_message(
             bot_id,
+            chat_id,
+            message_id
 ...
-... 已省略 416 行
+... 已省略 414 行
 ```
 
 
@@ -503,111 +596,28 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：125
+- 行數：11
 
 ## imports
 - services.call_ai.run_ai
 - services.commands.send_setting_menu
-- services.privacy_access.ensure_privacy_password_issued
-- services.privacy_access.has_privacy_password_issued
-- services.privacy_migration.migrate_plaintext_to_encrypted
-- services.privacy_session.clear_unlock_code
-- services.privacy_session.get_unlock_code
-- services.privacy_session.set_request_context
-- services.privacy_session.set_unlock_code
-- services.telegram_service.send_message
 
 ## functions
-- _is_group_chat
-- _extract_unlock_code
-- _handle_unlock_command
-- _handle_lock_command
 - handle_message
 
 ## preview
 ```text
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
-from services.privacy_access import ensure_privacy_password_issued, has_privacy_password_issued
-from services.privacy_migration import migrate_plaintext_to_encrypted
-from services.privacy_session import (
-    clear_unlock_code,
-    get_unlock_code,
-    set_request_context,
-    set_unlock_code,
-)
-from services.telegram_service import send_message
 
 
-UNLOCK_COMMANDS = ["/解鎖", "/unlock"]
-LOCK_COMMANDS = ["/鎖定", "/lock"]
+def handle_message(user_id, bot_id, chat_id, user_text):
 
+    if user_text in ["/setting", "/設定"]:
+        send_setting_menu(bot_id, chat_id)
+        return
 
-def _is_group_chat(chat_id):
-    try:
-        return int(chat_id) < 0
-    except Exception:
-        return str(chat_id).startswith("-")
-
-
-def _extract_unlock_code(user_text):
-    text = str(user_text or "").strip()
-
-    for cmd in UNLOCK_COMMANDS:
-        if text == cmd:
-            return ""
-        if text.startswith(cmd + " "):
-            return text[len(cmd):].strip()
-
-    return None
-
-
-def _handle_unlock_command(user_id, bot_id, chat_id, user_text):
-    unlock_code = _extract_unlock_code(user_text)
-
-    if unlock_code is None:
-        return False
-
-    if _is_group_chat(chat_id):
-        send_message(
-            bot_id,
-            chat_id,
-            "資料庫密碼不要丟在群組。請私訊我輸入：/解鎖 你的資料庫密碼"
-        )
-        return True
-
-    if not unlock_code:
-        send_message(
-            bot_id,
-            chat_id,
-            "請輸入：/解鎖 你的資料庫密碼"
-        )
-        return True
-
-    set_unlock_code(user_id, bot_id, unlock_code)
-
-    try:
-        migrate_plaintext_to_encrypted(user_id, bot_id, chat_id, unlock_code)
-    except Exception as exc:
-        print("PRIVACY MIGRATION ERROR after unlock:", exc)
-
-    send_message(
-        bot_id,
-        chat_id,
-        "已解鎖。接下來新的記憶、劇本、風格資料會改用你的資料庫密碼加密儲存。"
-    )
-    return True
-
-
-def _handle_lock_command(user_id, bot_id, chat_id, user_text):
-    text = str(user_text or "").strip()
-
-    if text not in LOCK_COMMANDS:
-        return False
-
-    clear_unlock_code(user_id, bot_id)
-...
-... 已省略 45 行
+    run_ai(user_id, bot_id, chat_id, user_text)
 ```
 
 
@@ -875,7 +885,7 @@ def add_key_route():
 # routes\setting.py
 
 - 類型：.py
-- 行數：276
+- 行數：260
 
 ## imports
 - flask.Blueprint
@@ -887,7 +897,6 @@ def add_key_route():
 - services.character.update_character_settings
 - services.chat_persona.get_chat_persona_settings
 - services.chat_persona.update_chat_persona_settings
-- services.privacy_session.set_request_context
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
 - services.reply_style.update_reply_style_settings
@@ -931,7 +940,6 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
-from services.privacy_session import set_request_context
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -951,7 +959,6 @@ def persona_setting_page():
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
 
-    set_request_context(user_id, bot_id, chat_id)
 
     mode = get_character_mode(bot_id, chat_id, user_id=user_id)
 
@@ -992,8 +999,10 @@ def persona_setting_page():
 def character_setting_page():
 
     bot_id = request.args.get("bot_id", "")
+    chat_id = request.args.get("chat_id", "")
+    user_id = request.args.get("user_id", "")
 ...
-... 已省略 196 行
+... 已省略 180 行
 ```
 
 
@@ -1229,27 +1238,24 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
 # services\character.py
 
 - 類型：.py
-- 行數：476
+- 行數：444
 
 ## imports
 - hashlib.sha256
 - json
+- services.crypto_env.aad_for
+- services.crypto_env.decrypt_text
+- services.crypto_env.encrypt_text
 - services.database.get_conn
-- services.encrypted_store.delete_encrypted_payload
-- services.encrypted_store.get_encrypted_payload
-- services.encrypted_store.save_encrypted_payload
-- services.privacy_session.get_current_user_id
-- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
 - _clean_text
-- _resolve_user_id
-- _get_code
+- _decrypt_field
+- _encrypt_field
 - build_script_hash
 - get_character_mode
 - update_character_mode
-- _get_legacy_character_row
 - get_character_settings
 - get_script_opening_status
 - mark_script_opening_sent
@@ -1262,8 +1268,7 @@ from hashlib import sha256
 import json
 
 from services.database import get_conn
-from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
-from services.privacy_session import get_current_user_id, get_unlock_code
+from services.crypto_env import encrypt_text, decrypt_text, aad_for
 
 
 # =========================
@@ -1301,6 +1306,17 @@ SCRIPT_HASH_KEYS = [
     "user_other_settings"
 ]
 
+ENCRYPTED_CHARACTER_FIELDS = [
+    "ai_name",
+    "ai_gender",
+    "ai_appearance",
+    "story_background",
+    "ai_opening",
+    "user_gender",
+    "user_appearance",
+    "user_other_settings",
+]
+
 
 def _text_id(value):
     return str(value)
@@ -1310,36 +1326,26 @@ def _clean_text(value):
     return str(value or "").strip()
 
 
-def _resolve_user_id(user_id=None):
-    return _text_id(user_id) if user_id is not None else get_current_user_id()
+def _decrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("character_settings", field, bot_id, chat_id)
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR character field:", field, exc)
+        return ""
 
 
-def _get_code(user_id, bot_id):
-    return get_unlock_code(user_id, bot_id)
+def _encrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("character_settings", field, bot_id, chat_id)
+    return encrypt_text(value, aad=aad)
 
 
 # =========================
 # 建立劇本指紋
 # =========================
 def build_script_hash(settings):
-
-    payload = {}
-
-    for key in SCRIPT_HASH_KEYS:
-        payload[key] = _clean_text(settings.get(key, ""))
-
-    raw = json.dumps(
-        payload,
-        ensure_ascii=False,
-        sort_keys=True
-    )
-
-    return sha256(raw.encode("utf-8")).hexdigest()
-
-
-# =========================
 ...
-... 已省略 396 行
+... 已省略 364 行
 ```
 
 
@@ -1348,20 +1354,18 @@ def build_script_hash(settings):
 # services\chat_persona.py
 
 - 類型：.py
-- 行數：215
+- 行數：190
 
 ## imports
+- services.crypto_env.aad_for
+- services.crypto_env.decrypt_text
+- services.crypto_env.encrypt_text
 - services.database.get_conn
-- services.encrypted_store.delete_encrypted_payload
-- services.encrypted_store.get_encrypted_payload
-- services.encrypted_store.save_encrypted_payload
-- services.privacy_session.get_current_user_id
-- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
-- _resolve_user_id
-- _get_code
+- _decrypt_field
+- _encrypt_field
 - has_chat_persona_settings
 - get_chat_persona_settings
 - update_chat_persona_settings
@@ -1370,8 +1374,7 @@ def build_script_hash(settings):
 ## preview
 ```text
 from services.database import get_conn
-from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
-from services.privacy_session import get_current_user_id, get_unlock_code
+from services.crypto_env import encrypt_text, decrypt_text, aad_for
 
 
 DEFAULT_CHAT_PERSONA_SETTINGS = {
@@ -1380,21 +1383,34 @@ DEFAULT_CHAT_PERSONA_SETTINGS = {
     "persona_background": ""
 }
 
+ENCRYPTED_CHAT_PERSONA_FIELDS = [
+    "persona_name",
+    "persona_gender",
+    "persona_background",
+]
+
 
 def _text_id(value):
     return str(value)
 
 
-def _resolve_user_id(user_id=None):
-    return _text_id(user_id) if user_id is not None else get_current_user_id()
+def _decrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("chat_persona_settings", field, bot_id, chat_id)
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR chat_persona field:", field, exc)
+        return ""
 
 
-def _get_code(user_id, bot_id):
-    return get_unlock_code(user_id, bot_id)
+def _encrypt_field(bot_id, chat_id, field, value):
+    aad = aad_for("chat_persona_settings", field, bot_id, chat_id)
+    return encrypt_text(value, aad=aad)
 
 
 # =========================
 # 檢查是否有設定聊天人物
+# 注意：回覆風格已移到 reply_style_settings，不算聊天人物本體
 # =========================
 def has_chat_persona_settings(settings):
 
@@ -1409,37 +1425,14 @@ def has_chat_persona_settings(settings):
 
 
 # =========================
-# 取得聊天模式人物設定（優先讀加密）
+# 取得聊天模式人物設定
+# 敏感欄位在 DB 裡可能是 ENCv1 密文，這裡自動解密。
 # =========================
 def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
-    user_id = _resolve_user_id(user_id)
-    unlock_code = _get_code(user_id, bot_id)
 
-    if user_id and unlock_code:
-        try:
-            payload = get_encrypted_payload(
-                user_id=user_id,
-                bot_id=bot_id,
-                chat_id=chat_id,
-                data_type="chat_persona_settings",
-                unlock_code=unlock_code,
-                record_key="default",
-            )
-
-            if payload:
-                return {
-                    "persona_name": payload.get("persona_name", "") or "",
-                    "persona_gender": payload.get("persona_gender", "") or "",
-                    "persona_background": payload.get("persona_background", "") or "",
-                }
-
-        except Exception as e:
-            print("DECRYPT ERROR get_chat_persona_settings:", e)
-
-    # 舊資料相容：尚未遷移前讀舊表。遷移後舊欄位會被清空。
     conn = get_conn()
 
     try:
@@ -1449,8 +1442,19 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
             SELECT
                 persona_name,
                 persona_gender,
+                persona_background
+            FROM chat_persona_settings
+            WHERE bot_id = %s
+              AND chat_id = %s
+        """, (
+            bot_id,
+            chat_id
+        ))
+
+        row = cursor.fetchone()
+
 ...
-... 已省略 135 行
+... 已省略 110 行
 ```
 
 
@@ -1691,6 +1695,122 @@ def derive_key(unlock_code: str, salt: bytes) -> bytes:
 
 ================================================================================
 
+# services\crypto_env.py
+
+- 類型：.py
+- 行數：126
+
+## imports
+- base64
+- cryptography.exceptions.InvalidTag
+- cryptography.hazmat.primitives.ciphers.aead.AESGCM
+- hashlib
+- json
+- os
+- secrets
+- typing.Any
+
+## classes
+- EnvCryptoError
+
+## functions
+- _get_master_key
+- _b64e
+- _b64d
+- is_encrypted
+- encrypt_text
+- decrypt_text
+- aad_for
+
+## preview
+```text
+import base64
+import hashlib
+import json
+import os
+import secrets
+from typing import Any
+
+from cryptography.exceptions import InvalidTag
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+
+# =========================
+# 環境變數主密鑰加密工具
+# =========================
+# 設計目的：
+# - Supabase 只保存密文
+# - 程式讀取後自動解密給原本流程使用
+# - 不需要使用者每次 /解鎖
+# - APP_ENCRYPTION_SECRET 只放 Render Environment Variables
+
+PREFIX = "ENCv1:"
+ENV_NAME = "APP_ENCRYPTION_SECRET"
+NONCE_LENGTH = 12
+
+
+class EnvCryptoError(Exception):
+    """環境密鑰缺失、密文格式錯誤或解密失敗時使用。"""
+
+
+def _get_master_key() -> bytes:
+    secret = os.getenv(ENV_NAME)
+
+    if not secret:
+        raise EnvCryptoError(f"{ENV_NAME} is not set")
+
+    # 允許你在 Render 放任意長度字串，這裡固定壓成 AES-256 key。
+    return hashlib.sha256(secret.encode("utf-8")).digest()
+
+
+def _b64e(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("utf-8")
+
+
+def _b64d(text: str) -> bytes:
+    return base64.urlsafe_b64decode(text.encode("utf-8"))
+
+
+def is_encrypted(value: Any) -> bool:
+    return isinstance(value, str) and value.startswith(PREFIX)
+
+
+def encrypt_text(plain_text: Any, aad: str = "") -> str:
+    """
+    把文字加密成可直接存進 TEXT 欄位的字串。
+
+    aad：不加密但會參與驗證，用來防止密文被搬到不該放的位置仍可解密。
+    """
+    if plain_text is None:
+        plain_text = ""
+
+    plain_text = str(plain_text)
+
+    # 避免重複加密。
+    if is_encrypted(plain_text):
+        return plain_text
+
+    key = _get_master_key()
+    aesgcm = AESGCM(key)
+    nonce = secrets.token_bytes(NONCE_LENGTH)
+
+    ciphertext = aesgcm.encrypt(
+        nonce,
+        plain_text.encode("utf-8"),
+        str(aad or "").encode("utf-8"),
+    )
+
+    payload = {
+        "v": 1,
+        "n": _b64e(nonce),
+        "c": _b64e(ciphertext),
+...
+... 已省略 46 行
+```
+
+
+================================================================================
+
 # services\database.py
 
 - 類型：.py
@@ -1923,7 +2043,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：76
+- 行數：80
 
 ## imports
 - config.GEMINI_MODEL
@@ -1969,7 +2089,8 @@ def ask_gemini(
         facts=facts
     )
 
-    print("DEBUG prompt preview:", prompt[:1200])
+    # 不印 prompt 內容，避免解密後的明文進 Render log。
+    print("DEBUG prompt built")
 
     # =========================
     # 呼叫 Gemini
@@ -1980,7 +2101,8 @@ def ask_gemini(
             contents=prompt
         )
 
-    print("gemini response:", response.text)
+    # 不印 response 內容，避免 AI 回覆明文進 Render log。
+    print("DEBUG gemini response received")
 
     return response.text
 
@@ -2011,6 +2133,8 @@ def summarize_memory(gemini_key, chat_text):
             contents=prompt
         )
 
+    print("DEBUG memory summary received")
+
     return response.text
 ```
 
@@ -2020,21 +2144,19 @@ def summarize_memory(gemini_key, chat_text):
 # services\memory.py
 
 - 類型：.py
-- 行數：538
+- 行數：483
 
 ## imports
-- json
-- services.crypto_box.build_aad
-- services.crypto_box.decrypt_payload
+- services.crypto_env.aad_for
+- services.crypto_env.decrypt_text
+- services.crypto_env.encrypt_text
+- services.crypto_env.is_encrypted
 - services.database.get_conn
-- services.encrypted_store.save_encrypted_payload
-- services.privacy_session.get_current_user_id
-- services.privacy_session.get_unlock_code
-- uuid
 
 ## functions
 - _text_id
 - _get_scope
+- _decrypt_safe
 - delete_current_memory
 - delete_character_memory
 - update_emotion
@@ -2042,9 +2164,6 @@ def summarize_memory(gemini_key, chat_text):
 - detect_emotion
 - is_memory_command
 - extract_memory_content
-- _resolve_user_id
-- _get_unlock_code_for
-- _decrypt_payload_row
 - add_fact
 - get_facts
 - add_chat
@@ -2054,6 +2173,7 @@ def summarize_memory(gemini_key, chat_text):
 ## preview
 ```text
 from services.database import get_conn
+from services.crypto_env import encrypt_text, decrypt_text, aad_for, is_encrypted
 
 
 def _text_id(value):
@@ -2063,6 +2183,14 @@ def _text_id(value):
 def _get_scope(chat_id):
     chat_id = str(chat_id)
     return "group" if int(chat_id) < 0 else "private"
+
+
+def _decrypt_safe(value, aad=""):
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR memory field skipped:", exc)
+        return ""
 
 
 # =========================
@@ -2124,17 +2252,8 @@ def delete_current_memory(bot_id, chat_id):
                 DELETE FROM facts_memory
                 WHERE bot_id = %s
                   AND chat_id = %s
-                  AND scope = %s
-            """, (
-                bot_id,
-                chat_id,
-                scope
-            ))
-
-        # =========================
-        # 情緒記憶目前只有 chat_id
 ...
-... 已省略 458 行
+... 已省略 403 行
 ```
 
 
@@ -2482,20 +2601,19 @@ def get_unlock_code(user_id: Any = None, bot_id: Any = None) -> Optional[str]:
 # services\reply_style.py
 
 - 類型：.py
-- 行數：278
+- 行數：258
 
 ## imports
+- services.crypto_env.aad_for
+- services.crypto_env.decrypt_text
+- services.crypto_env.encrypt_text
 - services.database.get_conn
-- services.encrypted_store.delete_encrypted_payload
-- services.encrypted_store.get_encrypted_payload
-- services.encrypted_store.save_encrypted_payload
-- services.privacy_session.get_current_user_id
-- services.privacy_session.get_unlock_code
 
 ## functions
 - _text_id
-- _resolve_user_id
-- _get_code
+- _decrypt_style
+- _encrypt_style
+- _decrypt_legacy_style
 - normalize_style_type
 - _get_legacy_reply_style
 - get_reply_style_settings
@@ -2505,8 +2623,7 @@ def get_unlock_code(user_id: Any = None, bot_id: Any = None) -> Optional[str]:
 ## preview
 ```text
 from services.database import get_conn
-from services.encrypted_store import delete_encrypted_payload, get_encrypted_payload, save_encrypted_payload
-from services.privacy_session import get_current_user_id, get_unlock_code
+from services.crypto_env import encrypt_text, decrypt_text, aad_for
 
 
 # =========================
@@ -2525,16 +2642,33 @@ def _text_id(value):
     return str(value)
 
 
-def _resolve_user_id(user_id=None):
-    return _text_id(user_id) if user_id is not None else get_current_user_id()
+def _decrypt_style(bot_id, chat_id, style_type, value):
+    aad = aad_for("reply_style_settings", "reply_style", bot_id, chat_id, style_type)
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DECRYPT ERROR reply_style:", exc)
+        return ""
 
 
-def _get_code(user_id, bot_id):
-    return get_unlock_code(user_id, bot_id)
+def _encrypt_style(bot_id, chat_id, style_type, value):
+    aad = aad_for("reply_style_settings", "reply_style", bot_id, chat_id, style_type)
+    return encrypt_text(value, aad=aad)
+
+
+def _decrypt_legacy_style(table_name, bot_id, chat_id, value):
+    aad = aad_for(table_name, "reply_style", bot_id, chat_id)
+    try:
+        return decrypt_text(value, aad=aad)
+    except Exception:
+        # 舊資料可能沒有用相同 aad 加密，當成空值避免報錯中斷。
+        return ""
 
 
 # =========================
 # 正規化風格類型
+# 允許 route 傳 chat/theater
+# 也允許 AI 流程傳 聊天模式/劇場模式
 # =========================
 def normalize_style_type(style_type):
 
@@ -2548,6 +2682,10 @@ def normalize_style_type(style_type):
 
 # =========================
 # 取得舊版風格欄位
+# 用於平滑過渡：
+# 如果你之前已經把 reply_style 存在 character_settings / chat_persona_settings，
+# 新表還沒有資料時，會先讀舊欄位，避免舊資料直接失效。
+# 如果舊欄位不存在，會自動略過。
 # =========================
 def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
 
@@ -2562,30 +2700,10 @@ def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
                 bot_id,
                 chat_id
             ))
+            table_name = "character_settings"
         else:
-            cursor.execute("""
-                SELECT reply_style
-                FROM chat_persona_settings
-                WHERE bot_id = %s
-                  AND chat_id = %s
-            """, (
-                bot_id,
-                chat_id
-            ))
-
-        row = cursor.fetchone()
-
-        if row and row[0]:
-            return row[0]
-
-    except Exception as e:
-        print("DEBUG legacy reply_style not available:", e)
-
-    return ""
-
-
 ...
-... 已省略 198 行
+... 已省略 178 行
 ```
 
 
@@ -3545,6 +3663,118 @@ print(secrets.token_hex(32))
 
 ================================================================================
 
+# tools\encrypt_existing_plaintext.py
+
+- 類型：.py
+- 行數：244
+
+## imports
+- argparse
+- pathlib.Path
+- services.crypto_env.aad_for
+- services.crypto_env.encrypt_text
+- services.crypto_env.is_encrypted
+- services.database.get_conn
+- sys
+
+## functions
+- _has_value
+- migrate_chat_memory
+- migrate_facts_memory
+- migrate_character_settings
+- migrate_chat_persona_settings
+- migrate_reply_style_settings
+- main
+
+## preview
+```text
+"""
+把既有明文欄位轉成 ENCv1 密文。
+
+使用前必須設定：
+- DATABASE_URL
+- APP_ENCRYPTION_SECRET
+
+測試：
+python tools/encrypt_existing_plaintext.py --dry-run
+
+正式：
+python tools/encrypt_existing_plaintext.py
+"""
+
+import argparse
+from pathlib import Path
+import sys
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+from services.crypto_env import encrypt_text, is_encrypted, aad_for
+from services.database import get_conn
+
+
+def _has_value(value):
+    return bool(str(value or "").strip())
+
+
+def migrate_chat_memory(cursor, dry_run=False):
+    cursor.execute("""
+        SELECT id, bot_id, chat_id, scope, role, text
+        FROM chat_memory
+        WHERE text IS NOT NULL
+    """)
+    rows = cursor.fetchall()
+    count = 0
+
+    for row_id, bot_id, chat_id, scope, role, text in rows:
+        if not _has_value(text) or is_encrypted(text):
+            continue
+
+        role = role or "user"
+        aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+        encrypted = encrypt_text(text, aad=aad)
+
+        if not dry_run:
+            cursor.execute("""
+                UPDATE chat_memory
+                SET text = %s
+                WHERE id = %s
+            """, (encrypted, row_id))
+
+        count += 1
+
+    return count
+
+
+def migrate_facts_memory(cursor, dry_run=False):
+    cursor.execute("""
+        SELECT id, bot_id, chat_id, scope, fact
+        FROM facts_memory
+        WHERE fact IS NOT NULL
+    """)
+    rows = cursor.fetchall()
+    count = 0
+
+    for row_id, bot_id, chat_id, scope, fact in rows:
+        if not _has_value(fact) or is_encrypted(fact):
+            continue
+
+        aad = aad_for("facts_memory", "fact", bot_id, chat_id, scope)
+        encrypted = encrypt_text(fact, aad=aad)
+
+        if not dry_run:
+            cursor.execute("""
+                UPDATE facts_memory
+                SET fact = %s
+                WHERE id = %s
+...
+... 已省略 164 行
+```
+
+
+================================================================================
+
 # tools\project_snapshot.py
 
 - 類型：.py
@@ -3649,6 +3879,20 @@ def should_ignore(path: Path) -> bool:
         return True
 ...
 ... 已省略 328 行
+```
+
+
+================================================================================
+
+# tools\python.txt
+
+- 類型：.txt
+- 行數：2
+
+## preview
+```text
+project_snapshot.py - 產生專案快照
+encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 ```
 
 
