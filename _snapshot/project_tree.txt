@@ -4,6 +4,7 @@
 📄 check_db.py
 📄 config.py
 📁 docs/
+  📄 AI_MESSAGE_ACTIONS_README.md
   📄 ENV_ENCRYPTION_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
@@ -19,6 +20,7 @@
   📄 setting.py
 📁 services/
   📄 __init__.py
+  📄 ai_actions.py
   📄 bot_router.py
   📄 call_ai.py
   📄 character.py
@@ -38,6 +40,7 @@
   📄 setting_auth.py
   📄 style.py
   📄 telegram_service.py
+  📄 time_context.py
   📄 user_notice.py
   📄 user_router.py
 📁 static/

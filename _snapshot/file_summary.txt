@@ -210,6 +210,83 @@ SETTING_LINK_SECRET = os.getenv("SETTING_LINK_SECRET")
 
 ================================================================================
 
+# docs\AI_MESSAGE_ACTIONS_README.md
+
+- 類型：.md
+- 行數：65
+
+## preview
+```text
+# Telemini AI 回覆操作按鈕
+
+## 功能
+
+私聊中每次 AI 回覆下方會附上小按鈕：
+
+```text
+[✏️改] [🔁重跑] [▶️接續]
+```
+
+群組先保留延伸，不顯示這三個按鈕。
+
+## 行為
+
+### ✏️改
+
+1. 使用者按下「✏️改」。
+2. bot 發一則臨時提示，請使用者輸入替換文字。
+3. 使用者下一則文字會被視為修改稿。
+4. 修改稿不送 Gemini、不寫入短期記憶。
+5. 系統用 `editMessageText` 修改原本那則 AI 訊息。
+6. 同步更新原本那筆 `chat_memory` 的 assistant 內容。
+7. 自動刪除 bot 臨時提示與使用者修改稿。
+
+### 🔁重跑
+
+1. 使用同一則原始 user 訊息重新呼叫 Gemini。
+2. 用新回覆覆蓋原本那則 AI 訊息。
+3. 同步更新原本那筆 assistant `chat_memory`。
+4. 不新增 user 記憶、不新增 assistant 記憶。
+
+### ▶️接續
+
+1. 不需要使用者再輸入。
+2. Gemini 根據目前對話、場景、角色、記憶與現實時間自然接續下一句。
+3. 發送新的 AI 訊息。
+4. 新增一筆 assistant `chat_memory`。
+5. 新訊息下方同樣會附上三個操作按鈕。
+
+## 新增資料表
+
+```text
+ai_message_actions
+pending_ai_actions
+```
+
+`ai_message_actions` 用於對應 Telegram 訊息與 `chat_memory`。
+
+`pending_ai_actions` 用於保存「按下 ✏️改 後等待下一句文字」的暫存狀態，預設 5 分鐘失效。
+
+## 時間上下文
+
+每次 Gemini 回覆前會即時計算台灣時間，不寫入 DB。
+
+提供給 prompt 的內容包含：
+
+```text
+時區：Asia/Taipei（台灣時間）
+日期
+星期
+時間
+時段
+```
+
+聊天模式可以自然使用現實時間；劇場模式除非使用者明確提到，否則不主動用現實時間干擾劇情時間。
+```
+
+
+================================================================================
+
 # docs\ENV_ENCRYPTION_README.md
 
 - 類型：.md
@@ -537,9 +614,12 @@ POST /setting/important_memory/delete
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：527
+- 行數：572
 
 ## imports
+- services.ai_actions.run_continue_in_thread
+- services.ai_actions.run_regenerate_in_thread
+- services.ai_actions.start_edit_ai_message
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
 - services.character.mark_script_opening_sent
@@ -568,6 +648,11 @@ POST /setting/important_memory/delete
 
 ## preview
 ```text
+from services.ai_actions import (
+    run_continue_in_thread,
+    run_regenerate_in_thread,
+    start_edit_ai_message,
+)
 from services.commands import (
     send_character_menu,
     send_setting_menu,
@@ -643,13 +728,8 @@ def _send_script_opening(bot_id, chat_id):
 
 
 # =========================
-# callback_query
-# =========================
-def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
-
-
 ...
-... 已省略 447 行
+... 已省略 492 行
 ```
 
 
@@ -658,9 +738,10 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：11
+- 行數：30
 
 ## imports
+- services.ai_actions.process_pending_edit_message
 - services.call_ai.run_ai
 - services.commands.send_setting_menu
 
@@ -669,17 +750,36 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
 ## preview
 ```text
+from services.ai_actions import process_pending_edit_message
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
 
 
-def handle_message(user_id, bot_id, chat_id, user_text):
+def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
+
+    # =========================
+    # AI 訊息修改模式
+    # 使用者按「✏️改」後，下一則文字只拿來替換原 AI 回覆：
+    # - 不丟 Gemini
+    # - 不寫入 user chat_memory
+    # - 修改稿與提示會自動刪除
+    # =========================
+    handled = process_pending_edit_message(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_text=user_text,
+        user_message_id=message_id
+    )
+
+    if handled:
+        return
 
     if user_text in ["/setting", "/設定"]:
         send_setting_menu(bot_id, chat_id)
         return
 
-    run_ai(user_id, bot_id, chat_id, user_text)
+    run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
 ```
 
 
@@ -688,7 +788,7 @@ def handle_message(user_id, bot_id, chat_id, user_text):
 # main.py
 
 - 類型：.py
-- 行數：125
+- 行數：126
 
 ## imports
 - config.SECRET_KEY
@@ -795,7 +895,7 @@ def webhook(bot_id):
     chat_id = str(message["chat"]["id"])
     user_text = message["text"]
 ...
-... 已省略 45 行
+... 已省略 46 行
 ```
 
 
@@ -1102,6 +1202,147 @@ def _token_from_request():
 
 ================================================================================
 
+# services\ai_actions.py
+
+- 類型：.py
+- 行數：611
+
+## imports
+- datetime.datetime
+- datetime.timedelta
+- services.bot_router.get_bot_token
+- services.character.get_character_settings
+- services.chat_persona.get_chat_persona_settings
+- services.database.get_conn
+- services.gemini_service.GEMINI_BLOCKED
+- services.gemini_service.ask_gemini
+- services.memory.add_chat
+- services.memory.detect_emotion
+- services.memory.get_chat
+- services.memory.get_chat_memory_item
+- services.memory.get_chat_until
+- services.memory.get_emotion
+- services.memory.get_facts
+- services.memory.update_chat_text
+- services.memory.update_emotion
+- services.memory_summary.get_memory_context
+- services.memory_summary.maintain_memory_after_reply
+- services.reply_style.get_reply_style_settings
+- services.telegram_service.delete_message
+- services.telegram_service.edit_message_text
+- services.telegram_service.send_message
+- services.time_context.get_current_time_context
+- services.user_router.get_gemini_key
+- threading
+
+## functions
+- _text_id
+- _is_group_chat
+- build_ai_action_keyboard
+- create_ai_message_action
+- update_action_telegram_message_id
+- get_ai_message_action
+- create_pending_edit
+- pop_active_pending_edit
+- _extract_telegram_message_id
+- start_edit_ai_message
+- process_pending_edit_message
+- _load_generation_context
+- _generate_reply
+- regenerate_ai_message
+- continue_ai_message
+- run_regenerate_in_thread
+- run_continue_in_thread
+
+## preview
+```text
+from datetime import datetime, timedelta
+import threading
+
+from services.bot_router import get_bot_token
+from services.character import get_character_settings
+from services.chat_persona import get_chat_persona_settings
+from services.database import get_conn
+from services.gemini_service import GEMINI_BLOCKED, ask_gemini
+from services.memory import (
+    add_chat,
+    get_chat,
+    get_chat_memory_item,
+    get_chat_until,
+    get_facts,
+    update_chat_text,
+    update_emotion,
+    detect_emotion,
+    get_emotion,
+)
+from services.memory_summary import get_memory_context, maintain_memory_after_reply
+from services.reply_style import get_reply_style_settings
+from services.telegram_service import delete_message, edit_message_text, send_message
+from services.time_context import get_current_time_context
+from services.user_router import get_gemini_key
+
+
+EDIT_PENDING_MINUTES = 5
+CONTINUE_USER_TEXT = "（請你不要等待使用者輸入，直接順著目前對話、場景、角色狀態與語氣，自然接續下一句。不要重複上一句。）"
+
+
+def _text_id(value):
+    return str(value or "").strip()
+
+
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def build_ai_action_keyboard(action_id):
+    return {
+        "inline_keyboard": [[
+            {"text": "✏️改", "callback_data": f"ai_edit:{action_id}"},
+            {"text": "🔁重跑", "callback_data": f"ai_regen:{action_id}"},
+            {"text": "▶️接續", "callback_data": f"ai_continue:{action_id}"},
+        ]]
+    }
+
+
+def create_ai_message_action(
+    bot_id,
+    chat_id,
+    user_id,
+    assistant_chat_id,
+    source_user_chat_id=None,
+    context_chat_id=None,
+    generation_type="reply",
+):
+    """建立 AI 訊息與 Telegram 訊息按鈕的對應資料，回傳 action_id。"""
+    if _is_group_chat(chat_id):
+        return None
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            INSERT INTO ai_message_actions (
+                bot_id,
+                chat_id,
+                user_id,
+                assistant_chat_id,
+                source_user_chat_id,
+                context_chat_id,
+                generation_type,
+                updated_at
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+...
+... 已省略 531 行
+```
+
+
+================================================================================
+
 # services\bot_router.py
 
 - 類型：.py
@@ -1203,9 +1444,12 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：161
+- 行數：221
 
 ## imports
+- services.ai_actions.build_ai_action_keyboard
+- services.ai_actions.create_ai_message_action
+- services.ai_actions.update_action_telegram_message_id
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
@@ -1221,14 +1465,22 @@ def clear_bot_token_cache(bot_id: str):
 - services.memory_summary.maintain_memory_after_reply
 - services.reply_style.get_reply_style_settings
 - services.telegram_service.send_message
+- services.time_context.get_current_time_context
 - services.user_notice.send_once_user_notice
 - services.user_router.get_gemini_key
 
 ## functions
+- _is_group_chat
+- _extract_telegram_message_id
 - run_ai
 
 ## preview
 ```text
+from services.ai_actions import (
+    build_ai_action_keyboard,
+    create_ai_message_action,
+    update_action_telegram_message_id,
+)
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
@@ -1238,6 +1490,7 @@ from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
+from services.time_context import get_current_time_context
 from services.memory import (
     add_chat,
     get_chat,
@@ -1248,10 +1501,25 @@ from services.memory import (
 )
 
 
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def _extract_telegram_message_id(result):
+    if not isinstance(result, dict):
+        return None
+
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
 # =========================
 # 取得 AI 回覆並發送
 # =========================
-def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
+def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message_id=None):
 
     try:
 
@@ -1275,42 +1543,21 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # scope 判斷
         # =========================
-        scope = "group" if int(chat_id) < 0 else "private"
+        scope = "group" if _is_group_chat(chat_id) else "private"
 
         # =========================
         # 先寫入使用者短期記憶
         # 注意：短期記憶不在 add_chat 內直接刪舊資料。
         # 舊資料會在長期摘要成功後才清理。
         # =========================
-        add_chat(bot_id, chat_id, "user", user_text, user_id=user_id)
-
-        # =========================
-        # 情緒記憶
-        # =========================
-        delta = detect_emotion(user_text)
-        update_emotion(chat_id, delta)
-        emotion = get_emotion(chat_id)
-
-        # =========================
-        # 一般文字不再觸發「手動記憶」
-        # 重點記憶統一從設定中心的「⭐ 重點記憶」寫入 facts_memory。
-        # =========================
-
-        # =========================
-        # 短期記憶
-        # =========================
-        history = get_chat(bot_id, chat_id, user_id=user_id)
-
-        # =========================
-        # 重點記憶
-        # =========================
-        facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
-
-        # =========================
-        # 摘要型長期記憶
-        # =========================
+        user_chat_id = add_chat(
+            bot_id,
+            chat_id,
+            "user",
+            user_text,
+            user_id=user_id,
 ...
-... 已省略 81 行
+... 已省略 141 行
 ```
 
 
@@ -1898,7 +2145,7 @@ def encrypt_text(plain_text: Any, aad: str = "") -> str:
 # services\database.py
 
 - 類型：.py
-- 行數：522
+- 行數：612
 
 ## imports
 - os
@@ -2004,7 +2251,7 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 442 行
+... 已省略 532 行
 ```
 
 
@@ -2127,7 +2374,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：445
+- 行數：442
 
 ## imports
 - config.GEMINI_MODEL
@@ -2228,7 +2475,7 @@ def _extract_finish_reason(response):
     只取 Gemini 回覆狀態，不印 prompt / 使用者原文 / AI 回覆原文。
     """
 ...
-... 已省略 365 行
+... 已省略 362 行
 ```
 
 
@@ -2237,7 +2484,7 @@ def _extract_finish_reason(response):
 # services\memory.py
 
 - 類型：.py
-- 行數：750
+- 行數：986
 
 ## imports
 - hashlib
@@ -2269,6 +2516,9 @@ def _extract_finish_reason(response):
 - update_important_fact
 - delete_important_fact
 - add_chat
+- update_chat_text
+- get_chat_memory_item
+- get_chat_until
 - get_chat
 - get_recent_chat
 
@@ -2355,7 +2605,7 @@ def delete_current_memory(bot_id, chat_id):
             cursor.execute("""
                 DELETE FROM facts_memory
 ...
-... 已省略 670 行
+... 已省略 906 行
 ```
 
 
@@ -2417,7 +2667,7 @@ ARCHIVE_KEEP = 5
 def _notify_summary_blocked(bot_id, chat_id):
     """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
     try:
-        send_message(bot_id, chat_id, "摘要長期記憶時被安全阻擋")
+        send_message(bot_id, chat_id, "摘要長期記憶時被阻擋")
     except Exception as exc:
         print("TELEGRAM notify summary blocked error:", exc)
 
@@ -3059,7 +3309,10 @@ def create_setting_token(
 # services\style.py
 
 - 類型：.py
-- 行數：354
+- 行數：368
+
+## imports
+- services.time_context.build_time_context_text
 
 ## functions
 - _has_chat_persona
@@ -3072,6 +3325,8 @@ def create_setting_token(
 
 ## preview
 ```text
+from services.time_context import build_time_context_text
+
 # =========================
 # 基礎仿真人風格
 # 固定底層，不開放使用者修改
@@ -3150,10 +3405,8 @@ DEFAULT_THEATER_REPLY_STYLE = """
 # 判斷聊天人物設定是否有內容
 # =========================
 def _has_chat_persona(chat_persona_settings):
-
-    if not chat_persona_settings:
 ...
-... 已省略 274 行
+... 已省略 288 行
 ```
 
 
@@ -3170,7 +3423,9 @@ def _has_chat_persona(chat_persona_settings):
 - services.bot_router.get_bot_token
 
 ## functions
+- _telegram_post
 - send_message
+- edit_message_text
 - answer_callback_query
 - delete_message
 
@@ -3180,52 +3435,72 @@ import requests
 from config import TELEGRAM_API_BASE
 from services.bot_router import get_bot_token
 
-# =========================
-# Telegram 發送訊息
-# =========================
-def send_message(bot_id, chat_id, text):
 
+# =========================
+# Telegram 共用 POST
+# =========================
+def _telegram_post(bot_id, method, payload, timeout=30):
     token = get_bot_token(bot_id)
 
     if not token:
         print("X token not found")
-        return False
+        return None
 
-    url = f"{TELEGRAM_API_BASE}/bot{token}/sendMessage"
+    url = f"{TELEGRAM_API_BASE}/bot{token}/{method}"
 
     try:
-        res = requests.post(
-            url,
-            json={
-                "chat_id": chat_id,
-                "text": text
-            },
-            timeout=30
-        )
+        res = requests.post(url, json=payload, timeout=timeout)
     except Exception as e:
-        print("TELEGRAM sendMessage REQUEST ERROR:", e)
-        return False
+        print(f"TELEGRAM {method} REQUEST ERROR:", e)
+        return None
 
     if not res.ok:
-        print("TELEGRAM sendMessage ERROR:", res.text)
-        return False
+        print(f"TELEGRAM {method} ERROR:", res.text)
+        return None
 
-    return True
+    try:
+        return res.json()
+    except Exception:
+        return {"ok": True}
+
+
+# =========================
+# Telegram 發送訊息
+# - reply_markup 可傳 InlineKeyboardMarkup dict
+# - 回傳 Telegram JSON，舊流程用 bool 判斷也仍相容
+# =========================
+def send_message(bot_id, chat_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    return _telegram_post(bot_id, "sendMessage", payload, timeout=30)
+
+
+# =========================
+# Telegram 編輯既有訊息文字
+# =========================
+def edit_message_text(bot_id, chat_id, message_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": text,
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    return _telegram_post(bot_id, "editMessageText", payload, timeout=30)
 
 
 # =========================
 # Telegram callback 提示
 # =========================
 def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False):
-
-    token = get_bot_token(bot_id)
-
-    if not token:
-        print("X token not found")
-        return
-
-    url = f"{TELEGRAM_API_BASE}/bot{token}/answerCallbackQuery"
-
     payload = {
         "callback_query_id": callback_query_id
     }
@@ -3236,28 +3511,79 @@ def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False
     if show_alert:
         payload["show_alert"] = True
 
-    res = requests.post(
-        url,
-        json=payload,
-        timeout=10
-    )
-
-    if not res.ok:
-        print("TELEGRAM answerCallbackQuery ERROR:", res.text)
-
-
-# =========================
-# Telegram 刪除訊息
-# =========================
-def delete_message(bot_id, chat_id, message_id):
-
-    token = get_bot_token(bot_id)
-
-    if not token:
-        print("X token not found")
-        return
 ...
 ... 已省略 14 行
+```
+
+
+================================================================================
+
+# services\time_context.py
+
+- 類型：.py
+- 行數：50
+
+## imports
+- datetime.datetime
+- zoneinfo.ZoneInfo
+
+## functions
+- _period_name
+- get_current_time_context
+- build_time_context_text
+
+## preview
+```text
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+TAIPEI_TIMEZONE = "Asia/Taipei"
+WEEKDAY_ZH = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"]
+
+
+def _period_name(hour: int) -> str:
+    if 5 <= hour <= 10:
+        return "早上"
+    if 11 <= hour <= 13:
+        return "中午"
+    if 14 <= hour <= 17:
+        return "下午"
+    if 18 <= hour <= 21:
+        return "晚上"
+    return "深夜"
+
+
+def get_current_time_context() -> dict:
+    """
+    取得目前台灣時間。
+    這個資料不寫 DB，每次 Gemini 回覆前即時計算。
+    """
+    now = datetime.now(ZoneInfo(TAIPEI_TIMEZONE))
+
+    return {
+        "timezone": TAIPEI_TIMEZONE,
+        "date": now.strftime("%Y年%m月%d日"),
+        "weekday": WEEKDAY_ZH[now.weekday()],
+        "time": now.strftime("%H:%M"),
+        "period": _period_name(now.hour),
+        "iso": now.isoformat(timespec="seconds"),
+        "timestamp": int(now.timestamp()),
+    }
+
+
+def build_time_context_text(time_context=None) -> str:
+    """
+    組成 prompt 使用的現實時間資訊。
+    """
+    data = time_context or get_current_time_context()
+
+    return (
+        f"時區：{data.get('timezone', TAIPEI_TIMEZONE)}（台灣時間）\n"
+        f"日期：{data.get('date', '')}\n"
+        f"星期：{data.get('weekday', '')}\n"
+        f"時間：{data.get('time', '')}\n"
+        f"時段：{data.get('period', '')}"
+    )
 ```
 
 
@@ -3266,7 +3592,7 @@ def delete_message(bot_id, chat_id, message_id):
 # services\user_notice.py
 
 - 類型：.py
-- 行數：84
+- 行數：97
 
 ## imports
 - services.database.get_conn
@@ -3286,14 +3612,27 @@ from services.telegram_service import send_message
 # 全體使用者一次性公告
 # =========================
 # NOTICE_ID 只要換一個新字串，就會再對所有 user + bot 發一次。
-NOTICE_ID = "privacy_memory_encryption_20260704"
+NOTICE_ID = "major_update_memory_actions_time_20260705"
 
-NOTICE_TEXT = """【系統公告】
-為了保護資料庫隱私，所有記憶資料在後台已經加密保存。
+NOTICE_TEXT = """【系統更新公告】 
+更新重點： 
+1. 記憶系統更新 
+新增重點記憶，用來客製化記憶。按鈕放在 [記憶設定]中。 
+2. 設定頁隱私保護 
+所有輸入設定用網頁額外加密，只有當下操作時自動獲取隨機金鑰解密。
+解密時，操作時效 15 分鐘，請在時效內按下儲存。 
+3. AI 回覆操作新增功能 
+✏️ 修改文字　🔁 重新回覆　▶️ 接著回覆 
+4. 安全提示 
+內容被AI阻擋時會顯示「內容被安全阻擋」。 
+        成人內容金鑰問我要
+系統自動整理長期記憶被阻擋時會顯示「摘要長期記憶時被阻擋」。
+        金鑰BLOCK_NONE（不封鎖任何內容）寫在摘要時，因為沒人能聊到儲存長 
+        期記憶，所以還在測試
+要是被阻擋，目前解決辦法只能把記憶全刪重聊
 
-資料只會在提供給 Gemini 產生回覆時暫時解密；後台資料庫不會直接保存可讀明文記憶。
-
-本次更新已刪除既有歷史紀錄，因此 AI 可能會有斷片狀況，需要重新投餵記憶。"""
+5. 時間感知 
+聊天模式AI會自動帶入當下時間，回覆會更自然，希望吧。"""
 
 
 def _text_id(value):
@@ -3345,21 +3684,8 @@ def send_once_user_notice(user_id, bot_id, chat_id):
 
     except Exception as exc:
         conn.rollback()
-        print("DB ERROR send_once_user_notice:", exc)
-        return False
-
-    finally:
-        conn.close()
-
-    if not inserted:
-        return False
-
-    sent = send_message(bot_id, chat_id, NOTICE_TEXT)
-
-    if sent:
-        print("DEBUG user notice sent:", NOTICE_ID, "user_id=", user_id, "bot_id=", bot_id)
 ...
-... 已省略 4 行
+... 已省略 17 行
 ```
 
 

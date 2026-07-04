@@ -4,6 +4,7 @@ from urllib.parse import urlencode
 from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
 from services.setting_auth import create_setting_token, is_group_chat
+from services.setting_sessions import save_setting_menu_session
 
 # =========================
 # Telegram API POST
@@ -171,15 +172,29 @@ def _send_new_message(bot_id, chat_id, text, inline_keyboard):
     )
 
 
+def _extract_message_id(result):
+    if not isinstance(result, dict):
+        return None
+
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
 # =========================
 # /setting
 # =========================
-def send_setting_menu(bot_id, chat_id, message_id=None):
+def send_setting_menu(
+    bot_id,
+    chat_id,
+    message_id=None,
+    user_id=None,
+    source_message_id=None
+):
 
     opening_status = get_script_opening_status(bot_id, chat_id)
     start_script_text = opening_status.get("button_text", "▶️ 開始劇本 | 無開場白")
 
-    _send_or_edit(
+    result = _send_or_edit(
         bot_id,
         chat_id,
         message_id,
@@ -192,6 +207,22 @@ def send_setting_menu(bot_id, chat_id, message_id=None):
             [{"text": "❌ 結束設定", "callback_data": "close_setting_menu"}]
         ]
     )
+
+    # 只有使用者主動輸入 /setting 或 /設定 開新選單時才記錄。
+    # 後續 callback 只是 edit 同一則選單，不需要重複寫。
+    if source_message_id and not message_id:
+        menu_message_id = _extract_message_id(result)
+
+        if menu_message_id:
+            save_setting_menu_session(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                menu_message_id=menu_message_id,
+                command_message_id=source_message_id
+            )
+
+    return result
 
 
 # =========================

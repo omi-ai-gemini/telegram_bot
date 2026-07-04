@@ -3,6 +3,7 @@ from services.ai_actions import (
     run_regenerate_in_thread,
     start_edit_ai_message,
 )
+from services.memory_view import handle_memory_view_callback
 from services.commands import (
     send_character_menu,
     send_setting_menu,
@@ -23,6 +24,7 @@ from services.character import (
 from services.chat_persona import delete_chat_persona_settings
 from services.reply_style import delete_reply_style_settings
 from services.memory import add_chat, delete_current_memory
+from services.setting_sessions import pop_setting_menu_session
 from services.telegram_service import (
     send_message,
     answer_callback_query,
@@ -126,16 +128,44 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
+    # 記憶查看按鈕：/memory / /記憶
+    # =========================
+    if handle_memory_view_callback(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        message_id=message_id,
+        callback_data=user_text,
+        callback_id=callback_id
+    ):
+        return
+
+    # =========================
     # 最上層：結束設定
     # 直接刪除目前這則設定選單訊息
+    # 如果這個選單是由 /setting 或 /設定 開出來，也順手刪掉使用者那則指令。
     # =========================
     if user_text == "close_setting_menu":
+
+        command_message_id = pop_setting_menu_session(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            menu_message_id=message_id,
+            user_id=user_id
+        )
 
         delete_message(
             bot_id,
             chat_id,
             message_id
         )
+
+        if command_message_id:
+            delete_message(
+                bot_id,
+                chat_id,
+                command_message_id
+            )
 
         answer_callback_query(
             bot_id,

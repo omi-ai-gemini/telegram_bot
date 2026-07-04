@@ -294,6 +294,28 @@ def init_db():
         """)
 
         # =========================
+        # 設定選單 session
+        # 用於按「結束設定」時，同時刪除使用者輸入的 /setting 或 /設定。
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS setting_menu_sessions (
+            id SERIAL PRIMARY KEY,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            user_id TEXT,
+            menu_message_id INTEGER NOT NULL,
+            command_message_id INTEGER NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE (bot_id, chat_id, menu_message_id)
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_setting_menu_sessions_lookup
+        ON setting_menu_sessions (bot_id, chat_id, menu_message_id)
+        """)
+
+        # =========================
         # 長期記憶
         # =========================
         cursor.execute("""

@@ -1,6 +1,7 @@
 from services.ai_actions import process_pending_edit_message
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
+from services.memory_view import send_memory_view_menu
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
@@ -24,7 +25,20 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         return
 
     if user_text in ["/setting", "/設定"]:
-        send_setting_menu(bot_id, chat_id)
+        send_setting_menu(
+            bot_id,
+            chat_id,
+            user_id=user_id,
+            source_message_id=message_id
+        )
+        return
+
+    if user_text in ["/memory", "/記憶"]:
+        send_memory_view_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id
+        )
         return
 
     run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)

@@ -42,9 +42,9 @@ def _is_group_chat(chat_id):
 def build_ai_action_keyboard(action_id):
     return {
         "inline_keyboard": [[
-            {"text": "✏️改", "callback_data": f"ai_edit:{action_id}"},
-            {"text": "🔁重跑", "callback_data": f"ai_regen:{action_id}"},
-            {"text": "▶️接續", "callback_data": f"ai_continue:{action_id}"},
+            {"text": "✏️", "callback_data": f"ai_edit:{action_id}"},
+            {"text": "🔁", "callback_data": f"ai_regen:{action_id}"},
+            {"text": "▶️", "callback_data": f"ai_continue:{action_id}"},
         ]]
     }
 
@@ -462,6 +462,11 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
         send_message(bot_id, chat_id, "這則回覆已無法操作")
         return
 
+    # 使用者要求：按下重跑後先把原本那則 AI 訊息刪掉，
+    # 等新回覆生成完再重新發一則新的，並更新 action 對應的 telegram_message_id。
+    old_telegram_message_id = action.get("telegram_message_id")
+    delete_message(bot_id, chat_id, old_telegram_message_id)
+
     context = _load_generation_context(user_id, bot_id, chat_id)
 
     if not context:
@@ -495,13 +500,17 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
 
     keyboard = build_ai_action_keyboard(action.get("id"))
 
-    edit_message_text(
+    sent = send_message(
         bot_id,
         chat_id,
-        action.get("telegram_message_id"),
         reply,
         reply_markup=keyboard,
     )
+
+    new_telegram_message_id = _extract_telegram_message_id(sent)
+
+    if new_telegram_message_id:
+        update_action_telegram_message_id(action.get("id"), new_telegram_message_id)
 
     update_chat_text(
         memory_id=action.get("assistant_chat_id"),

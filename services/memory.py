@@ -975,6 +975,114 @@ def get_chat(bot_id, chat_id, user_id=None):
         conn.close()
 
 
+def list_recent_chat_memory(bot_id, chat_id, limit=10, user_id=None):
+    """列出最近 N 筆短期記憶，含 id，給 /memory 查看與單筆刪除使用。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+
+    try:
+        limit = int(limit or 10)
+    except Exception:
+        limit = 10
+
+    limit = max(1, min(limit, 30))
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, role, text, user_id, telegram_message_id, created_at
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            ORDER BY id DESC
+            LIMIT %s
+        """, (bot_id, chat_id, scope, limit))
+
+        rows = cursor.fetchall()
+        result = []
+
+        for row_id, role, value, row_user_id, telegram_message_id, created_at in rows:
+            role = role or "user"
+            aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+            text = _decrypt_safe(value, aad=aad)
+
+            if not text:
+                continue
+
+            result.append({
+                "id": int(row_id),
+                "role": role,
+                "text": text,
+                "user_id": row_user_id,
+                "telegram_message_id": telegram_message_id,
+                "created_at": str(created_at or ""),
+            })
+
+        return result
+
+    except Exception as e:
+        print("DB ERROR list_recent_chat_memory:", e)
+        return []
+
+    finally:
+        conn.close()
+
+
+def delete_chat_memory_item(memory_id, bot_id, chat_id):
+    """刪除單筆短期記憶，並清掉跟該筆記憶綁定的 AI 操作映射。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+
+    try:
+        memory_id = int(memory_id)
+    except Exception:
+        return False, "memory_id 格式錯誤"
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            DELETE FROM ai_message_actions
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND (
+                    assistant_chat_id = %s
+                 OR source_user_chat_id = %s
+                 OR context_chat_id = %s
+              )
+        """, (bot_id, chat_id, memory_id, memory_id, memory_id))
+
+        cursor.execute("""
+            DELETE FROM chat_memory
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (memory_id, bot_id, chat_id, scope))
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, "找不到這筆短期記憶"
+
+        conn.commit()
+        return True, "已刪除短期記憶"
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR delete_chat_memory_item:", e)
+        return False, "刪除短期記憶失敗"
+
+    finally:
+        conn.close()
+
+
 def get_recent_chat(bot_id, chat_id, limit=30, user_id=None):
 
     history = get_chat(bot_id, chat_id, user_id=user_id)

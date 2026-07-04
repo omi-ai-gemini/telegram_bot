@@ -16,6 +16,7 @@ C:\Projects\telemini
 - `api.py`
 - `check_db.py`
 - `config.py`
+- `docs\AI_MESSAGE_ACTIONS_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
@@ -28,6 +29,7 @@ C:\Projects\telemini
 - `routes\admin.py`
 - `routes\setting.py`
 - `services\__init__.py`
+- `services\ai_actions.py`
 - `services\bot_router.py`
 - `services\call_ai.py`
 - `services\character.py`
@@ -47,6 +49,7 @@ C:\Projects\telemini
 - `services\setting_auth.py`
 - `services\style.py`
 - `services\telegram_service.py`
+- `services\time_context.py`
 - `services\user_notice.py`
 - `services\user_router.py`
 - `telemini\services\call_ai.py`
@@ -150,6 +153,25 @@ C:\Projects\telemini
 - `save_chat_persona_setting()`
 - `save_character_setting()`
 
+### `services\ai_actions.py`
+- `_text_id()`
+- `_is_group_chat()`
+- `build_ai_action_keyboard()`
+- `create_ai_message_action()`
+- `update_action_telegram_message_id()`
+- `get_ai_message_action()`
+- `create_pending_edit()`
+- `pop_active_pending_edit()`
+- `_extract_telegram_message_id()`
+- `start_edit_ai_message()`
+- `process_pending_edit_message()`
+- `_load_generation_context()`
+- `_generate_reply()`
+- `regenerate_ai_message()`
+- `continue_ai_message()`
+- `run_regenerate_in_thread()`
+- `run_continue_in_thread()`
+
 ### `services\bot_router.py`
 - `_text_id()`
 - `get_bot_token()`
@@ -157,6 +179,8 @@ C:\Projects\telemini
 - `clear_bot_token_cache()`
 
 ### `services\call_ai.py`
+- `_is_group_chat()`
+- `_extract_telegram_message_id()`
 - `run_ai()`
 
 ### `services\character.py`
@@ -267,6 +291,9 @@ C:\Projects\telemini
 - `update_important_fact()`
 - `delete_important_fact()`
 - `add_chat()`
+- `update_chat_text()`
+- `get_chat_memory_item()`
+- `get_chat_until()`
 - `get_chat()`
 - `get_recent_chat()`
 
@@ -355,9 +382,16 @@ C:\Projects\telemini
 - `build_prompt()`
 
 ### `services\telegram_service.py`
+- `_telegram_post()`
 - `send_message()`
+- `edit_message_text()`
 - `answer_callback_query()`
 - `delete_message()`
+
+### `services\time_context.py`
+- `_period_name()`
+- `get_current_time_context()`
+- `build_time_context_text()`
 
 ### `services\user_notice.py`
 - `_text_id()`

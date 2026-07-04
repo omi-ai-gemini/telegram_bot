@@ -574,6 +574,80 @@ def maintain_memory_after_reply(gemini_key, bot_id, chat_id, user_id=None):
     return chunks
 
 
+def list_memory_summaries(bot_id, chat_id, scope=None, limit=6):
+    """列出最近 N 筆未封存摘要記憶，給 /memory 查看與單筆刪除使用。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+
+    try:
+        limit = int(limit or 6)
+    except Exception:
+        limit = 6
+
+    limit = max(1, min(limit, 12))
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        items = _fetch_active_summaries(
+            cursor,
+            bot_id,
+            chat_id,
+            scope,
+            limit=limit,
+            oldest_first=False
+        )
+        return items
+
+    except Exception as exc:
+        print("DB ERROR list_memory_summaries:", exc)
+        return []
+
+    finally:
+        conn.close()
+
+
+def delete_memory_summary(summary_id, bot_id, chat_id, scope=None):
+    """刪除單筆摘要記憶。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+
+    try:
+        summary_id = int(summary_id)
+    except Exception:
+        return False, "summary_id 格式錯誤"
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM memory_summaries
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (summary_id, bot_id, chat_id, scope))
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, "找不到這筆摘要記憶"
+
+        conn.commit()
+        return True, "已刪除摘要記憶"
+
+    except Exception as exc:
+        conn.rollback()
+        print("DB ERROR delete_memory_summary:", exc)
+        return False, "刪除摘要記憶失敗"
+
+    finally:
+        conn.close()
+
+
 def get_memory_context(bot_id, chat_id, scope=None, user_id=None, summary_limit=4, archive_limit=2):
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
