@@ -1,4 +1,4 @@
-from services.gemini_service import ask_gemini, GEMINI_BLOCKED
+from services.gemini_service import ask_gemini
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
 from services.telegram_service import send_message
@@ -119,17 +119,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         )
 
         # =========================
-        # Gemini 回覆被安全層阻擋
-        # - 回聊天室 debug 訊息
-        # - 不寫入 assistant 短期記憶
-        # =========================
-        if reply == GEMINI_BLOCKED:
-            print("AI BLOCKED SEND: Gemini blocked chat reply")
-            send_message(bot_id, chat_id, "內容被安全阻擋")
-            return
-
-        # =========================
-        # Gemini 沒有回傳可用文字，但不是明確安全阻擋
+        # Gemini 沒有回傳可用文字時
         # - 不傳假訊息
         # - 不寫入 assistant 短期記憶
         # - 詳細原因看 Render 的 GEMINI DEBUG log

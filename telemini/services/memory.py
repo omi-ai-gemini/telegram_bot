@@ -237,8 +237,12 @@ def detect_emotion(text: str) -> int:
 
 
 # =========================
-# 長期記憶
+# 舊版聊天文字記憶指令
 # =========================
+# 已停用：
+# - 不再讓使用者在聊天室輸入「記住 / 記憶 / 記得」就寫入 facts_memory。
+# - facts_memory 改由「⭐ 重點記憶」表單寫入。
+# 下面函式保留是為了避免舊引用直接壞掉，但主流程不再呼叫。
 memory_triggers = [
     "記憶",
     "記住",
@@ -248,17 +252,11 @@ memory_triggers = [
 ]
 
 
-# 判斷是否為記憶相關指令
 def is_memory_command(text: str) -> bool:
-
     return any(trigger in text for trigger in memory_triggers)
 
 
 def extract_memory_content(text: str) -> str:
-    """
-    把指令字去掉，只留要記的內容
-    """
-
     for trigger in memory_triggers:
         text = text.replace(trigger, "")
 
@@ -266,9 +264,9 @@ def extract_memory_content(text: str) -> str:
 
 
 # =========================
-# 長期記憶：facts_memory.fact 存密文
+# 重點記憶：facts_memory.fact 存密文
 # - important：重點記憶表單新增，權重最高
-# - manual：舊版保留欄位，主流程已不再寫入
+# - manual：舊資料相容，不再由聊天文字新增，也不再預設丟進 prompt。
 # =========================
 def _normalize_fact_for_hash(value):
     text = str(value or "").strip().lower()
@@ -284,12 +282,12 @@ def _fact_hash(value):
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="manual", importance=5):
+def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="important", importance=10):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _text_id(scope)
-    source_type = _text_id(source_type or "manual")
+    source_type = _text_id(source_type or "important")
 
     fact = str(fact or "").strip()
     if not fact:
@@ -380,8 +378,6 @@ def get_facts(bot_id, chat_id, scope, user_id=None, limit=20, source_types=None)
     scope = _text_id(scope)
 
     if source_types is None:
-        # 手動記憶已由「重點記憶」取代。
-        # 預設只讀重點記憶，避免舊版 manual 資料繼續進 prompt。
         source_types = ["important"]
 
     limit = max(1, min(int(limit or 20), 50))

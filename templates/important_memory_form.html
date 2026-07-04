@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重點記憶</title>
+
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #0f172a;
+      color: #ffffff;
+    }
+    .page { width: 100%; max-width: 640px; margin: 0 auto; }
+    .card {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.35);
+    }
+    h1 { margin: 0 0 8px 0; font-size: 26px; }
+    .desc {
+      margin: 0 0 20px 0;
+      font-size: 14px;
+      line-height: 1.7;
+      color: rgba(255, 255, 255, 0.72);
+    }
+    .note {
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #bfdbfe;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.28);
+    }
+    .warn {
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.28);
+    }
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.86);
+    }
+    textarea {
+      width: 100%;
+      min-height: 180px;
+      resize: vertical;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 14px;
+      padding: 12px;
+      font-size: 15px;
+      line-height: 1.6;
+      color: #ffffff;
+      background: rgba(15, 23, 42, 0.8);
+      outline: none;
+    }
+    button {
+      width: 100%;
+      margin-top: 18px;
+      border: none;
+      border-radius: 14px;
+      padding: 14px 16px;
+      font-size: 16px;
+      font-weight: 700;
+      color: #0f172a;
+      background: #93c5fd;
+      cursor: pointer;
+    }
+    #result {
+      margin-top: 14px;
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>⭐ 重點記憶</h1>
+      <p class="desc">重點記憶會比一般長期摘要更優先，被視為穩定設定或重要事實。</p>
+
+      {% if is_group %}
+      <div class="warn">群組重點記憶欄位已預留，但目前暫不開放群組寫入。</div>
+      {% else %}
+      <div class="note">適合寫：角色關係、使用者偏好、重要設定、長期不應忘記的事。不要拿來保存短期流水帳。</div>
+
+      <form id="memoryForm">
+        <input type="hidden" name="bot_id" value="{{ bot_id }}">
+        <input type="hidden" name="chat_id" value="{{ chat_id }}">
+        <input type="hidden" name="user_id" value="{{ user_id }}">
+
+        <label for="important_memory">重點記憶內容</label>
+        <textarea id="important_memory" name="important_memory" placeholder="例如：使用者偏好直接、可執行的程式碼修正，不喜歡冗長解釋。"></textarea>
+
+        <button type="submit">儲存重點記憶</button>
+      </form>
+      {% endif %}
+
+      <div id="result"></div>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('memoryForm');
+    const result = document.getElementById('result');
+
+    if (form) {
+      form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        result.textContent = '儲存中...';
+
+        const formData = new FormData(form);
+
+        try {
+          const res = await fetch('/setting/important_memory/save', {
+            method: 'POST',
+            body: formData
+          });
+
+          const data = await res.json();
+          result.textContent = data.message || (data.ok ? '已儲存' : '儲存失敗');
+        } catch (err) {
+          result.textContent = '儲存失敗：' + err;
+        }
+      });
+    }
+  </script>
+</body>
+</html>

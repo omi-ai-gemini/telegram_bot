@@ -283,7 +283,8 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         send_memory_menu(
             bot_id,
             chat_id,
-            message_id
+            message_id,
+            user_id=user_id
         )
         return
 
@@ -392,6 +393,26 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         )
 
         send_character_menu(
+            bot_id,
+            chat_id,
+            message_id,
+            user_id=user_id
+        )
+        return
+
+    # =========================
+    # 重點記憶表單 fallback
+    # 正常情況下不會進來，因為設定按鈕會是 url button
+    # =========================
+    if user_text == "important_memory_setting":
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="BASE_URL 尚未設定，無法開啟重點記憶表單"
+        )
+
+        send_memory_menu(
             bot_id,
             chat_id,
             message_id,

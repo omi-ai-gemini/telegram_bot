@@ -229,7 +229,12 @@ def init_db():
 
         cursor.execute("""
         ALTER TABLE facts_memory
-        ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'manual'
+        ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'important'
+        """)
+
+        cursor.execute("""
+        ALTER TABLE facts_memory
+        ALTER COLUMN source_type SET DEFAULT 'important'
         """)
 
         cursor.execute("""

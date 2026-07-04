@@ -54,6 +54,23 @@ def _build_persona_setting_url(bot_id, chat_id, user_id):
 # 建立回覆風格設定網址
 # style_type：chat / theater
 # =========================
+def _build_important_memory_url(bot_id, chat_id, user_id):
+
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+
+    if not base_url:
+        print("X BASE_URL not found")
+        return None
+
+    query = urlencode({
+        "bot_id": str(bot_id),
+        "chat_id": str(chat_id),
+        "user_id": str(user_id)
+    })
+
+    return f"{base_url}/setting/important_memory?{query}"
+
+
 def _build_reply_style_url(bot_id, chat_id, user_id, style_type):
 
     base_url = os.getenv("BASE_URL", "").rstrip("/")
@@ -235,7 +252,15 @@ def send_mode_menu(bot_id, chat_id, message_id=None):
 # =========================
 # /setting/記憶設定
 # =========================
-def send_memory_menu(bot_id, chat_id, message_id=None):
+def send_memory_menu(bot_id, chat_id, message_id=None, user_id=None):
+
+    important_button = [{"text": "⭐ 重點記憶", "callback_data": "important_memory_setting"}]
+
+    if user_id is not None:
+        important_url = _build_important_memory_url(bot_id, chat_id, user_id)
+
+        if important_url:
+            important_button = [{"text": "⭐ 重點記憶", "url": important_url}]
 
     _send_or_edit(
         bot_id,
@@ -243,6 +268,7 @@ def send_memory_menu(bot_id, chat_id, message_id=None):
         message_id,
         "🧠 記憶設定",
         [
+            important_button,
             [{"text": "🧹 清除當前記憶", "callback_data": "clear_current_memory"}],
             [{"text": "⬅️ 返回設定中心", "callback_data": "back_setting"}]
         ]

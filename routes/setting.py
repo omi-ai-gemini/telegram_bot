@@ -17,8 +17,86 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
+from services.memory import add_important_fact, _get_scope
 
 setting_bp = Blueprint("setting", __name__)
+
+
+# =========================
+# 重點記憶設定表單
+# 目前先開放私聊 chat_id；群組 chat_id 先保留延伸，不開放寫入。
+# =========================
+@setting_bp.route("/setting/important_memory", methods=["GET"])
+def important_memory_setting_page():
+
+    bot_id = request.args.get("bot_id", "")
+    chat_id = request.args.get("chat_id", "")
+    user_id = request.args.get("user_id", "")
+
+    if not bot_id or not chat_id:
+        return "缺少 bot_id 或 chat_id", 400
+
+    try:
+        is_group = int(chat_id) < 0
+    except Exception:
+        is_group = str(chat_id).startswith("-")
+
+    return render_template(
+        "important_memory_form.html",
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        is_group=is_group
+    )
+
+
+# =========================
+# 儲存重點記憶
+# =========================
+@setting_bp.route("/setting/important_memory/save", methods=["POST"])
+def save_important_memory_setting():
+
+    bot_id = request.form.get("bot_id", "").strip()
+    chat_id = request.form.get("chat_id", "").strip()
+    user_id = request.form.get("user_id", "").strip()
+    fact = request.form.get("important_memory", "").strip()
+
+    if not bot_id or not chat_id:
+        return jsonify({
+            "ok": False,
+            "message": "缺少 bot_id 或 chat_id"
+        }), 400
+
+    try:
+        is_group = int(chat_id) < 0
+    except Exception:
+        is_group = str(chat_id).startswith("-")
+
+    if is_group:
+        return jsonify({
+            "ok": False,
+            "message": "群組重點記憶欄位已預留，但目前暫不開放群組寫入。"
+        }), 400
+
+    if not fact:
+        return jsonify({
+            "ok": False,
+            "message": "請輸入要保存的重點記憶。"
+        }), 400
+
+    add_important_fact(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        fact=fact,
+        scope=_get_scope(chat_id),
+        user_id=user_id
+    )
+
+    return jsonify({
+        "ok": True,
+        "message": "重點記憶已儲存，可以關閉此頁。"
+    })
+
 
 
 # =========================

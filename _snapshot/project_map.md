@@ -38,16 +38,24 @@ C:\Projects\telemini
 - `services\encrypted_store.py`
 - `services\gemini_service.py`
 - `services\memory.py`
+- `services\memory_summary.py`
 - `services\privacy_access.py`
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\reply_style.py`
 - `services\style.py`
 - `services\telegram_service.py`
+- `services\user_notice.py`
 - `services\user_router.py`
+- `telemini\services\call_ai.py`
+- `telemini\services\database.py`
+- `telemini\services\memory.py`
+- `telemini\services\style.py`
+- `telemini\templates\important_memory_form.html`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
 - `templates\developer.html`
+- `templates\important_memory_form.html`
 - `templates\index.html`
 - `templates\login.html`
 - `templates\manual.html`
@@ -81,6 +89,8 @@ C:\Projects\telemini
 - `/admin/login/developer` → `admin_login_developer`
 
 ### `routes\setting.py`
+- `/setting/important_memory` → `important_memory_setting_page`
+- `/setting/important_memory/save` → `save_important_memory_setting`
 - `/setting/persona` → `persona_setting_page`
 - `/setting/character` → `character_setting_page`
 - `/setting/reply_style` → `reply_style_setting_page`
@@ -118,6 +128,8 @@ C:\Projects\telemini
 - `admin_login_developer()`
 
 ### `routes\setting.py`
+- `important_memory_setting_page()`
+- `save_important_memory_setting()`
 - `persona_setting_page()`
 - `character_setting_page()`
 - `reply_style_setting_page()`
@@ -160,6 +172,7 @@ C:\Projects\telemini
 ### `services\commands.py`
 - `_telegram_post()`
 - `_build_persona_setting_url()`
+- `_build_important_memory_url()`
 - `_build_reply_style_url()`
 - `_send_or_edit()`
 - `_send_new_message()`
@@ -211,7 +224,10 @@ C:\Projects\telemini
 - `list_encrypted_metadata()`
 
 ### `services\gemini_service.py`
+- `_enum_name()`
+- `_read_attr()`
 - `_extract_finish_reason()`
+- `debug_gemini_response()`
 - `_safe_response_text()`
 - `ask_gemini()`
 - `summarize_memory()`
@@ -227,11 +243,33 @@ C:\Projects\telemini
 - `detect_emotion()`
 - `is_memory_command()`
 - `extract_memory_content()`
+- `_normalize_fact_for_hash()`
+- `_fact_hash()`
 - `add_fact()`
+- `add_important_fact()`
 - `get_facts()`
 - `add_chat()`
 - `get_chat()`
 - `get_recent_chat()`
+
+### `services\memory_summary.py`
+- `_text_id()`
+- `_get_scope()`
+- `_decrypt_safe()`
+- `_fetch_unsummarized_rows()`
+- `_rows_to_plain_text()`
+- `_save_memory_summary()`
+- `_update_summary_state()`
+- `_get_memory_state()`
+- `_save_memory_state()`
+- `_refresh_memory_state()`
+- `_prune_short_memory()`
+- `summarize_pending_memory()`
+- `_fetch_active_summaries()`
+- `cleanup_long_term_memory()`
+- `_merge_old_archives_if_needed()`
+- `maintain_memory_after_reply()`
+- `get_memory_context()`
 
 ### `services\privacy_access.py`
 - `_text_id()`
@@ -281,6 +319,7 @@ C:\Projects\telemini
 - `_build_character_text()`
 - `_build_reply_style_text()`
 - `_build_facts_text()`
+- `_build_memory_context_text()`
 - `build_prompt()`
 
 ### `services\telegram_service.py`
@@ -288,10 +327,58 @@ C:\Projects\telemini
 - `answer_callback_query()`
 - `delete_message()`
 
+### `services\user_notice.py`
+- `_text_id()`
+- `send_once_user_notice()`
+
 ### `services\user_router.py`
 - `_text_id()`
 - `get_gemini_key()`
 - `user_has_key()`
+
+### `telemini\services\call_ai.py`
+- `run_ai()`
+
+### `telemini\services\database.py`
+- `get_conn()`
+- `get_db_connection_stats()`
+- `save_bot()`
+- `update_gemini_key()`
+- `init_db()`
+- `__init__()`
+- `close()`
+- `__getattr__()`
+- `__enter__()`
+- `__exit__()`
+
+### `telemini\services\memory.py`
+- `_text_id()`
+- `_get_scope()`
+- `_decrypt_safe()`
+- `delete_current_memory()`
+- `delete_character_memory()`
+- `update_emotion()`
+- `get_emotion()`
+- `detect_emotion()`
+- `is_memory_command()`
+- `extract_memory_content()`
+- `_normalize_fact_for_hash()`
+- `_fact_hash()`
+- `add_fact()`
+- `add_important_fact()`
+- `get_facts()`
+- `add_chat()`
+- `get_chat()`
+- `get_recent_chat()`
+
+### `telemini\services\style.py`
+- `_has_chat_persona()`
+- `_build_chat_persona_text()`
+- `_build_character_text()`
+- `_build_reply_style_text()`
+- `_build_facts_text()`
+- `_build_memory_context_text()`
+- `build_prompt()`
 
 ### `tools\encrypt_existing_plaintext.py`
 - `_has_value()`
