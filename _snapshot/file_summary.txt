@@ -599,6 +599,60 @@ POST /setting/important_memory/delete
 
 ================================================================================
 
+# docs\SMALL_UPDATE_MEMORY_VIEW_README.md
+
+- 類型：.md
+- 行數：42
+
+## preview
+```text
+# Telemini 小改版：重跑刪原訊息 / 記憶查看
+
+## 更新內容
+
+1. AI 回覆下方小按鈕縮短為：
+   - ✏️
+   - 🔁
+   - ▶️
+
+2. 按下「🔁 重跑」後會先刪除原本那則 AI 訊息，再重新發出新生成的訊息。
+
+3. 使用者輸入 `/setting` 或 `/設定` 打開設定中心後，按「❌ 結束設定」會同時刪除：
+   - 設定選單訊息
+   - 使用者原本輸入的 `/setting` 或 `/設定`
+
+4. 新增 `/memory` 與 `/記憶`：
+   - 查看最近 10 筆短期記憶
+   - 查看最近 6 筆摘要記憶
+   - 打開既有重點記憶管理頁
+   - 短期記憶與摘要記憶支援單筆刪除
+
+## 新增資料表
+
+部署後第一次請求會自動補：
+
+```sql
+setting_menu_sessions
+```
+
+用來記錄設定選單訊息與使用者 `/setting` 指令訊息的對應，方便退出時一起刪除。
+
+## 修改檔案
+
+- handlers/message_handler.py
+- handlers/call_handler.py
+- services/ai_actions.py
+- services/commands.py
+- services/database.py
+- services/memory.py
+- services/memory_summary.py
+- services/memory_view.py
+- services/setting_sessions.py
+```
+
+
+================================================================================
+
 # handlers\__init__.py
 
 - 類型：.py
@@ -614,7 +668,7 @@ POST /setting/important_memory/delete
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：572
+- 行數：602
 
 ## imports
 - services.ai_actions.run_continue_in_thread
@@ -636,7 +690,9 @@ POST /setting/important_memory/delete
 - services.commands.send_start_script_confirm_menu
 - services.memory.add_chat
 - services.memory.delete_current_memory
+- services.memory_view.handle_memory_view_callback
 - services.reply_style.delete_reply_style_settings
+- services.setting_sessions.pop_setting_menu_session
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
 - services.telegram_service.send_message
@@ -653,6 +709,7 @@ from services.ai_actions import (
     run_regenerate_in_thread,
     start_edit_ai_message,
 )
+from services.memory_view import handle_memory_view_callback
 from services.commands import (
     send_character_menu,
     send_setting_menu,
@@ -673,6 +730,7 @@ from services.character import (
 from services.chat_persona import delete_chat_persona_settings
 from services.reply_style import delete_reply_style_settings
 from services.memory import add_chat, delete_current_memory
+from services.setting_sessions import pop_setting_menu_session
 from services.telegram_service import (
     send_message,
     answer_callback_query,
@@ -726,10 +784,8 @@ def _send_script_opening(bot_id, chat_id):
 
     return True
 
-
-# =========================
 ...
-... 已省略 492 行
+... 已省略 522 行
 ```
 
 
@@ -738,12 +794,13 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：30
+- 行數：44
 
 ## imports
 - services.ai_actions.process_pending_edit_message
 - services.call_ai.run_ai
 - services.commands.send_setting_menu
+- services.memory_view.send_memory_view_menu
 
 ## functions
 - handle_message
@@ -753,6 +810,7 @@ def _send_script_opening(bot_id, chat_id):
 from services.ai_actions import process_pending_edit_message
 from services.call_ai import run_ai
 from services.commands import send_setting_menu
+from services.memory_view import send_memory_view_menu
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
@@ -776,7 +834,20 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         return
 
     if user_text in ["/setting", "/設定"]:
-        send_setting_menu(bot_id, chat_id)
+        send_setting_menu(
+            bot_id,
+            chat_id,
+            user_id=user_id,
+            source_message_id=message_id
+        )
+        return
+
+    if user_text in ["/memory", "/記憶"]:
+        send_memory_view_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id
+        )
         return
 
     run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
@@ -1205,7 +1276,7 @@ def _token_from_request():
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：611
+- 行數：620
 
 ## imports
 - datetime.datetime
@@ -1300,9 +1371,9 @@ def _is_group_chat(chat_id):
 def build_ai_action_keyboard(action_id):
     return {
         "inline_keyboard": [[
-            {"text": "✏️改", "callback_data": f"ai_edit:{action_id}"},
-            {"text": "🔁重跑", "callback_data": f"ai_regen:{action_id}"},
-            {"text": "▶️接續", "callback_data": f"ai_continue:{action_id}"},
+            {"text": "✏️", "callback_data": f"ai_edit:{action_id}"},
+            {"text": "🔁", "callback_data": f"ai_regen:{action_id}"},
+            {"text": "▶️", "callback_data": f"ai_continue:{action_id}"},
         ]]
     }
 
@@ -1337,7 +1408,7 @@ def create_ai_message_action(
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
 ...
-... 已省略 531 行
+... 已省略 540 行
 ```
 
 
@@ -1791,7 +1862,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\commands.py
 
 - 類型：.py
-- 行數：371
+- 行數：402
 
 ## imports
 - os
@@ -1801,6 +1872,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 - services.character.get_script_opening_status
 - services.setting_auth.create_setting_token
 - services.setting_auth.is_group_chat
+- services.setting_sessions.save_setting_menu_session
 - urllib.parse.urlencode
 
 ## functions
@@ -1810,6 +1882,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 - _build_reply_style_url
 - _send_or_edit
 - _send_new_message
+- _extract_message_id
 - send_setting_menu
 - send_character_menu
 - send_reply_style_menu
@@ -1828,6 +1901,7 @@ from urllib.parse import urlencode
 from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
 from services.setting_auth import create_setting_token, is_group_chat
+from services.setting_sessions import save_setting_menu_session
 
 # =========================
 # Telegram API POST
@@ -1901,9 +1975,8 @@ def _build_important_memory_url(bot_id, chat_id, user_id):
     if not base_url:
         print("X BASE_URL not found")
         return None
-
 ...
-... 已省略 291 行
+... 已省略 322 行
 ```
 
 
@@ -2145,7 +2218,7 @@ def encrypt_text(plain_text: Any, aad: str = "") -> str:
 # services\database.py
 
 - 類型：.py
-- 行數：612
+- 行數：634
 
 ## imports
 - os
@@ -2251,7 +2324,7 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 532 行
+... 已省略 554 行
 ```
 
 
@@ -2484,7 +2557,7 @@ def _extract_finish_reason(response):
 # services\memory.py
 
 - 類型：.py
-- 行數：986
+- 行數：1094
 
 ## imports
 - hashlib
@@ -2520,6 +2593,8 @@ def _extract_finish_reason(response):
 - get_chat_memory_item
 - get_chat_until
 - get_chat
+- list_recent_chat_memory
+- delete_chat_memory_item
 - get_recent_chat
 
 ## preview
@@ -2605,7 +2680,7 @@ def delete_current_memory(bot_id, chat_id):
             cursor.execute("""
                 DELETE FROM facts_memory
 ...
-... 已省略 906 行
+... 已省略 1014 行
 ```
 
 
@@ -2614,7 +2689,7 @@ def delete_current_memory(bot_id, chat_id):
 # services\memory_summary.py
 
 - 類型：.py
-- 行數：635
+- 行數：709
 
 ## imports
 - services.crypto_env.aad_for
@@ -2644,6 +2719,8 @@ def delete_current_memory(bot_id, chat_id):
 - cleanup_long_term_memory
 - _merge_old_archives_if_needed
 - maintain_memory_after_reply
+- list_memory_summaries
+- delete_memory_summary
 - get_memory_context
 
 ## preview
@@ -2729,7 +2806,129 @@ def _rows_to_plain_text(bot_id, chat_id, scope, rows):
 
         if not text:
 ...
-... 已省略 555 行
+... 已省略 629 行
+```
+
+
+================================================================================
+
+# services\memory_view.py
+
+- 類型：.py
+- 行數：238
+
+## imports
+- os
+- services.memory.delete_chat_memory_item
+- services.memory.list_important_facts
+- services.memory.list_recent_chat_memory
+- services.memory_summary.delete_memory_summary
+- services.memory_summary.list_memory_summaries
+- services.setting_auth.create_setting_token
+- services.setting_auth.is_group_chat
+- services.telegram_service.answer_callback_query
+- services.telegram_service.delete_message
+- services.telegram_service.edit_message_text
+- services.telegram_service.send_message
+- urllib.parse.urlencode
+
+## functions
+- _text_id
+- _extract_message_id
+- _truncate
+- _role_label
+- _important_memory_url
+- _send_or_edit
+- build_memory_view_menu_markup
+- send_memory_view_menu
+- _render_short_memory
+- _render_summary_memory
+- handle_memory_view_callback
+
+## preview
+```text
+import os
+from urllib.parse import urlencode
+
+from services.memory import (
+    delete_chat_memory_item,
+    list_important_facts,
+    list_recent_chat_memory,
+)
+from services.memory_summary import delete_memory_summary, list_memory_summaries
+from services.setting_auth import create_setting_token, is_group_chat
+from services.telegram_service import answer_callback_query, delete_message, edit_message_text, send_message
+
+
+def _text_id(value):
+    return str(value or "").strip()
+
+
+def _extract_message_id(result):
+    if not isinstance(result, dict):
+        return None
+
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
+def _truncate(text, max_len=90):
+    text = " ".join(str(text or "").split())
+
+    if len(text) <= max_len:
+        return text
+
+    return text[:max_len - 1] + "…"
+
+
+def _role_label(role):
+    role = str(role or "").strip()
+
+    if role == "assistant":
+        return "AI"
+
+    if role == "user":
+        return "你"
+
+    return role or "未知"
+
+
+def _important_memory_url(bot_id, chat_id, user_id):
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+
+    if not base_url or is_group_chat(chat_id):
+        return None
+
+    token = create_setting_token(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        page_type="important_memory"
+    )
+
+    if not token:
+        return None
+
+    query = urlencode({
+        "bot_id": _text_id(bot_id),
+        "chat_id": _text_id(chat_id),
+        "user_id": _text_id(user_id),
+        "token": token,
+    })
+
+    return f"{base_url}/setting/important_memory?{query}"
+
+
+def _send_or_edit(bot_id, chat_id, message_id, text, reply_markup):
+    if message_id:
+        return edit_message_text(bot_id, chat_id, message_id, text, reply_markup=reply_markup)
+
+    return send_message(bot_id, chat_id, text, reply_markup=reply_markup)
+
+
+def build_memory_view_menu_markup(bot_id, chat_id, user_id):
+...
+... 已省略 158 行
 ```
 
 
@@ -3301,6 +3500,108 @@ def create_setting_token(
     - 群組聊天室目前不開放設定頁
 ...
 ... 已省略 148 行
+```
+
+
+================================================================================
+
+# services\setting_sessions.py
+
+- 類型：.py
+- 行數：104
+
+## imports
+- services.database.get_conn
+
+## functions
+- _text_id
+- save_setting_menu_session
+- pop_setting_menu_session
+
+## preview
+```text
+from services.database import get_conn
+
+
+def _text_id(value):
+    return str(value or "").strip()
+
+
+def save_setting_menu_session(bot_id, chat_id, user_id, menu_message_id, command_message_id):
+    """記錄 /setting 指令訊息與設定選單訊息的對應，方便按退出時一起刪除。"""
+    if not menu_message_id or not command_message_id:
+        return False
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            INSERT INTO setting_menu_sessions (
+                bot_id,
+                chat_id,
+                user_id,
+                menu_message_id,
+                command_message_id,
+                created_at
+            )
+            VALUES (%s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+
+            ON CONFLICT (bot_id, chat_id, menu_message_id)
+
+            DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                command_message_id = EXCLUDED.command_message_id,
+                created_at = CURRENT_TIMESTAMP
+        """, (
+            _text_id(bot_id),
+            _text_id(chat_id),
+            _text_id(user_id),
+            int(menu_message_id),
+            int(command_message_id),
+        ))
+
+        conn.commit()
+        return True
+
+    except Exception as exc:
+        conn.rollback()
+        print("DB ERROR save_setting_menu_session:", exc)
+        return False
+
+    finally:
+        conn.close()
+
+
+def pop_setting_menu_session(bot_id, chat_id, menu_message_id, user_id=None):
+    """取出並刪除設定選單 session，回傳原始 /setting 訊息 message_id。"""
+    if not menu_message_id:
+        return None
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        params = [_text_id(bot_id), _text_id(chat_id), int(menu_message_id)]
+        user_sql = ""
+
+        if user_id is not None:
+            user_sql = "AND (user_id = %s OR user_id IS NULL OR user_id = '')"
+            params.append(_text_id(user_id))
+
+        cursor.execute(f"""
+            SELECT id, command_message_id
+            FROM setting_menu_sessions
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND menu_message_id = %s
+              {user_sql}
+            ORDER BY created_at DESC
+            LIMIT 1
+...
+... 已省略 24 行
 ```
 
 

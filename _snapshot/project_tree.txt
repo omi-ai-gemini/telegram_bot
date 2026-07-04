@@ -9,6 +9,7 @@
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
   📄 SETTING_LINK_AUTH_README.md
+  📄 SMALL_UPDATE_MEMORY_VIEW_README.md
 📁 handlers/
   📄 __init__.py
   📄 call_handler.py
@@ -33,11 +34,13 @@
   📄 gemini_service.py
   📄 memory.py
   📄 memory_summary.py
+  📄 memory_view.py
   📄 privacy_access.py
   📄 privacy_migration.py
   📄 privacy_session.py
   📄 reply_style.py
   📄 setting_auth.py
+  📄 setting_sessions.py
   📄 style.py
   📄 telegram_service.py
   📄 time_context.py

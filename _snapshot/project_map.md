@@ -21,6 +21,7 @@ C:\Projects\telemini
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
+- `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -42,11 +43,13 @@ C:\Projects\telemini
 - `services\gemini_service.py`
 - `services\memory.py`
 - `services\memory_summary.py`
+- `services\memory_view.py`
 - `services\privacy_access.py`
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\reply_style.py`
 - `services\setting_auth.py`
+- `services\setting_sessions.py`
 - `services\style.py`
 - `services\telegram_service.py`
 - `services\time_context.py`
@@ -213,6 +216,7 @@ C:\Projects\telemini
 - `_build_reply_style_url()`
 - `_send_or_edit()`
 - `_send_new_message()`
+- `_extract_message_id()`
 - `send_setting_menu()`
 - `send_character_menu()`
 - `send_reply_style_menu()`
@@ -295,6 +299,8 @@ C:\Projects\telemini
 - `get_chat_memory_item()`
 - `get_chat_until()`
 - `get_chat()`
+- `list_recent_chat_memory()`
+- `delete_chat_memory_item()`
 - `get_recent_chat()`
 
 ### `services\memory_summary.py`
@@ -316,7 +322,22 @@ C:\Projects\telemini
 - `cleanup_long_term_memory()`
 - `_merge_old_archives_if_needed()`
 - `maintain_memory_after_reply()`
+- `list_memory_summaries()`
+- `delete_memory_summary()`
 - `get_memory_context()`
+
+### `services\memory_view.py`
+- `_text_id()`
+- `_extract_message_id()`
+- `_truncate()`
+- `_role_label()`
+- `_important_memory_url()`
+- `_send_or_edit()`
+- `build_memory_view_menu_markup()`
+- `send_memory_view_menu()`
+- `_render_short_memory()`
+- `_render_summary_memory()`
+- `handle_memory_view_callback()`
 
 ### `services\privacy_access.py`
 - `_text_id()`
@@ -371,6 +392,11 @@ C:\Projects\telemini
 - `verify_setting_token()`
 - `verify_setting_request()`
 - `_fail()`
+
+### `services\setting_sessions.py`
+- `_text_id()`
+- `save_setting_menu_session()`
+- `pop_setting_menu_session()`
 
 ### `services\style.py`
 - `_has_chat_persona()`
