@@ -885,7 +885,7 @@ def add_key_route():
 # routes\setting.py
 
 - 類型：.py
-- 行數：338
+- 行數：464
 
 ## imports
 - flask.Blueprint
@@ -899,6 +899,9 @@ def add_key_route():
 - services.chat_persona.update_chat_persona_settings
 - services.memory._get_scope
 - services.memory.add_important_fact
+- services.memory.delete_important_fact
+- services.memory.list_important_facts
+- services.memory.update_important_fact
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
 - services.reply_style.update_reply_style_settings
@@ -908,6 +911,9 @@ def add_key_route():
 ## functions
 - important_memory_setting_page
 - save_important_memory_setting
+- list_important_memory_setting
+- update_important_memory_setting
+- delete_important_memory_setting
 - persona_setting_page
 - character_setting_page
 - reply_style_setting_page
@@ -918,6 +924,9 @@ def add_key_route():
 ## routes
 - /setting/important_memory → important_memory_setting_page
 - /setting/important_memory/save → save_important_memory_setting
+- /setting/important_memory/list → list_important_memory_setting
+- /setting/important_memory/update → update_important_memory_setting
+- /setting/important_memory/delete → delete_important_memory_setting
 - /setting/persona → persona_setting_page
 - /setting/character → character_setting_page
 - /setting/reply_style → reply_style_setting_page
@@ -946,7 +955,13 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
-from services.memory import add_important_fact, _get_scope
+from services.memory import (
+    add_important_fact,
+    list_important_facts,
+    update_important_fact,
+    delete_important_fact,
+    _get_scope
+)
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -1001,14 +1016,8 @@ def save_important_memory_setting():
     except Exception:
         is_group = str(chat_id).startswith("-")
 
-    if is_group:
-        return jsonify({
-            "ok": False,
-            "message": "群組重點記憶欄位已預留，但目前暫不開放群組寫入。"
-        }), 400
-
 ...
-... 已省略 258 行
+... 已省略 384 行
 ```
 
 
@@ -1127,21 +1136,19 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：170
+- 行數：161
 
 ## imports
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
+- services.gemini_service.GEMINI_BLOCKED
 - services.gemini_service.ask_gemini
 - services.memory.add_chat
-- services.memory.add_fact
 - services.memory.detect_emotion
-- services.memory.extract_memory_content
 - services.memory.get_chat
 - services.memory.get_emotion
 - services.memory.get_facts
-- services.memory.is_memory_command
 - services.memory.update_emotion
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
@@ -1155,7 +1162,7 @@ def clear_bot_token_cache(bot_id: str):
 
 ## preview
 ```text
-from services.gemini_service import ask_gemini
+from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
 from services.telegram_service import send_message
@@ -1168,9 +1175,6 @@ from services.memory import (
     add_chat,
     get_chat,
     get_facts,
-    is_memory_command,
-    extract_memory_content,
-    add_fact,
     update_emotion,
     detect_emotion,
     get_emotion
@@ -1221,22 +1225,25 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         emotion = get_emotion(chat_id)
 
         # =========================
-        # 長期記憶（手動記憶指令）
+        # 一般文字不再觸發「手動記憶」
+        # 重點記憶統一從設定中心的「⭐ 重點記憶」寫入 facts_memory。
         # =========================
-        if is_memory_command(user_text):
 
-            fact = extract_memory_content(user_text)
+        # =========================
+        # 短期記憶
+        # =========================
+        history = get_chat(bot_id, chat_id, user_id=user_id)
 
-            if fact:
-                add_fact(
-                    bot_id=bot_id,
-                    chat_id=chat_id,
-                    scope=scope,
-                    fact=fact,
-                    user_id=user_id,
-                    source_type="manual",
+        # =========================
+        # 重點記憶
+        # =========================
+        facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
+
+        # =========================
+        # 摘要型長期記憶
+        # =========================
 ...
-... 已省略 90 行
+... 已省略 81 行
 ```
 
 
@@ -1822,7 +1829,7 @@ def encrypt_text(plain_text: Any, aad: str = "") -> str:
 # services\database.py
 
 - 類型：.py
-- 行數：512
+- 行數：522
 
 ## imports
 - os
@@ -1928,7 +1935,7 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 432 行
+... 已省略 442 行
 ```
 
 
@@ -2051,7 +2058,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：365
+- 行數：445
 
 ## imports
 - config.GEMINI_MODEL
@@ -2063,6 +2070,7 @@ def save_encrypted_payload(
 - _enum_name
 - _read_attr
 - _extract_finish_reason
+- get_gemini_block_reason
 - debug_gemini_response
 - _safe_response_text
 - ask_gemini
@@ -2109,6 +2117,16 @@ GEMINI_CONFIG = types.GenerateContentConfig(
 )
 
 
+# =========================
+# Gemini 阻擋狀態標記
+# =========================
+# 讓呼叫端可以分辨：
+# - 一般聊天被安全層擋下 → 回聊天室「內容被安全阻擋」
+# - 摘要任務被安全層擋下 → 回聊天室「摘要長期記憶時被阻擋」
+GEMINI_BLOCKED = "__GEMINI_BLOCKED__"
+MEMORY_SUMMARY_BLOCKED = "__MEMORY_SUMMARY_BLOCKED__"
+
+
 def _enum_name(value):
     """
     把 Gemini SDK 回傳的 Enum / 物件安全轉成可讀文字。
@@ -2140,18 +2158,8 @@ def _extract_finish_reason(response):
     """
     只取 Gemini 回覆狀態，不印 prompt / 使用者原文 / AI 回覆原文。
     """
-    try:
-        candidates = getattr(response, "candidates", None)
-
-        if not candidates:
-            return "NO_CANDIDATES"
-
-        first = candidates[0]
-
-        return (
-            _read_attr(first, "finish_reason", "finishReason")
 ...
-... 已省略 285 行
+... 已省略 365 行
 ```
 
 
@@ -2160,7 +2168,7 @@ def _extract_finish_reason(response):
 # services\memory.py
 
 - 類型：.py
-- 行數：542
+- 行數：750
 
 ## imports
 - hashlib
@@ -2187,6 +2195,10 @@ def _extract_finish_reason(response):
 - add_fact
 - add_important_fact
 - get_facts
+- _user_filter_sql
+- list_important_facts
+- update_important_fact
+- delete_important_fact
 - add_chat
 - get_chat
 - get_recent_chat
@@ -2274,7 +2286,7 @@ def delete_current_memory(bot_id, chat_id):
             cursor.execute("""
                 DELETE FROM facts_memory
 ...
-... 已省略 462 行
+... 已省略 670 行
 ```
 
 
@@ -2283,16 +2295,20 @@ def delete_current_memory(bot_id, chat_id):
 # services\memory_summary.py
 
 - 類型：.py
-- 行數：602
+- 行數：635
 
 ## imports
 - services.crypto_env.aad_for
 - services.crypto_env.decrypt_text
 - services.crypto_env.encrypt_text
 - services.database.get_conn
+- services.gemini_service.MEMORY_SUMMARY_BLOCKED
 - services.gemini_service.summarize_memory
+- services.telegram_service.send_message
 
 ## functions
+- _notify_summary_blocked
+- _is_summary_blocked
 - _text_id
 - _get_scope
 - _decrypt_safe
@@ -2315,7 +2331,8 @@ def delete_current_memory(bot_id, chat_id):
 ```text
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for
-from services.gemini_service import summarize_memory
+from services.gemini_service import summarize_memory, MEMORY_SUMMARY_BLOCKED
+from services.telegram_service import send_message
 
 
 # =========================
@@ -2326,6 +2343,18 @@ SUMMARY_CHUNK_SIZE_MESSAGES = 100
 ACTIVE_SUMMARY_KEEP = 12
 ARCHIVE_BATCH_SIZE = 6
 ARCHIVE_KEEP = 5
+
+
+def _notify_summary_blocked(bot_id, chat_id):
+    """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
+    try:
+        send_message(bot_id, chat_id, "摘要長期記憶時被安全阻擋")
+    except Exception as exc:
+        print("TELEGRAM notify summary blocked error:", exc)
+
+
+def _is_summary_blocked(value):
+    return value == MEMORY_SUMMARY_BLOCKED
 
 
 def _text_id(value):
@@ -2380,21 +2409,8 @@ def _rows_to_plain_text(bot_id, chat_id, scope, rows):
         text = _decrypt_safe(value, aad=aad)
 
         if not text:
-            continue
-
-        lines.append(f"{row_id}. {role}: {text}")
-
-    return "\n".join(lines)
-
-
-def _save_memory_summary(cursor, bot_id, chat_id, scope, start_chat_id, end_chat_id, summary):
-    aad = aad_for("memory_summaries", "summary", bot_id, chat_id, scope, start_chat_id, end_chat_id)
-    encrypted_summary = encrypt_text(summary, aad=aad)
-
-    cursor.execute("""
-        INSERT INTO memory_summaries (
 ...
-... 已省略 522 行
+... 已省略 555 行
 ```
 
 
@@ -3350,7 +3366,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
 # telemini\services\database.py
 
 - 類型：.py
-- 行數：517
+- 行數：522
 
 ## imports
 - os
@@ -3456,7 +3472,7 @@ def get_conn():
             f"active={_ACTIVE_DB_CONNECTIONS} "
             f"pid={os.getpid()} "
 ...
-... 已省略 437 行
+... 已省略 442 行
 ```
 
 
@@ -3465,7 +3481,7 @@ def get_conn():
 # telemini\services\memory.py
 
 - 類型：.py
-- 行數：540
+- 行數：750
 
 ## imports
 - hashlib
@@ -3492,6 +3508,10 @@ def get_conn():
 - add_fact
 - add_important_fact
 - get_facts
+- _user_filter_sql
+- list_important_facts
+- update_important_fact
+- delete_important_fact
 - add_chat
 - get_chat
 - get_recent_chat
@@ -3579,7 +3599,7 @@ def delete_current_memory(bot_id, chat_id):
             cursor.execute("""
                 DELETE FROM facts_memory
 ...
-... 已省略 460 行
+... 已省略 670 行
 ```
 
 
@@ -3691,7 +3711,7 @@ def _has_chat_persona(chat_persona_settings):
 # telemini\templates\important_memory_form.html
 
 - 類型：.html
-- 行數：144
+- 行數：323
 
 ## preview
 ```text
@@ -3711,7 +3731,7 @@ def _has_chat_persona(chat_persona_settings):
       background: #0f172a;
       color: #ffffff;
     }
-    .page { width: 100%; max-width: 640px; margin: 0 auto; }
+    .page { width: 100%; max-width: 720px; margin: 0 auto; }
     .card {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
@@ -3726,25 +3746,32 @@ def _has_chat_persona(chat_persona_settings):
       line-height: 1.7;
       color: rgba(255, 255, 255, 0.72);
     }
-    .note {
+    .note, .warn {
       margin-bottom: 18px;
       padding: 12px;
       border-radius: 14px;
       font-size: 13px;
       line-height: 1.6;
+    }
+    .note {
       color: #bfdbfe;
       background: rgba(59, 130, 246, 0.12);
       border: 1px solid rgba(59, 130, 246, 0.28);
     }
     .warn {
-      margin-bottom: 18px;
-      padding: 12px;
-      border-radius: 14px;
-      font-size: 13px;
-      line-height: 1.6;
       color: #fde68a;
       background: rgba(245, 158, 11, 0.12);
       border: 1px solid rgba(245, 158, 11, 0.28);
+    }
+    .section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .section-title {
+      margin-bottom: 12px;
+      font-size: 18px;
+      font-weight: 700;
     }
     label {
       display: block;
@@ -3754,7 +3781,7 @@ def _has_chat_persona(chat_persona_settings):
     }
     textarea {
       width: 100%;
-      min-height: 180px;
+      min-height: 130px;
       resize: vertical;
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 14px;
@@ -3765,18 +3792,11 @@ def _has_chat_persona(chat_persona_settings):
       background: rgba(15, 23, 42, 0.8);
       outline: none;
     }
-    button {
-      width: 100%;
-      margin-top: 18px;
-      border: none;
-      border-radius: 14px;
-      padding: 14px 16px;
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-      background: #93c5fd;
+    textarea:focus {
+      border-color: rgba(96, 165, 250, 0.9);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
 ...
-... 已省略 64 行
+... 已省略 243 行
 ```
 
 
@@ -3785,7 +3805,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\character_form.html
 
 - 類型：.html
-- 行數：338
+- 行數：337
 
 ## preview
 ```text
@@ -3870,7 +3890,7 @@ def _has_chat_persona(chat_persona_settings):
       color: rgba(255, 255, 255, 0.86);
     }
 ...
-... 已省略 258 行
+... 已省略 257 行
 ```
 
 
@@ -4067,7 +4087,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\important_memory_form.html
 
 - 類型：.html
-- 行數：144
+- 行數：323
 
 ## preview
 ```text
@@ -4087,7 +4107,7 @@ def _has_chat_persona(chat_persona_settings):
       background: #0f172a;
       color: #ffffff;
     }
-    .page { width: 100%; max-width: 640px; margin: 0 auto; }
+    .page { width: 100%; max-width: 720px; margin: 0 auto; }
     .card {
       background: rgba(255, 255, 255, 0.08);
       border: 1px solid rgba(255, 255, 255, 0.12);
@@ -4102,25 +4122,32 @@ def _has_chat_persona(chat_persona_settings):
       line-height: 1.7;
       color: rgba(255, 255, 255, 0.72);
     }
-    .note {
+    .note, .warn {
       margin-bottom: 18px;
       padding: 12px;
       border-radius: 14px;
       font-size: 13px;
       line-height: 1.6;
+    }
+    .note {
       color: #bfdbfe;
       background: rgba(59, 130, 246, 0.12);
       border: 1px solid rgba(59, 130, 246, 0.28);
     }
     .warn {
-      margin-bottom: 18px;
-      padding: 12px;
-      border-radius: 14px;
-      font-size: 13px;
-      line-height: 1.6;
       color: #fde68a;
       background: rgba(245, 158, 11, 0.12);
       border: 1px solid rgba(245, 158, 11, 0.28);
+    }
+    .section {
+      margin-top: 24px;
+      padding-top: 18px;
+      border-top: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .section-title {
+      margin-bottom: 12px;
+      font-size: 18px;
+      font-weight: 700;
     }
     label {
       display: block;
@@ -4130,7 +4157,7 @@ def _has_chat_persona(chat_persona_settings):
     }
     textarea {
       width: 100%;
-      min-height: 180px;
+      min-height: 130px;
       resize: vertical;
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 14px;
@@ -4141,18 +4168,11 @@ def _has_chat_persona(chat_persona_settings):
       background: rgba(15, 23, 42, 0.8);
       outline: none;
     }
-    button {
-      width: 100%;
-      margin-top: 18px;
-      border: none;
-      border-radius: 14px;
-      padding: 14px 16px;
-      font-size: 16px;
-      font-weight: 700;
-      color: #0f172a;
-      background: #93c5fd;
+    textarea:focus {
+      border-color: rgba(96, 165, 250, 0.9);
+      box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
 ...
-... 已省略 64 行
+... 已省略 243 行
 ```
 
 
@@ -4443,7 +4463,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\reply_style_form.html
 
 - 類型：.html
-- 行數：261
+- 行數：243
 
 ## preview
 ```text
@@ -4505,19 +4525,6 @@ def _has_chat_persona(chat_persona_settings):
       border: 1px solid rgba(59, 130, 246, 0.28);
     }
 
-    .default-box {
-      margin-top: 10px;
-      margin-bottom: 18px;
-      padding: 12px;
-      border-radius: 14px;
-      font-size: 12px;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      color: rgba(255, 255, 255, 0.68);
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-
     .section {
       margin-top: 24px;
       padding-top: 18px;
@@ -4527,8 +4534,21 @@ def _has_chat_persona(chat_persona_settings):
     .section-title {
       font-size: 18px;
       font-weight: 700;
+      margin-bottom: 14px;
+    }
+
+    .field {
+      margin-bottom: 16px;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.86);
+    }
 ...
-... 已省略 181 行
+... 已省略 163 行
 ```
 
 

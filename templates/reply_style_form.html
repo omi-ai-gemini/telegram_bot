@@ -56,19 +56,6 @@
       border: 1px solid rgba(59, 130, 246, 0.28);
     }
 
-    .default-box {
-      margin-top: 10px;
-      margin-bottom: 18px;
-      padding: 12px;
-      border-radius: 14px;
-      font-size: 12px;
-      line-height: 1.6;
-      white-space: pre-wrap;
-      color: rgba(255, 255, 255, 0.68);
-      background: rgba(255, 255, 255, 0.06);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-    }
-
     .section {
       margin-top: 24px;
       padding-top: 18px;
@@ -176,12 +163,7 @@
       </p>
 
       <div class="note">
-        這裡不是設定人物，也不是設定劇本；只設定回覆時的樣子。空白儲存時會使用系統預設樣式。
-      </div>
-
-      <div class="section">
-        <div class="section-title">系統預設樣式</div>
-        <div class="default-box">{{ default_style }}</div>
+        這裡不是設定人物，也不是設定劇本；只設定回覆時的樣子。輸入框內會先放入預設風格，你可以直接修改後儲存。
       </div>
 
       <form id="reply-style-form">
@@ -192,7 +174,7 @@
         <input type="hidden" name="style_type" value="{{ style_type }}">
 
         <div class="section">
-          <div class="section-title">自訂風格</div>
+          <div class="section-title">自訂風格（以下為預設風格）</div>
 
           <div class="field">
             <label for="reply_style">回覆風格</label>
@@ -200,8 +182,8 @@
               id="reply_style"
               name="reply_style"
               placeholder="例如：使用括號描寫動作，但每次最多一段；語氣要自然，避免太長。"
-            >{{ settings.reply_style }}</textarea>
-            <div class="hint">留白代表使用上方系統預設樣式。</div>
+            >{{ editor_style }}</textarea>
+            <div class="hint">按下刪除自訂風格後，這裡會重新帶入預設風格文字。</div>
           </div>
         </div>
 

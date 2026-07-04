@@ -185,7 +185,7 @@
       </p>
 
       <div class="required-note">
-        AI 姓名、性別、形象、故事背景為必填；開場白與使用者設定可以先空白。
+        AI 姓名、性別、故事背景為必填；AI 形象、開場白與使用者設定可以先空白。
       </div>
 
       <form id="character-form">
@@ -220,12 +220,11 @@
           </div>
 
           <div class="field">
-            <label for="ai_appearance">AI 形象 <span class="required">*</span></label>
+            <label for="ai_appearance">AI 形象</label>
             <textarea
               id="ai_appearance"
               name="ai_appearance"
-              placeholder="描述 AI 的外貌、氣質、穿著、給人的感覺..."
-              required
+              placeholder="描述 AI 的外貌、氣質、穿著、給人的感覺，可以空白..."
             >{{ settings.ai_appearance }}</textarea>
           </div>
 

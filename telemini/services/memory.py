@@ -237,12 +237,8 @@ def detect_emotion(text: str) -> int:
 
 
 # =========================
-# 舊版聊天文字記憶指令
+# 長期記憶
 # =========================
-# 已停用：
-# - 不再讓使用者在聊天室輸入「記住 / 記憶 / 記得」就寫入 facts_memory。
-# - facts_memory 改由「⭐ 重點記憶」表單寫入。
-# 下面函式保留是為了避免舊引用直接壞掉，但主流程不再呼叫。
 memory_triggers = [
     "記憶",
     "記住",
@@ -252,11 +248,17 @@ memory_triggers = [
 ]
 
 
+# 判斷是否為記憶相關指令
 def is_memory_command(text: str) -> bool:
+
     return any(trigger in text for trigger in memory_triggers)
 
 
 def extract_memory_content(text: str) -> str:
+    """
+    把指令字去掉，只留要記的內容
+    """
+
     for trigger in memory_triggers:
         text = text.replace(trigger, "")
 
@@ -264,9 +266,9 @@ def extract_memory_content(text: str) -> str:
 
 
 # =========================
-# 重點記憶：facts_memory.fact 存密文
+# 長期記憶：facts_memory.fact 存密文
 # - important：重點記憶表單新增，權重最高
-# - manual：舊資料相容，不再由聊天文字新增，也不再預設丟進 prompt。
+# - manual：舊版保留欄位，主流程已不再寫入
 # =========================
 def _normalize_fact_for_hash(value):
     text = str(value or "").strip().lower()
@@ -282,12 +284,13 @@ def _fact_hash(value):
     return hashlib.sha256(normalized.encode("utf-8")).hexdigest()
 
 
-def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="important", importance=10):
+def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="manual", importance=5):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _text_id(scope)
-    source_type = _text_id(source_type or "important")
+    source_type = _text_id(source_type or "manual")
+    user_id = _text_id(user_id) if user_id is not None else ""
 
     fact = str(fact or "").strip()
     if not fact:
@@ -315,17 +318,19 @@ def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="important"
                 chat_id,
                 scope,
                 fact,
+                user_id,
                 source_type,
                 importance,
                 fact_hash,
                 updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
 
             ON CONFLICT (bot_id, chat_id, scope, fact_hash)
             WHERE fact_hash IS NOT NULL
             DO UPDATE SET
                 fact = EXCLUDED.fact,
+                user_id = COALESCE(NULLIF(facts_memory.user_id, ''), EXCLUDED.user_id),
                 source_type = EXCLUDED.source_type,
                 importance = GREATEST(facts_memory.importance, EXCLUDED.importance),
                 updated_at = CURRENT_TIMESTAMP
@@ -334,6 +339,7 @@ def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="important"
             chat_id,
             scope,
             encrypted_fact,
+            user_id,
             source_type,
             importance,
             fact_hash
@@ -378,6 +384,8 @@ def get_facts(bot_id, chat_id, scope, user_id=None, limit=20, source_types=None)
     scope = _text_id(scope)
 
     if source_types is None:
+        # 手動記憶已由「重點記憶」取代。
+        # 預設只讀重點記憶，避免舊版 manual 資料繼續進 prompt。
         source_types = ["important"]
 
     limit = max(1, min(int(limit or 20), 50))
@@ -423,6 +431,208 @@ def get_facts(bot_id, chat_id, scope, user_id=None, limit=20, source_types=None)
     except Exception as e:
         print("DB ERROR get_facts:", e)
         raise
+
+    finally:
+        conn.close()
+
+
+
+# =========================
+# 重點記憶管理：列表 / 修改 / 單筆刪除
+# =========================
+def _user_filter_sql(user_id, params):
+    """
+    舊資料沒有 user_id，所以管理頁允許看到 user_id 空白的既有重點記憶。
+    新資料會寫入 user_id，之後可再收斂成嚴格權限。
+    """
+    user_id = str(user_id or "").strip()
+
+    if not user_id:
+        return "", params
+
+    params.append(user_id)
+    return " AND (user_id = %s OR user_id IS NULL OR user_id = '')", params
+
+
+def list_important_facts(bot_id, chat_id, scope=None, user_id=None, limit=100):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+
+    try:
+        limit = int(limit or 100)
+    except Exception:
+        limit = 100
+
+    limit = max(1, min(limit, 100))
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        params = [bot_id, chat_id, scope]
+        user_sql, params = _user_filter_sql(user_id, params)
+        params.append(limit)
+
+        cursor.execute(f"""
+            SELECT id, fact, created_at, updated_at
+            FROM facts_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND source_type = 'important'
+              {user_sql}
+            ORDER BY updated_at DESC, created_at DESC, id DESC
+            LIMIT %s
+        """, params)
+
+        rows = cursor.fetchall()
+        aad = aad_for("facts_memory", "fact", bot_id, chat_id, scope)
+        facts = []
+
+        for row_id, value, created_at, updated_at in rows:
+            fact = _decrypt_safe(value, aad=aad)
+            if not fact:
+                continue
+
+            facts.append({
+                "id": row_id,
+                "fact": fact,
+                "created_at": str(created_at or ""),
+                "updated_at": str(updated_at or "")
+            })
+
+        return facts
+
+    except Exception as e:
+        print("DB ERROR list_important_facts:", e)
+        raise
+
+    finally:
+        conn.close()
+
+
+def update_important_fact(memory_id, bot_id, chat_id, fact, scope=None, user_id=None):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+    user_id = _text_id(user_id) if user_id is not None else ""
+
+    try:
+        memory_id = int(memory_id)
+    except Exception:
+        return False, "memory_id 格式錯誤。"
+
+    fact = str(fact or "").strip()
+    if not fact:
+        return False, "重點記憶不能空白。"
+
+    fact_hash = _fact_hash(fact)
+    aad = aad_for("facts_memory", "fact", bot_id, chat_id, scope)
+    encrypted_fact = encrypt_text(fact, aad=aad)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        params = [bot_id, chat_id, scope, fact_hash, memory_id]
+        user_sql, params = _user_filter_sql(user_id, params)
+
+        cursor.execute(f"""
+            SELECT id
+            FROM facts_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND source_type = 'important'
+              AND fact_hash = %s
+              AND id <> %s
+              {user_sql}
+            LIMIT 1
+        """, params)
+
+        if cursor.fetchone():
+            return False, "已經有相同的重點記憶。"
+
+        params = [encrypted_fact, fact_hash, user_id, memory_id, bot_id, chat_id, scope]
+        user_sql, params = _user_filter_sql(user_id, params)
+
+        cursor.execute(f"""
+            UPDATE facts_memory
+            SET fact = %s,
+                fact_hash = %s,
+                user_id = COALESCE(NULLIF(user_id, ''), %s),
+                source_type = 'important',
+                importance = 10,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND source_type = 'important'
+              {user_sql}
+        """, params)
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, "找不到這筆重點記憶，或沒有可修改的資料。"
+
+        conn.commit()
+        return True, "重點記憶已修改。"
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR update_important_fact:", e)
+        return False, "修改失敗，請稍後再試。"
+
+    finally:
+        conn.close()
+
+
+def delete_important_fact(memory_id, bot_id, chat_id, scope=None, user_id=None):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+
+    try:
+        memory_id = int(memory_id)
+    except Exception:
+        return False, "memory_id 格式錯誤。"
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        params = [memory_id, bot_id, chat_id, scope]
+        user_sql, params = _user_filter_sql(user_id, params)
+
+        cursor.execute(f"""
+            DELETE FROM facts_memory
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND source_type = 'important'
+              {user_sql}
+        """, params)
+
+        if cursor.rowcount == 0:
+            conn.rollback()
+            return False, "找不到這筆重點記憶，或已經被刪除。"
+
+        conn.commit()
+        return True, "重點記憶已刪除。"
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR delete_important_fact:", e)
+        return False, "刪除失敗，請稍後再試。"
 
     finally:
         conn.close()

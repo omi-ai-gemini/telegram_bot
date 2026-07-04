@@ -17,7 +17,13 @@ from services.style import (
     DEFAULT_CHAT_REPLY_STYLE,
     DEFAULT_THEATER_REPLY_STYLE
 )
-from services.memory import add_important_fact, _get_scope
+from services.memory import (
+    add_important_fact,
+    list_important_facts,
+    update_important_fact,
+    delete_important_fact,
+    _get_scope
+)
 
 setting_bp = Blueprint("setting", __name__)
 
@@ -94,9 +100,121 @@ def save_important_memory_setting():
 
     return jsonify({
         "ok": True,
-        "message": "重點記憶已儲存，可以關閉此頁。"
+        "message": "重點記憶已儲存。"
     })
 
+
+# =========================
+# 取得重點記憶清單
+# =========================
+@setting_bp.route("/setting/important_memory/list", methods=["GET"])
+def list_important_memory_setting():
+
+    bot_id = request.args.get("bot_id", "").strip()
+    chat_id = request.args.get("chat_id", "").strip()
+    user_id = request.args.get("user_id", "").strip()
+
+    if not bot_id or not chat_id:
+        return jsonify({
+            "ok": False,
+            "message": "缺少 bot_id 或 chat_id"
+        }), 400
+
+    try:
+        is_group = int(chat_id) < 0
+    except Exception:
+        is_group = str(chat_id).startswith("-")
+
+    if is_group:
+        return jsonify({
+            "ok": False,
+            "message": "群組重點記憶欄位已預留，但目前暫不開放群組讀取。"
+        }), 400
+
+    memories = list_important_facts(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        scope=_get_scope(chat_id),
+        user_id=user_id,
+        limit=100
+    )
+
+    return jsonify({
+        "ok": True,
+        "memories": memories
+    })
+
+
+# =========================
+# 修改單筆重點記憶
+# =========================
+@setting_bp.route("/setting/important_memory/update", methods=["POST"])
+def update_important_memory_setting():
+
+    bot_id = request.form.get("bot_id", "").strip()
+    chat_id = request.form.get("chat_id", "").strip()
+    user_id = request.form.get("user_id", "").strip()
+    memory_id = request.form.get("memory_id", "").strip()
+    fact = request.form.get("important_memory", "").strip()
+
+    if not bot_id or not chat_id or not memory_id:
+        return jsonify({
+            "ok": False,
+            "message": "缺少 bot_id、chat_id 或 memory_id"
+        }), 400
+
+    if not fact:
+        return jsonify({
+            "ok": False,
+            "message": "重點記憶不能空白。"
+        }), 400
+
+    ok, message = update_important_fact(
+        memory_id=memory_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        fact=fact,
+        scope=_get_scope(chat_id),
+        user_id=user_id
+    )
+
+    status = 200 if ok else 400
+    return jsonify({
+        "ok": ok,
+        "message": message
+    }), status
+
+
+# =========================
+# 刪除單筆重點記憶
+# =========================
+@setting_bp.route("/setting/important_memory/delete", methods=["POST"])
+def delete_important_memory_setting():
+
+    bot_id = request.form.get("bot_id", "").strip()
+    chat_id = request.form.get("chat_id", "").strip()
+    user_id = request.form.get("user_id", "").strip()
+    memory_id = request.form.get("memory_id", "").strip()
+
+    if not bot_id or not chat_id or not memory_id:
+        return jsonify({
+            "ok": False,
+            "message": "缺少 bot_id、chat_id 或 memory_id"
+        }), 400
+
+    ok, message = delete_important_fact(
+        memory_id=memory_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        scope=_get_scope(chat_id),
+        user_id=user_id
+    )
+
+    status = 200 if ok else 404
+    return jsonify({
+        "ok": ok,
+        "message": message
+    }), status
 
 
 # =========================
@@ -196,6 +314,8 @@ def reply_style_setting_page():
         subtitle = "這裡只控制聊天模式的輸出長相，不會跟聊天對象綁定。"
         default_style = DEFAULT_CHAT_REPLY_STYLE.strip()
 
+    editor_style = (settings.get("reply_style", "") or "").strip() or default_style
+
     return render_template(
         "reply_style_form.html",
         bot_id=bot_id,
@@ -205,6 +325,7 @@ def reply_style_setting_page():
         title=title,
         subtitle=subtitle,
         default_style=default_style,
+        editor_style=editor_style,
         settings=settings
     )
 
@@ -229,6 +350,12 @@ def save_reply_style_setting():
         }), 400
 
     reply_style = request.form.get("reply_style", "").strip()
+
+    if not reply_style:
+        if style_type == "theater":
+            reply_style = DEFAULT_THEATER_REPLY_STYLE.strip()
+        else:
+            reply_style = DEFAULT_CHAT_REPLY_STYLE.strip()
 
     update_reply_style_settings(
         bot_id=bot_id,
@@ -314,7 +441,6 @@ def save_character_setting():
     required_fields = {
         "ai_name": "AI姓名",
         "ai_gender": "AI性別",
-        "ai_appearance": "AI形象",
         "story_background": "故事背景"
     }
 

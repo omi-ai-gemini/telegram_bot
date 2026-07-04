@@ -229,12 +229,7 @@ def init_db():
 
         cursor.execute("""
         ALTER TABLE facts_memory
-        ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'important'
-        """)
-
-        cursor.execute("""
-        ALTER TABLE facts_memory
-        ALTER COLUMN source_type SET DEFAULT 'important'
+        ADD COLUMN IF NOT EXISTS source_type TEXT DEFAULT 'manual'
         """)
 
         cursor.execute("""
@@ -253,6 +248,11 @@ def init_db():
         """)
 
         cursor.execute("""
+        ALTER TABLE facts_memory
+        ADD COLUMN IF NOT EXISTS user_id TEXT
+        """)
+
+        cursor.execute("""
         CREATE UNIQUE INDEX IF NOT EXISTS idx_facts_memory_unique_hash
         ON facts_memory (bot_id, chat_id, scope, fact_hash)
         WHERE fact_hash IS NOT NULL
@@ -261,6 +261,11 @@ def init_db():
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_facts_memory_priority
         ON facts_memory (bot_id, chat_id, scope, source_type, importance, updated_at)
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_facts_memory_user_lookup
+        ON facts_memory (bot_id, chat_id, scope, user_id, source_type, updated_at)
         """)
 
         # =========================

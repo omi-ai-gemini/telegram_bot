@@ -91,6 +91,9 @@ C:\Projects\telemini
 ### `routes\setting.py`
 - `/setting/important_memory` → `important_memory_setting_page`
 - `/setting/important_memory/save` → `save_important_memory_setting`
+- `/setting/important_memory/list` → `list_important_memory_setting`
+- `/setting/important_memory/update` → `update_important_memory_setting`
+- `/setting/important_memory/delete` → `delete_important_memory_setting`
 - `/setting/persona` → `persona_setting_page`
 - `/setting/character` → `character_setting_page`
 - `/setting/reply_style` → `reply_style_setting_page`
@@ -130,6 +133,9 @@ C:\Projects\telemini
 ### `routes\setting.py`
 - `important_memory_setting_page()`
 - `save_important_memory_setting()`
+- `list_important_memory_setting()`
+- `update_important_memory_setting()`
+- `delete_important_memory_setting()`
 - `persona_setting_page()`
 - `character_setting_page()`
 - `reply_style_setting_page()`
@@ -227,6 +233,7 @@ C:\Projects\telemini
 - `_enum_name()`
 - `_read_attr()`
 - `_extract_finish_reason()`
+- `get_gemini_block_reason()`
 - `debug_gemini_response()`
 - `_safe_response_text()`
 - `ask_gemini()`
@@ -248,11 +255,17 @@ C:\Projects\telemini
 - `add_fact()`
 - `add_important_fact()`
 - `get_facts()`
+- `_user_filter_sql()`
+- `list_important_facts()`
+- `update_important_fact()`
+- `delete_important_fact()`
 - `add_chat()`
 - `get_chat()`
 - `get_recent_chat()`
 
 ### `services\memory_summary.py`
+- `_notify_summary_blocked()`
+- `_is_summary_blocked()`
 - `_text_id()`
 - `_get_scope()`
 - `_decrypt_safe()`
@@ -367,6 +380,10 @@ C:\Projects\telemini
 - `add_fact()`
 - `add_important_fact()`
 - `get_facts()`
+- `_user_filter_sql()`
+- `list_important_facts()`
+- `update_important_fact()`
+- `delete_important_fact()`
 - `add_chat()`
 - `get_chat()`
 - `get_recent_chat()`
