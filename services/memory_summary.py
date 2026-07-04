@@ -17,7 +17,7 @@ ARCHIVE_KEEP = 5
 def _notify_summary_blocked(bot_id, chat_id):
     """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
     try:
-        send_message(bot_id, chat_id, "摘要長期記憶時被安全阻擋")
+        send_message(bot_id, chat_id, "摘要長期記憶時被阻擋")
     except Exception as exc:
         print("TELEGRAM notify summary blocked error:", exc)
 

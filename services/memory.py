@@ -88,6 +88,85 @@ def delete_current_memory(bot_id, chat_id):
             ))
 
         # =========================
+        # AI 訊息操作 / pending 狀態
+        # =========================
+        if scope == "group":
+            cursor.execute("""
+                DELETE FROM ai_message_actions
+                WHERE chat_id = %s
+            """, (chat_id,))
+
+            cursor.execute("""
+                DELETE FROM pending_ai_actions
+                WHERE chat_id = %s
+            """, (chat_id,))
+
+            cursor.execute("""
+                DELETE FROM memory_summaries
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_summary_state
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_state
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_archives
+                WHERE chat_id = %s
+                  AND scope = %s
+            """, (chat_id, scope))
+
+        else:
+            cursor.execute("""
+                DELETE FROM ai_message_actions
+                WHERE bot_id = %s
+                  AND chat_id = %s
+            """, (bot_id, chat_id))
+
+            cursor.execute("""
+                DELETE FROM pending_ai_actions
+                WHERE bot_id = %s
+                  AND chat_id = %s
+            """, (bot_id, chat_id))
+
+            cursor.execute("""
+                DELETE FROM memory_summaries
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_summary_state
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_state
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+
+            cursor.execute("""
+                DELETE FROM memory_archives
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+
+        # =========================
         # 情緒記憶目前只有 chat_id
         # 所以直接清掉當前聊天室情緒
         # =========================
@@ -641,12 +720,13 @@ def delete_important_fact(memory_id, bot_id, chat_id, scope=None, user_id=None):
 # =========================
 # 短期記憶：chat_memory.text 存密文
 # =========================
-def add_chat(bot_id, chat_id, role, text, user_id=None):
+def add_chat(bot_id, chat_id, role, text, user_id=None, telegram_message_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _get_scope(chat_id)
     role = _text_id(role)
+    user_id = None if user_id is None else _text_id(user_id)
 
     aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
     encrypted_text = encrypt_text(text, aad=aad)
@@ -662,21 +742,30 @@ def add_chat(bot_id, chat_id, role, text, user_id=None):
                 chat_id,
                 scope,
                 role,
-                text
+                text,
+                user_id,
+                telegram_message_id
             )
-            VALUES (%s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            RETURNING id
         """, (
             bot_id,
             chat_id,
             scope,
             role,
-            encrypted_text
+            encrypted_text,
+            user_id,
+            telegram_message_id
         ))
+
+        row = cursor.fetchone()
+        memory_id = int(row[0]) if row else None
 
         # 注意：不要在這裡直接刪掉超過 100 則的舊短期記憶。
         # 舊訊息必須先被 memory_summary 摘要成功，才可以被清理。
 
         conn.commit()
+        return memory_id
 
     except Exception as e:
         conn.rollback()
@@ -686,7 +775,154 @@ def add_chat(bot_id, chat_id, role, text, user_id=None):
     finally:
         conn.close()
 
-    return True
+
+def update_chat_text(memory_id, bot_id, chat_id, role, text):
+    """更新既有 chat_memory 文字，用於手動修改 / 重跑 AI 回覆。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+    role = _text_id(role or "assistant")
+
+    try:
+        memory_id = int(memory_id)
+    except Exception:
+        return False
+
+    aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+    encrypted_text = encrypt_text(text, aad=aad)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            UPDATE chat_memory
+            SET text = %s
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND role = %s
+        """, (
+            encrypted_text,
+            memory_id,
+            bot_id,
+            chat_id,
+            scope,
+            role
+        ))
+
+        ok = cursor.rowcount > 0
+        conn.commit()
+        return ok
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR update_chat_text:", e)
+        return False
+
+    finally:
+        conn.close()
+
+
+def get_chat_memory_item(memory_id, bot_id, chat_id):
+    """取得單筆 chat_memory，並自動解密 text。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+
+    try:
+        memory_id = int(memory_id)
+    except Exception:
+        return None
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, role, text, user_id, telegram_message_id
+            FROM chat_memory
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (memory_id, bot_id, chat_id, scope))
+
+        row = cursor.fetchone()
+        if not row:
+            return None
+
+        row_id, role, value, row_user_id, telegram_message_id = row
+        role = role or "user"
+        aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+        text = _decrypt_safe(value, aad=aad)
+
+        return {
+            "id": row_id,
+            "role": role,
+            "text": text,
+            "user_id": row_user_id,
+            "telegram_message_id": telegram_message_id,
+        }
+
+    except Exception as e:
+        print("DB ERROR get_chat_memory_item:", e)
+        return None
+
+    finally:
+        conn.close()
+
+
+def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None):
+    """取得指定 chat_memory id 以前的對話，用於重跑 / 接續。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+
+    try:
+        max_chat_id = int(max_chat_id)
+    except Exception:
+        return []
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT role, text
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND id <= %s
+            ORDER BY id ASC
+        """, (bot_id, chat_id, scope, max_chat_id))
+
+        rows = cursor.fetchall()
+        history = []
+
+        for role, value in rows:
+            role = role or "user"
+            aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+            text = _decrypt_safe(value, aad=aad)
+
+            if not text:
+                continue
+
+            history.append({
+                "role": role,
+                "text": text
+            })
+
+        return history
+
+    except Exception as e:
+        print("DB ERROR get_chat_until:", e)
+        return []
+
+    finally:
+        conn.close()
 
 
 def get_chat(bot_id, chat_id, user_id=None):
@@ -706,7 +942,7 @@ def get_chat(bot_id, chat_id, user_id=None):
             WHERE bot_id = %s
               AND chat_id = %s
               AND scope = %s
-            ORDER BY created_at ASC
+            ORDER BY id ASC
         """, (
             bot_id,
             chat_id,

@@ -1,3 +1,5 @@
+from services.time_context import build_time_context_text
+
 # =========================
 # 基礎仿真人風格
 # 固定底層，不開放使用者修改
@@ -281,7 +283,8 @@ def build_prompt(
     character_settings=None,
     reply_style_settings=None,
     facts=None,
-    memory_context=None
+    memory_context=None,
+    time_context=None
 ):
 
     history_text = ""
@@ -291,12 +294,15 @@ def build_prompt(
 
     facts_text = _build_facts_text(facts)
     memory_context_text = _build_memory_context_text(memory_context)
+    time_context_text = build_time_context_text(time_context)
 
     if mode == "劇場模式":
         persona_text = _build_character_text(character_settings)
         mode_rule = """
 目前是劇場模式。
 請以劇本設定為主，依照劇場回覆樣式輸出。
+現實時間只作為背景資訊；除非使用者明確提到現實日期或時間，否則不要讓現實時間干擾劇情內的時間、天色或場景。
+如果劇情內已有時間或場景，以劇情時間為主。
 """
     else:
         persona_text = _build_chat_persona_text(chat_persona_settings)
@@ -305,6 +311,7 @@ def build_prompt(
 請以自然聊天為主，依照聊天回覆樣式輸出。
 如果有聊天人物設定，就套用人物身份。
 如果沒有聊天人物設定，就維持一般自然聊天。
+你可以自然使用目前現實時間，例如深夜關心使用者是否該睡、早上問候、中午提到吃飯；但不要每句都硬提時間。
 """
 
     reply_style_text = _build_reply_style_text(
@@ -322,6 +329,13 @@ def build_prompt(
 
 {mode_rule}
 
+===目前現實時間===
+{time_context_text}
+
+時間使用規則：
+- 聊天模式可以自然使用日期、星期、時間與時段接話，但不要每次都提。
+- 劇場模式不要主動用現實時間破壞劇情時間；除非使用者明確問現實時間或把聊天拉回現實。
+
 ===人物 / 劇本資料===
 {persona_text}
 
@@ -330,9 +344,9 @@ def build_prompt(
 
 ===記憶權重規則===
 近期對話紀錄的權重最高；如果近期對話與長期記憶或摘要衝突，以近期對話為準。
-重點記憶與手動記憶是穩定背景；摘要型長期記憶只用來補足已被洗掉的短期上下文。
+重點記憶是穩定背景；摘要型長期記憶只用來補足已被洗掉的短期上下文。
 
-===重點 / 手動長期記憶===
+===重點記憶===
 {facts_text}
 
 ===摘要型長期記憶===

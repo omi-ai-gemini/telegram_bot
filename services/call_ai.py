@@ -1,3 +1,8 @@
+from services.ai_actions import (
+    build_ai_action_keyboard,
+    create_ai_message_action,
+    update_action_telegram_message_id,
+)
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
@@ -7,6 +12,7 @@ from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
+from services.time_context import get_current_time_context
 from services.memory import (
     add_chat,
     get_chat,
@@ -17,10 +23,25 @@ from services.memory import (
 )
 
 
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def _extract_telegram_message_id(result):
+    if not isinstance(result, dict):
+        return None
+
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
 # =========================
 # 取得 AI 回覆並發送
 # =========================
-def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
+def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message_id=None):
 
     try:
 
@@ -44,14 +65,21 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # scope 判斷
         # =========================
-        scope = "group" if int(chat_id) < 0 else "private"
+        scope = "group" if _is_group_chat(chat_id) else "private"
 
         # =========================
         # 先寫入使用者短期記憶
         # 注意：短期記憶不在 add_chat 內直接刪舊資料。
         # 舊資料會在長期摘要成功後才清理。
         # =========================
-        add_chat(bot_id, chat_id, "user", user_text, user_id=user_id)
+        user_chat_id = add_chat(
+            bot_id,
+            chat_id,
+            "user",
+            user_text,
+            user_id=user_id,
+            telegram_message_id=user_message_id
+        )
 
         # =========================
         # 情緒記憶
@@ -103,6 +131,12 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         )
 
         # =========================
+        # 目前現實時間
+        # 每次回覆前即時計算，不寫 DB。
+        # =========================
+        time_context = get_current_time_context()
+
+        # =========================
         # Gemini 回覆
         # =========================
         reply = ask_gemini(
@@ -115,7 +149,8 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
             character_settings=character_settings,
             reply_style_settings=reply_style_settings,
             facts=facts,
-            memory_context=memory_context
+            memory_context=memory_context,
+            time_context=time_context
         )
 
         # =========================
@@ -141,12 +176,37 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str):
         # =========================
         # 寫入 AI 短期記憶
         # =========================
-        add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
+        assistant_chat_id = add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
+
+        # =========================
+        # 私聊回覆附加小按鈕：改 / 重跑 / 接續
+        # 群組先保留延伸，不開放。
+        # =========================
+        reply_markup = None
+        action_id = None
+
+        if scope == "private":
+            action_id = create_ai_message_action(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                assistant_chat_id=assistant_chat_id,
+                source_user_chat_id=user_chat_id,
+                context_chat_id=user_chat_id,
+                generation_type="reply"
+            )
+
+            if action_id:
+                reply_markup = build_ai_action_keyboard(action_id)
 
         # =========================
         # 回傳 Telegram
         # =========================
-        send_message(bot_id, chat_id, reply)
+        sent = send_message(bot_id, chat_id, reply, reply_markup=reply_markup)
+        telegram_message_id = _extract_telegram_message_id(sent)
+
+        if action_id and telegram_message_id:
+            update_action_telegram_message_id(action_id, telegram_message_id)
 
         # =========================
         # 記憶維護

@@ -199,8 +199,98 @@ def init_db():
             scope TEXT NOT NULL,
             role TEXT,
             text TEXT,
+            user_id TEXT,
+            telegram_message_id INTEGER,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+        """)
+
+        cursor.execute("""
+        ALTER TABLE chat_memory
+        ADD COLUMN IF NOT EXISTS user_id TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE chat_memory
+        ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chat_memory_lookup
+        ON chat_memory (bot_id, chat_id, scope, id)
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_chat_memory_telegram_message
+        ON chat_memory (bot_id, chat_id, telegram_message_id)
+        """)
+
+        # =========================
+        # AI 訊息操作映射
+        # 用於每則 AI 訊息下方的：修改 / 重跑 / 接續
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS ai_message_actions (
+            id SERIAL PRIMARY KEY,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            user_id TEXT,
+            telegram_message_id INTEGER,
+            assistant_chat_id INTEGER NOT NULL,
+            source_user_chat_id INTEGER,
+            context_chat_id INTEGER,
+            generation_type TEXT DEFAULT 'reply',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        ALTER TABLE ai_message_actions
+        ADD COLUMN IF NOT EXISTS source_user_chat_id INTEGER
+        """)
+
+        cursor.execute("""
+        ALTER TABLE ai_message_actions
+        ADD COLUMN IF NOT EXISTS context_chat_id INTEGER
+        """)
+
+        cursor.execute("""
+        ALTER TABLE ai_message_actions
+        ADD COLUMN IF NOT EXISTS generation_type TEXT DEFAULT 'reply'
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ai_message_actions_lookup
+        ON ai_message_actions (bot_id, chat_id, user_id, id)
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_ai_message_actions_message
+        ON ai_message_actions (bot_id, chat_id, telegram_message_id)
+        """)
+
+        # =========================
+        # 等待使用者下一句文字的操作
+        # 例如：按下「改」後，下一句文字只拿來覆蓋 AI 訊息，不進記憶。
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS pending_ai_actions (
+            id SERIAL PRIMARY KEY,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            action_type TEXT NOT NULL,
+            target_action_id INTEGER NOT NULL,
+            prompt_message_id INTEGER,
+            expires_at TIMESTAMP NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_pending_ai_actions_lookup
+        ON pending_ai_actions (bot_id, chat_id, user_id, action_type, expires_at)
         """)
 
         # =========================

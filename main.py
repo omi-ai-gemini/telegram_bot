@@ -78,6 +78,7 @@ def webhook(bot_id):
     user_id = message["from"]["id"]
     chat_id = str(message["chat"]["id"])
     user_text = message["text"]
+    message_id = message.get("message_id")
 
     # =========================
     # 自動保存 user_id
@@ -104,7 +105,7 @@ def webhook(bot_id):
     # =========================
     threading.Thread(
         target=handle_message,
-        args=(user_id, bot_id, chat_id, user_text)
+        args=(user_id, bot_id, chat_id, user_text, message_id)
     ).start()
 
     return "ok"
