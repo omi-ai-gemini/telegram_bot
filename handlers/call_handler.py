@@ -25,6 +25,18 @@ from services.telegram_service import (
 )
 
 
+def _setting_fallback_text(chat_id):
+    try:
+        is_group = int(chat_id) < 0
+    except Exception:
+        is_group = str(chat_id).startswith("-")
+
+    if is_group:
+        return "群組設定頁暫不開放，請私訊 bot 使用 /設定"
+
+    return "設定連結尚未建立，請確認 BASE_URL / SETTING_LINK_SECRET"
+
+
 # =========================
 # 傳送劇本開場白
 # - 傳送到 Telegram
@@ -210,7 +222,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="BASE_URL 尚未設定，無法開啟表單"
+            text=_setting_fallback_text(chat_id)
         )
 
         send_reply_style_menu(
@@ -389,7 +401,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="BASE_URL 尚未設定，無法開啟表單"
+            text=_setting_fallback_text(chat_id)
         )
 
         send_character_menu(
@@ -409,7 +421,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="BASE_URL 尚未設定，無法開啟重點記憶表單"
+            text=_setting_fallback_text(chat_id)
         )
 
         send_memory_menu(

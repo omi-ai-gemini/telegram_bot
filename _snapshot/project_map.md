@@ -19,6 +19,7 @@ C:\Projects\telemini
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
+- `docs\SETTING_LINK_AUTH_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -43,6 +44,7 @@ C:\Projects\telemini
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\reply_style.py`
+- `services\setting_auth.py`
 - `services\style.py`
 - `services\telegram_service.py`
 - `services\user_notice.py`
@@ -110,6 +112,7 @@ C:\Projects\telemini
 - `get_users()`
 
 ### `handlers\call_handler.py`
+- `_setting_fallback_text()`
 - `_send_script_opening()`
 - `handle_ui()`
 
@@ -131,6 +134,10 @@ C:\Projects\telemini
 - `admin_login_developer()`
 
 ### `routes\setting.py`
+- `_auth_or_page_error()`
+- `_auth_or_json_error()`
+- `_is_group_chat()`
+- `_token_from_request()`
 - `important_memory_setting_page()`
 - `save_important_memory_setting()`
 - `list_important_memory_setting()`
@@ -325,6 +332,18 @@ C:\Projects\telemini
 - `get_reply_style_settings()`
 - `update_reply_style_settings()`
 - `delete_reply_style_settings()`
+
+### `services\setting_auth.py`
+- `_text_id()`
+- `is_group_chat()`
+- `_b64_encode()`
+- `_b64_decode()`
+- `_get_secret()`
+- `_sign()`
+- `create_setting_token()`
+- `verify_setting_token()`
+- `verify_setting_request()`
+- `_fail()`
 
 ### `services\style.py`
 - `_has_chat_persona()`

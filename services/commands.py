@@ -3,6 +3,7 @@ import requests
 from urllib.parse import urlencode
 from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
+from services.setting_auth import create_setting_token, is_group_chat
 
 # =========================
 # Telegram API POST
@@ -41,10 +42,25 @@ def _build_persona_setting_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 
+    if is_group_chat(chat_id):
+        return None
+
+    token = create_setting_token(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        page_type="persona"
+    )
+
+    if not token:
+        print("X setting token not created for persona")
+        return None
+
     query = urlencode({
         "bot_id": str(bot_id),
         "chat_id": str(chat_id),
-        "user_id": str(user_id)
+        "user_id": str(user_id),
+        "token": token
     })
 
     return f"{base_url}/setting/persona?{query}"
@@ -62,10 +78,25 @@ def _build_important_memory_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 
+    if is_group_chat(chat_id):
+        return None
+
+    token = create_setting_token(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        page_type="important_memory"
+    )
+
+    if not token:
+        print("X setting token not created for important memory")
+        return None
+
     query = urlencode({
         "bot_id": str(bot_id),
         "chat_id": str(chat_id),
-        "user_id": str(user_id)
+        "user_id": str(user_id),
+        "token": token
     })
 
     return f"{base_url}/setting/important_memory?{query}"
@@ -79,11 +110,27 @@ def _build_reply_style_url(bot_id, chat_id, user_id, style_type):
         print("X BASE_URL not found")
         return None
 
+    if is_group_chat(chat_id):
+        return None
+
+    style_type = str(style_type)
+    token = create_setting_token(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        page_type=f"reply_style:{style_type}"
+    )
+
+    if not token:
+        print("X setting token not created for reply style")
+        return None
+
     query = urlencode({
         "bot_id": str(bot_id),
         "chat_id": str(chat_id),
         "user_id": str(user_id),
-        "style_type": str(style_type)
+        "style_type": style_type,
+        "token": token
     })
 
     return f"{base_url}/setting/reply_style?{query}"

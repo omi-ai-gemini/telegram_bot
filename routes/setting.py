@@ -24,8 +24,53 @@ from services.memory import (
     delete_important_fact,
     _get_scope
 )
+from services.setting_auth import verify_setting_request
 
 setting_bp = Blueprint("setting", __name__)
+
+
+def _auth_or_page_error(page_type=None, allowed_page_types=None):
+    auth = verify_setting_request(
+        request,
+        page_type=page_type,
+        allowed_page_types=allowed_page_types
+    )
+
+    if not auth.get("ok"):
+        return auth, (auth.get("message", "設定連結驗證失敗"), auth.get("status", 403))
+
+    return auth, None
+
+
+def _auth_or_json_error(page_type=None, allowed_page_types=None):
+    auth = verify_setting_request(
+        request,
+        page_type=page_type,
+        allowed_page_types=allowed_page_types
+    )
+
+    if not auth.get("ok"):
+        return auth, (
+            jsonify({
+                "ok": False,
+                "message": auth.get("message", "設定連結驗證失敗"),
+                "reason": auth.get("reason", "auth_failed")
+            }),
+            auth.get("status", 403)
+        )
+
+    return auth, None
+
+
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def _token_from_request():
+    return request.values.get("token", "")
 
 
 # =========================
@@ -35,24 +80,23 @@ setting_bp = Blueprint("setting", __name__)
 @setting_bp.route("/setting/important_memory", methods=["GET"])
 def important_memory_setting_page():
 
+    auth, error_response = _auth_or_page_error(page_type="important_memory")
+
+    if error_response:
+        return error_response
+
     bot_id = request.args.get("bot_id", "")
     chat_id = request.args.get("chat_id", "")
     user_id = request.args.get("user_id", "")
-
-    if not bot_id or not chat_id:
-        return "缺少 bot_id 或 chat_id", 400
-
-    try:
-        is_group = int(chat_id) < 0
-    except Exception:
-        is_group = str(chat_id).startswith("-")
 
     return render_template(
         "important_memory_form.html",
         bot_id=bot_id,
         chat_id=chat_id,
         user_id=user_id,
-        is_group=is_group
+        token=_token_from_request(),
+        token_expires_at=auth.get("expires_at", 0),
+        is_group=_is_group_chat(chat_id)
     )
 
 
@@ -62,23 +106,20 @@ def important_memory_setting_page():
 @setting_bp.route("/setting/important_memory/save", methods=["POST"])
 def save_important_memory_setting():
 
+    auth, error_response = _auth_or_json_error(page_type="important_memory")
+
+    if error_response:
+        return error_response
+
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
     user_id = request.form.get("user_id", "").strip()
     fact = request.form.get("important_memory", "").strip()
 
     if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
+        return jsonify({"ok": False, "message": "缺少 bot_id 或 chat_id"}), 400
 
-    try:
-        is_group = int(chat_id) < 0
-    except Exception:
-        is_group = str(chat_id).startswith("-")
-
-    if is_group:
+    if _is_group_chat(chat_id):
         return jsonify({
             "ok": False,
             "message": "群組重點記憶欄位已預留，但目前暫不開放群組寫入。"
@@ -110,22 +151,19 @@ def save_important_memory_setting():
 @setting_bp.route("/setting/important_memory/list", methods=["GET"])
 def list_important_memory_setting():
 
+    auth, error_response = _auth_or_json_error(page_type="important_memory")
+
+    if error_response:
+        return error_response
+
     bot_id = request.args.get("bot_id", "").strip()
     chat_id = request.args.get("chat_id", "").strip()
     user_id = request.args.get("user_id", "").strip()
 
     if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
+        return jsonify({"ok": False, "message": "缺少 bot_id 或 chat_id"}), 400
 
-    try:
-        is_group = int(chat_id) < 0
-    except Exception:
-        is_group = str(chat_id).startswith("-")
-
-    if is_group:
+    if _is_group_chat(chat_id):
         return jsonify({
             "ok": False,
             "message": "群組重點記憶欄位已預留，但目前暫不開放群組讀取。"
@@ -150,6 +188,11 @@ def list_important_memory_setting():
 # =========================
 @setting_bp.route("/setting/important_memory/update", methods=["POST"])
 def update_important_memory_setting():
+
+    auth, error_response = _auth_or_json_error(page_type="important_memory")
+
+    if error_response:
+        return error_response
 
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
@@ -191,6 +234,11 @@ def update_important_memory_setting():
 @setting_bp.route("/setting/important_memory/delete", methods=["POST"])
 def delete_important_memory_setting():
 
+    auth, error_response = _auth_or_json_error(page_type="important_memory")
+
+    if error_response:
+        return error_response
+
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
     user_id = request.form.get("user_id", "").strip()
@@ -225,6 +273,11 @@ def delete_important_memory_setting():
 @setting_bp.route("/setting/persona", methods=["GET"])
 def persona_setting_page():
 
+    auth, error_response = _auth_or_page_error(page_type="persona")
+
+    if error_response:
+        return error_response
+
     bot_id = request.args.get("bot_id", "")
     chat_id = request.args.get("chat_id", "")
     user_id = request.args.get("user_id", "")
@@ -232,14 +285,9 @@ def persona_setting_page():
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
 
-
     mode = get_character_mode(bot_id, chat_id, user_id=user_id)
 
-    # =========================
-    # 劇場模式 → 原本劇本表單
-    # =========================
     if mode == "劇場模式":
-
         settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
         return render_template(
@@ -247,12 +295,11 @@ def persona_setting_page():
             bot_id=bot_id,
             chat_id=chat_id,
             user_id=user_id,
+            token=_token_from_request(),
+            token_expires_at=auth.get("expires_at", 0),
             settings=settings
         )
 
-    # =========================
-    # 聊天模式 → 聊天人物表單
-    # =========================
     settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
 
     return render_template(
@@ -260,21 +307,27 @@ def persona_setting_page():
         bot_id=bot_id,
         chat_id=chat_id,
         user_id=user_id,
+        token=_token_from_request(),
+        token_expires_at=auth.get("expires_at", 0),
         settings=settings
     )
 
 
 # =========================
 # 舊劇本設定表單入口
-# 保留，避免舊網址不能用
+# 保留，但現在也必須有 token。
 # =========================
 @setting_bp.route("/setting/character", methods=["GET"])
 def character_setting_page():
 
+    auth, error_response = _auth_or_page_error(page_type="character")
+
+    if error_response:
+        return error_response
+
     bot_id = request.args.get("bot_id", "")
     chat_id = request.args.get("chat_id", "")
     user_id = request.args.get("user_id", "")
-
 
     settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
@@ -283,6 +336,8 @@ def character_setting_page():
         bot_id=bot_id,
         chat_id=chat_id,
         user_id=user_id,
+        token=_token_from_request(),
+        token_expires_at=auth.get("expires_at", 0),
         settings=settings
     )
 
@@ -294,14 +349,18 @@ def character_setting_page():
 @setting_bp.route("/setting/reply_style", methods=["GET"])
 def reply_style_setting_page():
 
+    style_type = normalize_style_type(request.args.get("style_type", "chat"))
+    auth, error_response = _auth_or_page_error(page_type=f"reply_style:{style_type}")
+
+    if error_response:
+        return error_response
+
     bot_id = request.args.get("bot_id", "")
     chat_id = request.args.get("chat_id", "")
     user_id = request.args.get("user_id", "")
-    style_type = normalize_style_type(request.args.get("style_type", "chat"))
 
     if not bot_id or not chat_id:
         return "缺少 bot_id 或 chat_id", 400
-
 
     settings = get_reply_style_settings(bot_id, chat_id, style_type, user_id=user_id)
 
@@ -322,6 +381,8 @@ def reply_style_setting_page():
         chat_id=chat_id,
         user_id=user_id,
         style_type=style_type,
+        token=_token_from_request(),
+        token_expires_at=auth.get("expires_at", 0),
         title=title,
         subtitle=subtitle,
         default_style=default_style,
@@ -337,17 +398,18 @@ def reply_style_setting_page():
 @setting_bp.route("/setting/reply_style/save", methods=["POST"])
 def save_reply_style_setting():
 
+    style_type = normalize_style_type(request.form.get("style_type", "chat"))
+    auth, error_response = _auth_or_json_error(page_type=f"reply_style:{style_type}")
+
+    if error_response:
+        return error_response
+
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
-    style_type = normalize_style_type(request.form.get("style_type", "chat"))
     user_id = request.form.get("user_id", "").strip()
 
-
     if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
+        return jsonify({"ok": False, "message": "缺少 bot_id 或 chat_id"}), 400
 
     reply_style = request.form.get("reply_style", "").strip()
 
@@ -379,16 +441,17 @@ def save_reply_style_setting():
 @setting_bp.route("/setting/chat_persona/save", methods=["POST"])
 def save_chat_persona_setting():
 
+    auth, error_response = _auth_or_json_error(allowed_page_types=["persona", "chat_persona"])
+
+    if error_response:
+        return error_response
+
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
     user_id = request.form.get("user_id", "").strip()
 
-
     if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
+        return jsonify({"ok": False, "message": "缺少 bot_id 或 chat_id"}), 400
 
     settings = {
         "persona_name": request.form.get("persona_name", "").strip(),
@@ -411,28 +474,27 @@ def save_chat_persona_setting():
 @setting_bp.route("/setting/character/save", methods=["POST"])
 def save_character_setting():
 
+    auth, error_response = _auth_or_json_error(allowed_page_types=["persona", "character"])
+
+    if error_response:
+        return error_response
+
     bot_id = request.form.get("bot_id", "").strip()
     chat_id = request.form.get("chat_id", "").strip()
     user_id = request.form.get("user_id", "").strip()
 
-
     if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
+        return jsonify({"ok": False, "message": "缺少 bot_id 或 chat_id"}), 400
 
     current_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
 
     settings = {
         "mode": current_settings.get("mode", "聊天模式"),
-
         "ai_name": request.form.get("ai_name", "").strip(),
         "ai_gender": request.form.get("ai_gender", "").strip(),
         "ai_appearance": request.form.get("ai_appearance", "").strip(),
         "story_background": request.form.get("story_background", "").strip(),
         "ai_opening": request.form.get("ai_opening", "").strip(),
-
         "user_gender": request.form.get("user_gender", "").strip(),
         "user_appearance": request.form.get("user_appearance", "").strip(),
         "user_other_settings": request.form.get("user_other_settings", "").strip()

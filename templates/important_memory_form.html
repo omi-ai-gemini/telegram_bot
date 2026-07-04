@@ -135,6 +135,27 @@
     }
     .ok { color: #bbf7d0; }
     .error { color: #fecaca; }
+
+    .setting-auth-box {
+      margin-bottom: 18px;
+      padding: 12px;
+      border-radius: 14px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #bfdbfe;
+      background: rgba(59, 130, 246, 0.12);
+      border: 1px solid rgba(59, 130, 246, 0.28);
+    }
+    .setting-auth-box.warning {
+      color: #fde68a;
+      background: rgba(245, 158, 11, 0.12);
+      border-color: rgba(245, 158, 11, 0.28);
+    }
+    .setting-auth-box.expired {
+      color: #fecaca;
+      background: rgba(239, 68, 68, 0.16);
+      border-color: rgba(239, 68, 68, 0.28);
+    }
   </style>
 </head>
 <body>
@@ -148,15 +169,20 @@
       {% else %}
       <div class="note">適合寫：角色關係、使用者偏好、重要設定、長期不應忘記的事。下方可以查看、修改或單筆刪除目前保存的重點記憶。</div>
 
+      <div id="setting-auth-box" class="setting-auth-box" data-expires-at="{{ token_expires_at }}">
+        請在時效內按儲存。剩餘時間：<span id="setting-countdown">15:00</span>
+      </div>
+
       <form id="memoryForm">
         <input type="hidden" name="bot_id" value="{{ bot_id }}">
         <input type="hidden" name="chat_id" value="{{ chat_id }}">
         <input type="hidden" name="user_id" value="{{ user_id }}">
+        <input type="hidden" name="token" value="{{ token }}">
 
         <label for="important_memory">新增重點記憶</label>
         <textarea id="important_memory" name="important_memory" placeholder="例如：使用者偏好直接、可執行的程式碼修正，不喜歡冗長解釋。"></textarea>
 
-        <button class="primary-btn" type="submit">儲存重點記憶</button>
+        <button id="submit-btn" class="primary-btn" type="submit">儲存重點記憶</button>
       </form>
 
       <div class="section">
@@ -173,6 +199,58 @@
     const form = document.getElementById('memoryForm');
     const result = document.getElementById('result');
     const memoryList = document.getElementById('memoryList');
+
+    const submitBtn = document.getElementById('submit-btn');
+    const settingAuthBox = document.getElementById('setting-auth-box');
+    const settingCountdown = document.getElementById('setting-countdown');
+    const settingExpiresAt = Number(settingAuthBox?.dataset?.expiresAt || 0) * 1000;
+    const settingToken = "{{ token }}";
+    let settingLinkExpired = false;
+
+    function formatSettingTime(totalSeconds) {
+      const safeSeconds = Math.max(0, totalSeconds);
+      const minutes = String(Math.floor(safeSeconds / 60)).padStart(2, '0');
+      const seconds = String(safeSeconds % 60).padStart(2, '0');
+      return `${minutes}:${seconds}`;
+    }
+
+    function setSettingExpired() {
+      settingLinkExpired = true;
+
+      if (settingAuthBox) {
+        settingAuthBox.className = 'setting-auth-box expired';
+        settingAuthBox.innerHTML = '設定連結已失效，請回 Telegram 重新開啟設定。';
+      }
+
+      document.querySelectorAll('button').forEach((button) => {
+        button.disabled = true;
+      });
+
+      if (submitBtn) {
+        submitBtn.textContent = '連結已失效';
+      }
+    }
+
+    function updateSettingCountdown() {
+      if (!settingExpiresAt || !settingCountdown || !settingAuthBox) return;
+
+      const remaining = Math.floor((settingExpiresAt - Date.now()) / 1000);
+
+      if (remaining <= 0) {
+        setSettingExpired();
+        return;
+      }
+
+      settingCountdown.textContent = formatSettingTime(remaining);
+
+      if (remaining <= 180) {
+        settingAuthBox.className = 'setting-auth-box warning';
+        settingAuthBox.innerHTML = `連結即將失效，請盡快儲存。剩餘時間：<span id="setting-countdown">${formatSettingTime(remaining)}</span>`;
+      }
+    }
+
+    updateSettingCountdown();
+    setInterval(updateSettingCountdown, 1000);
 
     const botId = "{{ bot_id }}";
     const chatId = "{{ chat_id }}";
@@ -197,6 +275,7 @@
       data.append('bot_id', botId);
       data.append('chat_id', chatId);
       data.append('user_id', userId);
+      data.append('token', settingToken);
       data.append('memory_id', memoryId);
       data.append('important_memory', text || '');
       return data;
@@ -209,7 +288,7 @@
       memoryList.textContent = '讀取中...';
 
       try {
-        const params = new URLSearchParams({ bot_id: botId, chat_id: chatId, user_id: userId });
+        const params = new URLSearchParams({ bot_id: botId, chat_id: chatId, user_id: userId, token: settingToken });
         const res = await fetch('/setting/important_memory/list?' + params.toString());
         const data = await res.json();
 
@@ -246,6 +325,12 @@
     if (form) {
       form.addEventListener('submit', async (event) => {
         event.preventDefault();
+
+        if (settingLinkExpired) {
+          setResult('設定連結已失效，請回 Telegram 重新開啟設定。', false);
+          return;
+        }
+
         setResult('儲存中...');
 
         const formData = new FormData(form);
@@ -273,6 +358,11 @@
       memoryList.addEventListener('click', async (event) => {
         const button = event.target.closest('button[data-action]');
         if (!button) return;
+
+        if (settingLinkExpired) {
+          setResult('設定連結已失效，請回 Telegram 重新開啟設定。', false);
+          return;
+        }
 
         const memoryId = button.dataset.id;
         const item = button.closest('.memory-item');

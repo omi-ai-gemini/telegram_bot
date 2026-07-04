@@ -153,7 +153,7 @@ conn.close()
 # config.py
 
 - 類型：.py
-- 行數：41
+- 行數：45
 
 ## imports
 - os
@@ -201,6 +201,10 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 # =========================
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 SECRET_KEY = os.getenv("SECRET_KEY")
+# =========================
+# Setting page signed URLs
+# =========================
+SETTING_LINK_SECRET = os.getenv("SETTING_LINK_SECRET")
 ```
 
 
@@ -461,6 +465,63 @@ DB 不保存使用者資料庫密碼明文。
 
 ================================================================================
 
+# docs\SETTING_LINK_AUTH_README.md
+
+- 類型：.md
+- 行數：45
+
+## preview
+```text
+# Telemini 設定頁簽章網址鎖
+
+## 必填環境變數
+
+Render Environment Variables 新增：
+
+```text
+SETTING_LINK_SECRET=一串長隨機字串
+```
+
+可用本機產生：
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(64))"
+```
+
+## 規則
+
+- 設定頁連結有效 15 分鐘。
+- 頁面會顯示「請在時效內按儲存」與倒數時間。
+- 剩 3 分鐘時會改成提醒「連結即將失效，請盡快儲存」。
+- 過期後前端會鎖住儲存按鈕。
+- 後端也會重新驗證 token；過期或被改過都不會寫入 DB。
+- 群組設定頁目前保留延伸，不開放直接進入或儲存。
+
+## 會鎖的路由
+
+```text
+GET  /setting/persona
+GET  /setting/character
+GET  /setting/reply_style
+GET  /setting/important_memory
+GET  /setting/important_memory/list
+
+POST /setting/chat_persona/save
+POST /setting/character/save
+POST /setting/reply_style/save
+POST /setting/important_memory/save
+POST /setting/important_memory/update
+POST /setting/important_memory/delete
+```
+
+## 不會影響既有資料
+
+這個更新只改「開啟 / 儲存設定頁」的權限驗證，不改既有資料內容，不需要搬資料、不需要重建資料表。
+```
+
+
+================================================================================
+
 # handlers\__init__.py
 
 - 類型：.py
@@ -476,7 +537,7 @@ DB 不保存使用者資料庫密碼明文。
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：515
+- 行數：527
 
 ## imports
 - services.character.delete_character_settings
@@ -501,6 +562,7 @@ DB 不保存使用者資料庫密碼明文。
 - services.telegram_service.send_message
 
 ## functions
+- _setting_fallback_text
 - _send_script_opening
 - handle_ui
 
@@ -531,6 +593,18 @@ from services.telegram_service import (
     answer_callback_query,
     delete_message,
 )
+
+
+def _setting_fallback_text(chat_id):
+    try:
+        is_group = int(chat_id) < 0
+    except Exception:
+        is_group = str(chat_id).startswith("-")
+
+    if is_group:
+        return "群組設定頁暫不開放，請私訊 bot 使用 /設定"
+
+    return "設定連結尚未建立，請確認 BASE_URL / SETTING_LINK_SECRET"
 
 
 # =========================
@@ -574,20 +648,8 @@ def _send_script_opening(bot_id, chat_id):
 def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
 
-    print("callback", user_text, "message:", message_id)
-
-    # =========================
-    # 最上層：結束設定
-    # 直接刪除目前這則設定選單訊息
-    # =========================
-    if user_text == "close_setting_menu":
-
-        delete_message(
-            bot_id,
-            chat_id,
-            message_id
 ...
-... 已省略 435 行
+... 已省略 447 行
 ```
 
 
@@ -885,7 +947,7 @@ def add_key_route():
 # routes\setting.py
 
 - 類型：.py
-- 行數：464
+- 行數：526
 
 ## imports
 - flask.Blueprint
@@ -905,10 +967,15 @@ def add_key_route():
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
 - services.reply_style.update_reply_style_settings
+- services.setting_auth.verify_setting_request
 - services.style.DEFAULT_CHAT_REPLY_STYLE
 - services.style.DEFAULT_THEATER_REPLY_STYLE
 
 ## functions
+- _auth_or_page_error
+- _auth_or_json_error
+- _is_group_chat
+- _token_from_request
 - important_memory_setting_page
 - save_important_memory_setting
 - list_important_memory_setting
@@ -962,8 +1029,53 @@ from services.memory import (
     delete_important_fact,
     _get_scope
 )
+from services.setting_auth import verify_setting_request
 
 setting_bp = Blueprint("setting", __name__)
+
+
+def _auth_or_page_error(page_type=None, allowed_page_types=None):
+    auth = verify_setting_request(
+        request,
+        page_type=page_type,
+        allowed_page_types=allowed_page_types
+    )
+
+    if not auth.get("ok"):
+        return auth, (auth.get("message", "設定連結驗證失敗"), auth.get("status", 403))
+
+    return auth, None
+
+
+def _auth_or_json_error(page_type=None, allowed_page_types=None):
+    auth = verify_setting_request(
+        request,
+        page_type=page_type,
+        allowed_page_types=allowed_page_types
+    )
+
+    if not auth.get("ok"):
+        return auth, (
+            jsonify({
+                "ok": False,
+                "message": auth.get("message", "設定連結驗證失敗"),
+                "reason": auth.get("reason", "auth_failed")
+            }),
+            auth.get("status", 403)
+        )
+
+    return auth, None
+
+
+def _is_group_chat(chat_id):
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return str(chat_id).startswith("-")
+
+
+def _token_from_request():
+    return request.values.get("token", "")
 
 
 # =========================
@@ -971,53 +1083,8 @@ setting_bp = Blueprint("setting", __name__)
 # 目前先開放私聊 chat_id；群組 chat_id 先保留延伸，不開放寫入。
 # =========================
 @setting_bp.route("/setting/important_memory", methods=["GET"])
-def important_memory_setting_page():
-
-    bot_id = request.args.get("bot_id", "")
-    chat_id = request.args.get("chat_id", "")
-    user_id = request.args.get("user_id", "")
-
-    if not bot_id or not chat_id:
-        return "缺少 bot_id 或 chat_id", 400
-
-    try:
-        is_group = int(chat_id) < 0
-    except Exception:
-        is_group = str(chat_id).startswith("-")
-
-    return render_template(
-        "important_memory_form.html",
-        bot_id=bot_id,
-        chat_id=chat_id,
-        user_id=user_id,
-        is_group=is_group
-    )
-
-
-# =========================
-# 儲存重點記憶
-# =========================
-@setting_bp.route("/setting/important_memory/save", methods=["POST"])
-def save_important_memory_setting():
-
-    bot_id = request.form.get("bot_id", "").strip()
-    chat_id = request.form.get("chat_id", "").strip()
-    user_id = request.form.get("user_id", "").strip()
-    fact = request.form.get("important_memory", "").strip()
-
-    if not bot_id or not chat_id:
-        return jsonify({
-            "ok": False,
-            "message": "缺少 bot_id 或 chat_id"
-        }), 400
-
-    try:
-        is_group = int(chat_id) < 0
-    except Exception:
-        is_group = str(chat_id).startswith("-")
-
 ...
-... 已省略 384 行
+... 已省略 446 行
 ```
 
 
@@ -1477,7 +1544,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\commands.py
 
 - 類型：.py
-- 行數：324
+- 行數：371
 
 ## imports
 - os
@@ -1485,6 +1552,8 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 - services.bot_router.get_bot_token
 - services.character.get_character_mode
 - services.character.get_script_opening_status
+- services.setting_auth.create_setting_token
+- services.setting_auth.is_group_chat
 - urllib.parse.urlencode
 
 ## functions
@@ -1511,6 +1580,7 @@ import requests
 from urllib.parse import urlencode
 from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
+from services.setting_auth import create_setting_token, is_group_chat
 
 # =========================
 # Telegram API POST
@@ -1549,10 +1619,25 @@ def _build_persona_setting_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 
+    if is_group_chat(chat_id):
+        return None
+
+    token = create_setting_token(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        page_type="persona"
+    )
+
+    if not token:
+        print("X setting token not created for persona")
+        return None
+
     query = urlencode({
         "bot_id": str(bot_id),
         "chat_id": str(chat_id),
-        "user_id": str(user_id)
+        "user_id": str(user_id),
+        "token": token
     })
 
     return f"{base_url}/setting/persona?{query}"
@@ -1570,24 +1655,8 @@ def _build_important_memory_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 
-    query = urlencode({
-        "bot_id": str(bot_id),
-        "chat_id": str(chat_id),
-        "user_id": str(user_id)
-    })
-
-    return f"{base_url}/setting/important_memory?{query}"
-
-
-def _build_reply_style_url(bot_id, chat_id, user_id, style_type):
-
-    base_url = os.getenv("BASE_URL", "").rstrip("/")
-
-    if not base_url:
-        print("X BASE_URL not found")
-        return None
 ...
-... 已省略 244 行
+... 已省略 291 行
 ```
 
 
@@ -2866,6 +2935,127 @@ def _get_legacy_reply_style(cursor, bot_id, chat_id, style_type):
 
 ================================================================================
 
+# services\setting_auth.py
+
+- 類型：.py
+- 行數：228
+
+## imports
+- base64
+- config.SETTING_LINK_SECRET
+- hashlib
+- hmac
+- json
+- secrets
+- time
+- typing.Any
+- typing.Iterable
+- typing.Optional
+
+## classes
+- SettingAuthError
+
+## functions
+- _text_id
+- is_group_chat
+- _b64_encode
+- _b64_decode
+- _get_secret
+- _sign
+- create_setting_token
+- verify_setting_token
+- verify_setting_request
+- _fail
+
+## preview
+```text
+import base64
+import hashlib
+import hmac
+import json
+import secrets
+import time
+from typing import Any, Iterable, Optional
+
+from config import SETTING_LINK_SECRET
+
+
+# =========================
+# 設定頁簽章網址鎖
+# =========================
+# 目的：
+# - bot_id / chat_id / user_id 只能當資料索引，不能當權限
+# - 設定頁 URL 必須帶有後端簽出的 token
+# - token 15 分鐘後失效
+# - 群組設定頁目前先保留延伸，不開放
+# =========================
+SETTING_LINK_TTL_SECONDS = 15 * 60
+
+
+class SettingAuthError(Exception):
+    pass
+
+
+def _text_id(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def is_group_chat(chat_id: Any) -> bool:
+    chat_id = _text_id(chat_id)
+
+    try:
+        return int(chat_id) < 0
+    except Exception:
+        return chat_id.startswith("-")
+
+
+def _b64_encode(raw: bytes) -> str:
+    return base64.urlsafe_b64encode(raw).decode("utf-8").rstrip("=")
+
+
+def _b64_decode(text: str) -> bytes:
+    padding = "=" * (-len(text) % 4)
+    return base64.urlsafe_b64decode((text + padding).encode("utf-8"))
+
+
+def _get_secret() -> bytes:
+    secret = _text_id(SETTING_LINK_SECRET)
+
+    if not secret:
+        raise SettingAuthError("SETTING_LINK_SECRET is not set")
+
+    return secret.encode("utf-8")
+
+
+def _sign(payload_part: str) -> str:
+    digest = hmac.new(
+        _get_secret(),
+        payload_part.encode("utf-8"),
+        hashlib.sha256,
+    ).digest()
+
+    return _b64_encode(digest)
+
+
+def create_setting_token(
+    user_id: Any,
+    bot_id: Any,
+    chat_id: Any,
+    page_type: str,
+    ttl_seconds: int = SETTING_LINK_TTL_SECONDS,
+) -> Optional[str]:
+    """
+    建立設定頁 token。
+
+    回傳 None 代表不能建立網址：
+    - 群組聊天室目前不開放設定頁
+...
+... 已省略 148 行
+```
+
+
+================================================================================
+
 # services\style.py
 
 - 類型：.py
@@ -3805,7 +3995,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\character_form.html
 
 - 類型：.html
-- 行數：337
+- 行數：415
 
 ## preview
 ```text
@@ -3890,7 +4080,7 @@ def _has_chat_persona(chat_persona_settings):
       color: rgba(255, 255, 255, 0.86);
     }
 ...
-... 已省略 257 行
+... 已省略 335 行
 ```
 
 
@@ -3899,7 +4089,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\chat_persona_form.html
 
 - 類型：.html
-- 行數：280
+- 行數：358
 
 ## preview
 ```text
@@ -3984,7 +4174,7 @@ def _has_chat_persona(chat_persona_settings):
       color: rgba(255, 255, 255, 0.86);
     }
 ...
-... 已省略 200 行
+... 已省略 278 行
 ```
 
 
@@ -4087,7 +4277,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\important_memory_form.html
 
 - 類型：.html
-- 行數：323
+- 行數：413
 
 ## preview
 ```text
@@ -4172,7 +4362,7 @@ def _has_chat_persona(chat_persona_settings):
       border-color: rgba(96, 165, 250, 0.9);
       box-shadow: 0 0 0 4px rgba(96, 165, 250, 0.16);
 ...
-... 已省略 243 行
+... 已省略 333 行
 ```
 
 
@@ -4463,7 +4653,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\reply_style_form.html
 
 - 類型：.html
-- 行數：243
+- 行數：321
 
 ## preview
 ```text
@@ -4548,7 +4738,7 @@ def _has_chat_persona(chat_persona_settings):
       color: rgba(255, 255, 255, 0.86);
     }
 ...
-... 已省略 163 行
+... 已省略 241 行
 ```
 
 

@@ -39,3 +39,7 @@ TELEGRAM_API_BASE = "https://api.telegram.org"
 # =========================
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD")
 SECRET_KEY = os.getenv("SECRET_KEY")
+# =========================
+# Setting page signed URLs
+# =========================
+SETTING_LINK_SECRET = os.getenv("SETTING_LINK_SECRET")
