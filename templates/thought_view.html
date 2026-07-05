@@ -152,9 +152,20 @@
           {% if expires_at %}<span class="pill">過期：{{ expires_at }}</span>{% endif %}
         </div>
 
-        <div class="content">
-          <pre class="thought">{{ thought_text }}</pre>
-        </div>
+        {% if thought_text %}
+          <div class="content">
+            <pre class="thought">{{ thought_text }}</pre>
+          </div>
+        {% else %}
+          <div class="expired-box">
+            <div class="expired-icon">🧠</div>
+            <div class="expired-title">這筆沒有推理摘要</div>
+            <p class="expired-text">
+              這個連結仍然有效，代表快取還在；只是 Gemini 這次沒有回傳 thought summary。
+              {{ reason or "可能是目前模型、SDK 版本或本次回覆沒有提供 thought part。" }}
+            </p>
+          </div>
+        {% endif %}
 
         <div class="footer">
           關閉這個頁面不會影響聊天紀錄；Render 重啟或快取過期後，此連結會失效。

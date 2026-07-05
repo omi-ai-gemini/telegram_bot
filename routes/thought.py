@@ -37,6 +37,8 @@ def thought_page(token):
         return render_template(
             "thought_view.html",
             expired=True,
+            status="expired",
+            reason="",
             thought_text="",
             created_at="",
             expires_at="",
@@ -45,6 +47,8 @@ def thought_page(token):
     return render_template(
         "thought_view.html",
         expired=False,
+        status=item.get("status", "ready"),
+        reason=item.get("reason", ""),
         thought_text=item.get("text", ""),
         created_at=_format_time(item.get("created_at")),
         expires_at=_format_time(item.get("expires_at")),

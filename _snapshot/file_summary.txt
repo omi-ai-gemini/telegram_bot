@@ -656,7 +656,7 @@ setting_menu_sessions
 # docs\THOUGHT_WEB_VIEW_README.md
 
 - 類型：.md
-- 行數：55
+- 行數：74
 
 ## preview
 ```text
@@ -715,6 +715,25 @@ BASE_URL=https://你的-render網址
 ## 注意
 
 Gemini API 回傳的是 thought summary，不是完整逐字內部推理。
+
+
+## 立即顯示過期的排查
+
+如果剛產生的最新回覆，點 `🧠` 就立刻顯示「推理摘要已過期」，通常有兩種原因：
+
+1. Render / Gunicorn 使用多個 worker。
+   - webhook 產生推理摘要時在 A process。
+   - 使用者打開 `/thought/<token>` 時被分到 B process。
+   - 因為快取只在記憶體，不寫 DB，所以 B process 找不到 token。
+   - 解法：Render Start Command 建議使用單 worker，例如：
+
+```bash
+gunicorn main:app --workers 1 --threads 8 --timeout 120
+```
+
+2. Gemini 這次沒有回傳 thought summary。
+   - 這版會顯示「這筆沒有推理摘要」，不再誤顯示成過期。
+   - Render log 會印出 `GEMINI extracted lengths` 與 `THOUGHT cache saved`，可用來確認。
 ```
 
 
@@ -1332,7 +1351,7 @@ def _token_from_request():
 # routes\thought.py
 
 - 類型：.py
-- 行數：51
+- 行數：55
 
 ## imports
 - datetime.datetime
@@ -1389,6 +1408,8 @@ def thought_page(token):
         return render_template(
             "thought_view.html",
             expired=True,
+            status="expired",
+            reason="",
             thought_text="",
             created_at="",
             expires_at="",
@@ -1397,6 +1418,8 @@ def thought_page(token):
     return render_template(
         "thought_view.html",
         expired=False,
+        status=item.get("status", "ready"),
+        reason=item.get("reason", ""),
         thought_text=item.get("text", ""),
         created_at=_format_time(item.get("created_at")),
         expires_at=_format_time(item.get("expires_at")),
@@ -1421,7 +1444,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：842
+- 行數：882
 
 ## imports
 - datetime.datetime
@@ -1483,6 +1506,7 @@ def thought_page(token):
 ## preview
 ```text
 from datetime import datetime, timedelta
+import os
 import threading
 import time
 
@@ -1561,9 +1585,8 @@ def _get_or_create_ai_thought_token(action_id):
     """
     取得某則 AI 回覆的推理摘要網頁 token。
 
-    token 只存在 Render 記憶體，不寫 DB。
 ...
-... 已省略 762 行
+... 已省略 802 行
 ```
 
 
@@ -2603,7 +2626,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：538
+- 行數：549
 
 ## imports
 - config.GEMINI_MODEL
@@ -2707,7 +2730,7 @@ MEMORY_SUMMARY_BLOCKED = "__MEMORY_SUMMARY_BLOCKED__"
 def _enum_name(value):
     """
 ...
-... 已省略 458 行
+... 已省略 469 行
 ```
 
 
@@ -5533,7 +5556,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\thought_view.html
 
 - 類型：.html
-- 行數：166
+- 行數：177
 
 ## preview
 ```text
@@ -5618,7 +5641,7 @@ def _has_chat_persona(chat_persona_settings):
 
     .thought {
 ...
-... 已省略 86 行
+... 已省略 97 行
 ```
 
 

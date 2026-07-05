@@ -388,6 +388,17 @@ def ask_gemini(
     debug_gemini_response(response, label="GEMINI")
 
     answer_text, thought_text = _extract_answer_and_thoughts(response)
+    print(
+        f"GEMINI extracted lengths: answer={len(answer_text or '')} thoughts={len(thought_text or '')}",
+        flush=True
+    )
+
+    if include_thoughts and not thought_text:
+        print(
+            "GEMINI thought summary empty: no thought part returned",
+            flush=True
+        )
+
     text = answer_text or _safe_response_text(response)
 
     if text:

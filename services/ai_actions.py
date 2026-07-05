@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta
+import os
 import threading
 import time
 
@@ -100,10 +101,19 @@ def _get_or_create_ai_thought_token(action_id):
         _THOUGHT_CACHE[action_id] = {
             "token": token,
             "text": "",
+            "status": "pending",
+            "reason": "推理摘要尚未寫入快取。",
             "created_at": now,
             "expires_at": now + THOUGHT_CACHE_TTL_SECONDS,
+            "pid": os.getpid(),
         }
         _THOUGHT_TOKEN_INDEX[token] = action_id
+
+        print(
+            f"THOUGHT token created action_id={action_id} "
+            f"token={token[:8]} pid={os.getpid()}",
+            flush=True
+        )
 
         return token
 
@@ -115,8 +125,6 @@ def get_ai_thought_url(action_id):
     需要 Render 設定 BASE_URL。
     沒有 BASE_URL 時回傳 None，讓按鈕退回 callback 提示。
     """
-    import os
-
     base_url = os.getenv("BASE_URL", "").rstrip("/")
 
     if not base_url or not action_id:
@@ -154,17 +162,21 @@ def cache_ai_thought_summary(action_id, thought_text):
     暫存 Gemini thought summary。
 
     不保存到資料庫；只讓 🧠 網頁短時間內可查看。
+
+    注意：
+    - thought_text 可能是空字串。
+    - 空字串代表 Gemini / SDK / 模型沒有回傳 thought summary，
+      但這一筆仍然存在於 Render 記憶體，不應該誤顯示成「過期」。
     """
     if not action_id:
         return False
 
     thought_text = str(thought_text or "").strip()
-
-    if not thought_text:
-        return False
-
     action_id = str(action_id)
     now = time.time()
+
+    status = "ready" if thought_text else "empty"
+    reason = "" if thought_text else "Gemini 這次沒有回傳 thought summary；可能是模型或 SDK 不支援，或本次回覆沒有 thought part。"
 
     with _THOUGHT_CACHE_LOCK:
         _purge_expired_thought_cache(now)
@@ -173,17 +185,25 @@ def cache_ai_thought_summary(action_id, thought_text):
         token = item.get("token")
 
         if not token:
-            import secrets
             token = secrets.token_urlsafe(32)
             _THOUGHT_TOKEN_INDEX[token] = action_id
 
         _THOUGHT_CACHE[action_id] = {
             "token": token,
             "text": thought_text,
+            "status": status,
+            "reason": reason,
             "created_at": item.get("created_at") or now,
             "expires_at": now + THOUGHT_CACHE_TTL_SECONDS,
+            "pid": os.getpid(),
         }
         _THOUGHT_TOKEN_INDEX[token] = action_id
+
+    print(
+        f"THOUGHT cache saved action_id={action_id} token={token[:8]} "
+        f"status={status} len={len(thought_text)} pid={os.getpid()}",
+        flush=True
+    )
 
     return True
 
@@ -221,29 +241,49 @@ def get_ai_thought_summary_by_token(token):
         action_id = _THOUGHT_TOKEN_INDEX.get(token)
 
         if not action_id:
+            print(
+                f"THOUGHT cache miss token={token[:8]} pid={os.getpid()}",
+                flush=True
+            )
             return None
 
         item = _THOUGHT_CACHE.get(action_id)
 
         if not item:
             _THOUGHT_TOKEN_INDEX.pop(token, None)
+            print(
+                f"THOUGHT cache index stale token={token[:8]} action_id={action_id} pid={os.getpid()}",
+                flush=True
+            )
             return None
 
         if item.get("expires_at", 0) <= now:
             _THOUGHT_CACHE.pop(action_id, None)
             _THOUGHT_TOKEN_INDEX.pop(token, None)
+            print(
+                f"THOUGHT cache expired token={token[:8]} action_id={action_id} pid={os.getpid()}",
+                flush=True
+            )
             return None
 
         text = str(item.get("text") or "").strip()
+        status = str(item.get("status") or ("ready" if text else "empty")).strip()
+        reason = str(item.get("reason") or "").strip()
 
-        if not text:
-            return None
+        print(
+            f"THOUGHT cache hit token={token[:8]} action_id={action_id} "
+            f"status={status} len={len(text)} save_pid={item.get('pid')} read_pid={os.getpid()}",
+            flush=True
+        )
 
         return {
             "action_id": action_id,
             "text": text,
+            "status": status,
+            "reason": reason,
             "created_at": item.get("created_at"),
             "expires_at": item.get("expires_at"),
+            "pid": item.get("pid"),
         }
 
 
