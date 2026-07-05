@@ -9,6 +9,7 @@ from services.memory import (
 from services.memory_summary import delete_memory_summary, list_memory_summaries
 from services.setting_auth import create_setting_token, is_group_chat
 from services.telegram_service import answer_callback_query, delete_message, edit_message_text, send_message
+from services.setting_sessions import save_setting_menu_session, pop_setting_menu_session
 
 
 def _text_id(value):
@@ -95,7 +96,7 @@ def build_memory_view_menu_markup(bot_id, chat_id, user_id):
     return {"inline_keyboard": rows}
 
 
-def send_memory_view_menu(bot_id, chat_id, user_id, message_id=None):
+def send_memory_view_menu(bot_id, chat_id, user_id, message_id=None, source_message_id=None):
     if is_group_chat(chat_id):
         send_message(bot_id, chat_id, "群組記憶查看暫不開放，請私訊 bot 使用 /memory 或 /記憶")
         return None
@@ -106,13 +107,30 @@ def send_memory_view_menu(bot_id, chat_id, user_id, message_id=None):
         "重點記憶會打開既有管理頁。"
     )
 
-    return _send_or_edit(
+    result = _send_or_edit(
         bot_id,
         chat_id,
         message_id,
         text,
         build_memory_view_menu_markup(bot_id, chat_id, user_id)
     )
+
+    # /memory / /記憶 直接叫出選單時，記錄「選單訊息 ↔ 指令訊息」。
+    # 從 /setting 進入查看記憶時會沿用同一則設定選單訊息，
+    # 原本 /setting 的 session 已存在，不需要在這裡重寫。
+    if source_message_id and not message_id:
+        menu_message_id = _extract_message_id(result)
+
+        if menu_message_id:
+            save_setting_menu_session(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                menu_message_id=menu_message_id,
+                command_message_id=source_message_id,
+            )
+
+    return result
 
 
 def _render_short_memory(bot_id, chat_id, user_id, message_id):
@@ -194,7 +212,18 @@ def handle_memory_view_callback(user_id, bot_id, chat_id, message_id, callback_d
         return True
 
     if callback_data == "mem_close":
+        command_message_id = pop_setting_menu_session(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            menu_message_id=message_id,
+            user_id=user_id,
+        )
+
         delete_message(bot_id, chat_id, message_id)
+
+        if command_message_id:
+            delete_message(bot_id, chat_id, command_message_id)
+
         answer_callback_query(bot_id, callback_id, text="已關閉記憶查看")
         return True
 

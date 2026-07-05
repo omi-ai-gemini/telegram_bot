@@ -25,6 +25,7 @@ from services.reply_style import get_reply_style_settings
 from services.telegram_service import delete_message, edit_message_text, send_message
 from services.time_context import get_current_time_context
 from services.user_router import get_gemini_key
+from services.setting_sessions import save_setting_menu_session
 
 
 EDIT_PENDING_MINUTES = 5
@@ -99,9 +100,27 @@ def _should_show_ai_buttons(user_id, bot_id, chat_id):
 
 
 def _hidden_reply_markup(action_id):
+    """
+    /hidden 專用按鈕。
+
+    這裡不能直接沿用 AI 訊息下方的 callback_data，
+    因為 /hidden 選單點完後要刪掉「選單訊息」與「/hidden 指令訊息」。
+    所以使用 hidden_ai_* 前綴，讓 call_handler 可以分辨：
+    - hidden_ai_*：刪除開發者選單
+    - ai_*：操作原本 AI 訊息，不刪 AI 訊息本體
+    """
     if not action_id:
         return None
-    return build_ai_action_keyboard(action_id)
+
+    return {
+        "inline_keyboard": [[
+            {"text": "🗣️", "callback_data": f"hidden_ai_reply:{action_id}"},
+            {"text": "✏️", "callback_data": f"hidden_ai_edit:{action_id}"},
+            {"text": "🔁", "callback_data": f"hidden_ai_regen:{action_id}"},
+            {"text": "🧠", "callback_data": f"hidden_ai_thought:{action_id}"},
+            {"text": "▶️", "callback_data": f"hidden_ai_continue:{action_id}"},
+        ]]
+    }
 
 
 def _purge_expired_thought_cache(now=None):
@@ -309,12 +328,25 @@ def _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id):
         conn.close()
 
 
-def send_hidden_ai_action_menu(bot_id, chat_id, user_id):
+def _extract_telegram_message_id(result):
+    if not isinstance(result, dict):
+        return None
+
+    message = result.get("result") or {}
+    return message.get("message_id")
+
+
+def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None):
     """
     /hidden 開發者功能選單。
 
     聊天模式預設不在 AI 訊息下方顯示任何特殊按鈕，
     只有使用者手動輸入 /hidden 時，才顯示一層操作按鈕。
+
+    source_message_id：
+    - 使用者輸入 /hidden 的訊息 id。
+    - 選單送出後會建立一筆 session。
+    - 使用者點任一 hidden_ai_* 按鈕時，call_handler 會刪掉選單與這則 /hidden。
     """
     if _is_group_chat(chat_id):
         send_message(bot_id, chat_id, "群組暫不開放 /hidden 開發者功能")
@@ -331,15 +363,28 @@ def send_hidden_ai_action_menu(bot_id, chat_id, user_id):
 
     reply_markup = _hidden_reply_markup(action_id)
 
-    send_message(
+    result = send_message(
         bot_id,
         chat_id,
         "開發者功能｜選擇要操作的最近一則 AI 回覆",
         reply_markup=reply_markup,
     )
 
+    menu_message_id = _extract_telegram_message_id(result)
+
+    if menu_message_id and source_message_id:
+        save_setting_menu_session(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id,
+            menu_message_id=menu_message_id,
+            command_message_id=source_message_id,
+        )
+
     print(
-        f"HIDDEN MENU SENT action_id={action_id} bot_id={bot_id} chat_id={chat_id}",
+        f"HIDDEN MENU SENT action_id={action_id} bot_id={bot_id} "
+        f"chat_id={chat_id} menu_message_id={menu_message_id} "
+        f"source_message_id={source_message_id}",
         flush=True,
     )
 

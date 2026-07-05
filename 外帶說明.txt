@@ -1,48 +1,65 @@
-Telemini 聊天模式隱藏 AI 操作按鈕 /hidden 開發者選單包
+Telemini 聊天室清潔補完整包
 
 只包含修改檔，不是全專案。
 
 覆蓋檔案：
 - services/ai_actions.py
-- services/call_ai.py
+- services/telegram_service.py
+- services/memory_view.py
 - handlers/message_handler.py
+- handlers/call_handler.py
 
 更新內容：
-1. 聊天模式下，AI 正常回覆不再自動掛訊息下方小按鈕。
-   - 不顯示 [🗣️] [✏️] [🔁] [🧠] [▶️]
-   - 回覆看起來更像一般真人聊天。
+1. /hidden 指令
+   - 送出開發者功能選單後，會記錄「/hidden 指令訊息 ↔ hidden 選單訊息」。
+   - 使用者點任一 hidden 按鈕後，會先刪除：
+     - /hidden 指令訊息
+     - hidden 選單訊息
+   - 再執行原本功能：
+     - 🗣️ 補送
+     - ✏️ 修改
+     - 🔁 重跑
+     - 🧠 回覆依據
+     - ▶️ 接續
 
-2. 劇場模式保留原本訊息下方小按鈕。
-   - 劇情操作仍可直接在每則 AI 回覆下使用。
+2. hidden 選單按鈕改成專用 callback_data
+   - hidden_ai_reply:<id>
+   - hidden_ai_edit:<id>
+   - hidden_ai_regen:<id>
+   - hidden_ai_thought:<id>
+   - hidden_ai_continue:<id>
 
-3. 新增 /hidden 指令。
-   - 只有輸入 /hidden 時，才會出現開發者功能選單。
-   - 選單是一層按鈕：
-     [🗣️] [✏️] [🔁] [🧠] [▶️]
-   - 預設操作最近一則可操作的 AI 回覆。
+   這樣 call_handler 可以分辨：
+   - hidden_ai_*：刪 hidden 選單與 /hidden 指令
+   - ai_*：原本 AI 訊息下方按鈕，不會亂刪 AI 訊息本體
 
-4. 聊天模式雖然不顯示按鈕，但後台仍會建立 ai_message_actions。
-   - 所以 /hidden 可以叫出最近一則 AI 回覆的操作功能。
-   - 🧠 回覆依據仍會寫入 Render 記憶體快取。
+3. /memory / /記憶 指令
+   - 打開記憶查看選單後，會記錄「/memory 指令訊息 ↔ 記憶選單訊息」。
+   - 按「❌ 關閉」時會一起刪除：
+     - 記憶選單訊息
+     - 使用者輸入的 /memory 或 /記憶 指令訊息
 
-5. /reply、🗣️、🔁、▶️ 產生的新 AI 訊息，如果目前是聊天模式，也不再自動掛按鈕。
-   - 要操作請再輸入 /hidden。
+4. /setting → 記憶設定 → 查看記憶
+   - 沿用 /setting 原本的 session。
+   - 從設定中心進入記憶查看後，按「❌ 關閉」會一起刪除：
+     - 目前記憶查看選單訊息
+     - 使用者輸入的 /setting 或 /設定 指令訊息
+
+5. services/telegram_service.py
+   - answer_callback_query() 新增 url 參數。
+   - hidden 🧠 按鈕點擊後會先清除聊天室中的 hidden 選單與 /hidden 指令，再嘗試用 callback url 開啟回覆依據頁。
 
 不影響：
-- /setting、/設定
-- /memory、/記憶
+- 一般 AI 回覆
+- 劇場模式原本 AI 下方按鈕
 - /reply、/回覆
-- 記憶資料表
 - 資料庫結構
-- Gemini 回覆流程
-- 劇場模式下方操作按鈕
+- 記憶資料內容
 
 已做檢查：
-python -m py_compile services/ai_actions.py services/call_ai.py handlers/message_handler.py
+python -m py_compile services/ai_actions.py services/telegram_service.py services/memory_view.py handlers/message_handler.py handlers/call_handler.py
 
-部署後測試：
-1. 切到聊天模式。
-2. 正常聊天，確認 AI 訊息下方沒有小按鈕。
-3. 輸入 /hidden，確認出現：
-   [🗣️] [✏️] [🔁] [🧠] [▶️]
-4. 切到劇場模式，確認 AI 訊息下方仍保留小按鈕。
+測試：
+1. 輸入 /hidden → 點任一按鈕 → 確認 /hidden 與選單都消失。
+2. 輸入 /memory → 點 ❌ 關閉 → 確認 /memory 與選單都消失。
+3. 輸入 /setting → 記憶設定 → 查看記憶 → ❌ 關閉 → 確認 /setting 與選單都消失。

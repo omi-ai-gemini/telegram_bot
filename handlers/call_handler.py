@@ -1,4 +1,5 @@
 from services.ai_actions import (
+    get_ai_thought_url,
     run_continue_in_thread,
     run_regenerate_in_thread,
     run_reply_ai_message_in_thread,
@@ -80,6 +81,38 @@ def _send_script_opening(bot_id, chat_id):
     return True
 
 
+def _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=None, force_delete_menu=False):
+    """
+    刪除由指令叫出的臨時選單。
+
+    用途：
+    - /hidden 選單點完任一按鈕後，刪掉 /hidden 指令與選單。
+    - /memory 關閉時，刪掉 /memory 指令與選單。
+    - 從 /setting 進入記憶查看後關閉，刪掉原本 /setting 指令與目前選單。
+
+    force_delete_menu=True：
+    - 用在 hidden_ai_*，因為它一定是 /hidden 選單。
+    - 即使 session 查不到，也可以刪掉目前選單訊息。
+
+    force_delete_menu=False：
+    - 用在一般 ai_* 時不能亂刪，避免把 AI 回覆本體刪掉。
+    """
+    command_message_id = pop_setting_menu_session(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        menu_message_id=message_id,
+        user_id=user_id,
+    )
+
+    if command_message_id or force_delete_menu:
+        delete_message(bot_id, chat_id, message_id)
+
+    if command_message_id:
+        delete_message(bot_id, chat_id, command_message_id)
+
+    return bool(command_message_id or force_delete_menu)
+
+
 # =========================
 # callback_query
 # =========================
@@ -87,6 +120,87 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
 
     print("callback", user_text, "message:", message_id)
+
+    # =========================
+    # /hidden 開發者功能選單
+    # 這組 callback 只會出現在 /hidden 臨時選單。
+    # 使用者點任一顆後，先刪掉：
+    # - /hidden 選單訊息
+    # - 使用者輸入的 /hidden 指令訊息
+    # 再執行原本 AI 操作。
+    # =========================
+    if isinstance(user_text, str) and user_text.startswith("hidden_ai_reply:"):
+        action_id = user_text.split(":", 1)[1]
+        _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在補送這句話"
+        )
+
+        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("hidden_ai_edit:"):
+        action_id = user_text.split(":", 1)[1]
+        _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
+
+        ok, text = start_edit_ai_message(user_id, bot_id, chat_id, action_id)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text=text or ("請輸入修改後文字" if ok else "這則回覆已無法操作")
+        )
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("hidden_ai_regen:"):
+        action_id = user_text.split(":", 1)[1]
+        _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在重跑這句話"
+        )
+
+        run_regenerate_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("hidden_ai_thought:"):
+        action_id = user_text.split(":", 1)[1]
+        thought_url = get_ai_thought_url(action_id)
+        _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
+
+        if thought_url:
+            answer_callback_query(
+                bot_id,
+                callback_id,
+                text="正在開啟回覆依據",
+                url=thought_url
+            )
+        else:
+            answer_callback_query(
+                bot_id,
+                callback_id,
+                text="回覆依據連結尚未建立，請確認 BASE_URL 環境變數",
+                show_alert=True
+            )
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("hidden_ai_continue:"):
+        action_id = user_text.split(":", 1)[1]
+        _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在接續下一句"
+        )
+
+        run_continue_in_thread(user_id, bot_id, chat_id, action_id)
+        return
 
     # =========================
     # AI 回覆下方小按鈕：修改 / 重跑 / 接續

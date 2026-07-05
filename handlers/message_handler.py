@@ -37,7 +37,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         send_memory_view_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id
+            user_id=user_id,
+            source_message_id=message_id
         )
         return
 
@@ -53,7 +54,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         send_hidden_ai_action_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id
+            user_id=user_id,
+            source_message_id=message_id
         )
         return
 

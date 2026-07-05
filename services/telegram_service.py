@@ -67,7 +67,7 @@ def edit_message_text(bot_id, chat_id, message_id, text, reply_markup=None):
 # =========================
 # Telegram callback 提示
 # =========================
-def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False):
+def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False, url=None):
     payload = {
         "callback_query_id": callback_query_id
     }
@@ -77,6 +77,9 @@ def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False
 
     if show_alert:
         payload["show_alert"] = True
+
+    if url:
+        payload["url"] = url
 
     return _telegram_post(bot_id, "answerCallbackQuery", payload, timeout=10)
 
