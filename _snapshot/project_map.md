@@ -78,6 +78,7 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
+- `外帶說明.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
 
@@ -192,6 +193,8 @@ C:\Projects\telemini
 - `_generate_reply()`
 - `regenerate_ai_message()`
 - `continue_ai_message()`
+- `reply_ai_message()`
+- `run_reply_ai_message_in_thread()`
 - `run_regenerate_in_thread()`
 - `run_continue_in_thread()`
 

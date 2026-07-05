@@ -957,11 +957,12 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：611
+- 行數：624
 
 ## imports
 - services.ai_actions.run_continue_in_thread
 - services.ai_actions.run_regenerate_in_thread
+- services.ai_actions.run_reply_ai_message_in_thread
 - services.ai_actions.start_edit_ai_message
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
@@ -996,6 +997,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 from services.ai_actions import (
     run_continue_in_thread,
     run_regenerate_in_thread,
+    run_reply_ai_message_in_thread,
     start_edit_ai_message,
 )
 from services.memory_view import handle_memory_view_callback
@@ -1072,9 +1074,8 @@ def _send_script_opening(bot_id, chat_id):
     )
 
     return True
-
 ...
-... 已省略 531 行
+... 已省略 544 行
 ```
 
 
@@ -1656,7 +1657,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：901
+- 行數：996
 
 ## imports
 - datetime.datetime
@@ -1712,6 +1713,8 @@ def thought_page(token):
 - _generate_reply
 - regenerate_ai_message
 - continue_ai_message
+- reply_ai_message
+- run_reply_ai_message_in_thread
 - run_regenerate_in_thread
 - run_continue_in_thread
 
@@ -1798,7 +1801,7 @@ def _get_or_create_ai_thought_token(action_id):
     """
     取得某則 AI 回覆的推理摘要網頁 token。
 ...
-... 已省略 821 行
+... 已省略 916 行
 ```
 
 
@@ -2262,7 +2265,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\commands.py
 
 - 類型：.py
-- 行數：402
+- 行數：403
 
 ## imports
 - os
@@ -2376,7 +2379,7 @@ def _build_important_memory_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 ...
-... 已省略 322 行
+... 已省略 323 行
 ```
 
 
@@ -2847,7 +2850,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：710
+- 行數：715
 
 ## imports
 - config.GEMINI_MODEL
@@ -2957,7 +2960,7 @@ reasoning_note 規則：
 def _with_structured_reply_instructions(prompt):
     return f"{str(prompt or '').rstrip()}\n{STRUCTURED_REPLY_INSTRUCTIONS}"
 ...
-... 已省略 630 行
+... 已省略 635 行
 ```
 
 
@@ -6121,6 +6124,52 @@ def should_ignore(path: Path) -> bool:
 ```text
 project_snapshot.py - 產生專案快照
 encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
+```
+
+
+================================================================================
+
+# 外帶說明.txt
+
+- 類型：.txt
+- 行數：34
+
+## preview
+```text
+Telemini 記憶設定 / AI 回覆按鈕小改版
+
+只包含修改檔，不是全專案。
+
+覆蓋檔案：
+- services/commands.py
+- services/ai_actions.py
+- handlers/call_handler.py
+
+更新內容：
+1. 「⚙️ 設定中心」→「🧠 記憶設定」內新增：
+   - 📋 查看記憶
+
+   這顆按鈕會直接打開原本 /memory、/記憶 使用的記憶查看選單。
+   原本快捷指令 /memory、/記憶 保留不變。
+
+2. AI 回覆下方小按鈕改為：
+   [🗣️] [✏️] [🔁] [🧠] [▶️]
+
+   🗣️：補送目前這則 AI 回覆。
+   - 不新增 chat_memory，避免短期記憶膨脹。
+   - 會重新建立新 action，補送出來的新訊息也會有完整小按鈕。
+   - 若原本的 🧠 回覆依據還在 Render 記憶體，會複製到新訊息。
+
+3. 保留原本 /reply、/回覆 快捷指令。
+
+部署後測試：
+- 私聊輸入 /設定 → 記憶設定 → 📋 查看記憶
+- 私聊輸入 /memory 或 /記憶
+- AI 回覆下方確認按鈕順序：[🗣️] [✏️] [🔁] [🧠] [▶️]
+- 點 🗣️ 應補送同一則 AI 回覆
+
+已做檢查：
+python -m py_compile services/commands.py services/ai_actions.py handlers/call_handler.py
 ```
 
 

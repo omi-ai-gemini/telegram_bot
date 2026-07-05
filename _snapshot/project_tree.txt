@@ -75,5 +75,6 @@
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
+📄 外帶說明.txt
 📄 模式-使用說明.txt
 📄 開場-更新說明.txt

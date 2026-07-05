@@ -1,0 +1,34 @@
+Telemini 記憶設定 / AI 回覆按鈕小改版
+
+只包含修改檔，不是全專案。
+
+覆蓋檔案：
+- services/commands.py
+- services/ai_actions.py
+- handlers/call_handler.py
+
+更新內容：
+1. 「⚙️ 設定中心」→「🧠 記憶設定」內新增：
+   - 📋 查看記憶
+
+   這顆按鈕會直接打開原本 /memory、/記憶 使用的記憶查看選單。
+   原本快捷指令 /memory、/記憶 保留不變。
+
+2. AI 回覆下方小按鈕改為：
+   [🗣️] [✏️] [🔁] [🧠] [▶️]
+
+   🗣️：補送目前這則 AI 回覆。
+   - 不新增 chat_memory，避免短期記憶膨脹。
+   - 會重新建立新 action，補送出來的新訊息也會有完整小按鈕。
+   - 若原本的 🧠 回覆依據還在 Render 記憶體，會複製到新訊息。
+
+3. 保留原本 /reply、/回覆 快捷指令。
+
+部署後測試：
+- 私聊輸入 /設定 → 記憶設定 → 📋 查看記憶
+- 私聊輸入 /memory 或 /記憶
+- AI 回覆下方確認按鈕順序：[🗣️] [✏️] [🔁] [🧠] [▶️]
+- 點 🗣️ 應補送同一則 AI 回覆
+
+已做檢查：
+python -m py_compile services/commands.py services/ai_actions.py handlers/call_handler.py

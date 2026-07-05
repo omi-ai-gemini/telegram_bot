@@ -347,6 +347,7 @@ def send_memory_menu(bot_id, chat_id, message_id=None, user_id=None):
         "🧠 記憶設定",
         [
             important_button,
+            [{"text": "📋 查看記憶", "callback_data": "mem_view_menu"}],
             [{"text": "🧹 清除當前記憶", "callback_data": "clear_current_memory"}],
             [{"text": "⬅️ 返回設定中心", "callback_data": "back_setting"}]
         ]

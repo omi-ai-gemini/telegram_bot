@@ -1,6 +1,7 @@
 from services.ai_actions import (
     run_continue_in_thread,
     run_regenerate_in_thread,
+    run_reply_ai_message_in_thread,
     start_edit_ai_message,
 )
 from services.memory_view import handle_memory_view_callback
@@ -92,6 +93,18 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     # callback_data：ai_edit:<id> / ai_regen:<id> / ai_continue:<id>
     # 群組先保留延伸，不開放；實際限制在 ai_actions 內也會再檢查。
     # =========================
+    if isinstance(user_text, str) and user_text.startswith("ai_reply:"):
+        action_id = user_text.split(":", 1)[1]
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在補送這句話"
+        )
+
+        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
     if isinstance(user_text, str) and user_text.startswith("ai_edit:"):
         action_id = user_text.split(":", 1)[1]
         ok, text = start_edit_ai_message(user_id, bot_id, chat_id, action_id)

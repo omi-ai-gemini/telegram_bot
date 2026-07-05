@@ -149,6 +149,7 @@ def build_ai_action_keyboard(action_id):
 
     return {
         "inline_keyboard": [[
+            {"text": "🗣️", "callback_data": f"ai_reply:{action_id}"},
             {"text": "✏️", "callback_data": f"ai_edit:{action_id}"},
             {"text": "🔁", "callback_data": f"ai_regen:{action_id}"},
             thought_button,
@@ -883,6 +884,100 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
         update_action_telegram_message_id(action_id, telegram_message_id)
 
     maintain_memory_after_reply(context["gemini_key"], bot_id, chat_id, user_id=user_id)
+
+
+
+def reply_ai_message(user_id, bot_id, chat_id, action_id):
+    """
+    🗣️ 補送目前這則 AI 回覆。
+
+    目的：把 /reply 的「重送 AI 回覆」能力做成訊息下方小按鈕。
+    行為：
+    - 讀取這顆按鈕對應的 assistant chat_memory。
+    - 重新送出同一段 AI 文字。
+    - 不新增 chat_memory，避免短期記憶膨脹。
+    - 重新建立一筆 action，讓新送出的訊息也有完整小按鈕。
+    """
+    if _is_group_chat(chat_id):
+        send_message(bot_id, chat_id, "群組暫不開放這個功能")
+        return
+
+    action = get_ai_message_action(action_id, bot_id, chat_id, user_id=user_id)
+
+    if not action:
+        send_message(bot_id, chat_id, "這則回覆已無法補送")
+        return
+
+    item = get_chat_memory_item(action.get("assistant_chat_id"), bot_id, chat_id)
+
+    if not item or str(item.get("role") or "").strip() != "assistant":
+        send_message(bot_id, chat_id, "找不到這則 AI 回覆，無法補送")
+        return
+
+    text = str(item.get("text") or "").strip()
+
+    if not text:
+        send_message(bot_id, chat_id, "這則 AI 回覆是空的，無法補送")
+        return
+
+    new_action_id = create_ai_message_action(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        assistant_chat_id=item.get("id"),
+        source_user_chat_id=action.get("source_user_chat_id"),
+        context_chat_id=action.get("context_chat_id"),
+        generation_type="reply_resend",
+    )
+
+    # 如果原 action 的回覆依據還在 Render 記憶體，就複製給新 action。
+    # 找不到也沒關係，新訊息的 🧠 會顯示空狀態。
+    if new_action_id:
+        old_thought = None
+        with _THOUGHT_CACHE_LOCK:
+            old_thought = dict(_THOUGHT_CACHE.get(str(action.get("id"))) or {})
+
+        if old_thought:
+            cache_ai_thought_summary(
+                new_action_id,
+                old_thought.get("text", ""),
+                status=old_thought.get("status"),
+                reason=old_thought.get("reason"),
+            )
+        else:
+            cache_ai_thought_summary(new_action_id, "", status="empty")
+
+    keyboard = build_ai_action_keyboard(new_action_id) if new_action_id else None
+
+    print(
+        f"AI REPLY BUTTON RESEND START source_action_id={action_id} new_action_id={new_action_id} len={len(text)}",
+        flush=True,
+    )
+
+    sent = send_message(
+        bot_id,
+        chat_id,
+        text,
+        reply_markup=keyboard,
+    )
+
+    telegram_message_id = _extract_telegram_message_id(sent)
+
+    print(
+        f"AI REPLY BUTTON RESEND RESULT new_action_id={new_action_id} telegram_message_id={telegram_message_id}",
+        flush=True,
+    )
+
+    if new_action_id and telegram_message_id:
+        update_action_telegram_message_id(new_action_id, telegram_message_id)
+
+
+def run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id):
+    threading.Thread(
+        target=reply_ai_message,
+        args=(user_id, bot_id, chat_id, action_id),
+        daemon=True,
+    ).start()
 
 
 def run_regenerate_in_thread(user_id, bot_id, chat_id, action_id):
