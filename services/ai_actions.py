@@ -77,6 +77,33 @@ def _is_group_chat(chat_id):
         return str(chat_id).startswith("-")
 
 
+def _should_show_ai_buttons_for_mode(mode):
+    """
+    聊天模式預設隱藏 AI 操作按鈕。
+
+    目的：
+    - 一般聊天看起來像正常真人對話，不露出開發者功能。
+    - 劇場模式保留原本訊息下方操作按鈕。
+    - 聊天模式需要操作時，改由 /hidden 叫出一層開發者按鈕。
+    """
+    return str(mode or "聊天模式").strip() != "聊天模式"
+
+
+def _should_show_ai_buttons(user_id, bot_id, chat_id):
+    try:
+        settings = get_character_settings(bot_id, chat_id, user_id=user_id)
+        return _should_show_ai_buttons_for_mode(settings.get("mode", "聊天模式"))
+    except Exception as exc:
+        print("AI BUTTON MODE CHECK ERROR:", exc, flush=True)
+        return False
+
+
+def _hidden_reply_markup(action_id):
+    if not action_id:
+        return None
+    return build_ai_action_keyboard(action_id)
+
+
 def _purge_expired_thought_cache(now=None):
     now = now or time.time()
 
@@ -174,6 +201,149 @@ def build_ai_action_keyboard(action_id):
             {"text": "▶️", "callback_data": f"ai_continue:{action_id}"},
         ]]
     }
+
+
+def _get_latest_ai_action_id(bot_id, chat_id, user_id):
+    """取得目前聊天室最後一筆可操作的 AI action。"""
+    if _is_group_chat(chat_id):
+        return None
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id
+            FROM ai_message_actions
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND user_id = %s
+            ORDER BY updated_at DESC, id DESC
+            LIMIT 1
+        """, (
+            _text_id(bot_id),
+            _text_id(chat_id),
+            _text_id(user_id),
+        ))
+
+        row = cursor.fetchone()
+        return int(row[0]) if row else None
+
+    except Exception as exc:
+        print("DB ERROR get_latest_ai_action_id:", exc, flush=True)
+        return None
+
+    finally:
+        conn.close()
+
+
+def _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id):
+    """
+    舊資料相容用。
+
+    如果聊天室已經有 AI 記憶，但還沒有 ai_message_actions，
+    /hidden 仍嘗試為最近一筆 assistant 建立 action。
+    這種舊 action 可能沒有 telegram_message_id，所以「✏️ / 🔁」可能無法操作舊訊息，
+    但「🗣️ / 🧠 / ▶️」仍有機會使用。
+    """
+    if _is_group_chat(chat_id):
+        return None
+
+    scope = "group" if _is_group_chat(chat_id) else "private"
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, role
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            ORDER BY id DESC
+            LIMIT 30
+        """, (
+            _text_id(bot_id),
+            _text_id(chat_id),
+            scope,
+        ))
+
+        rows = cursor.fetchall()
+        assistant_chat_id = None
+        source_user_chat_id = None
+
+        for row_id, role in rows:
+            role = str(role or "").strip()
+
+            if assistant_chat_id is None and role == "assistant":
+                assistant_chat_id = int(row_id)
+                continue
+
+            if assistant_chat_id is not None and role == "user":
+                source_user_chat_id = int(row_id)
+                break
+
+        if not assistant_chat_id:
+            return None
+
+        action_id = create_ai_message_action(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id,
+            assistant_chat_id=assistant_chat_id,
+            source_user_chat_id=source_user_chat_id,
+            context_chat_id=source_user_chat_id,
+            generation_type="hidden_latest",
+        )
+
+        if action_id:
+            cache_ai_thought_summary(action_id, "", status="empty")
+
+        return action_id
+
+    except Exception as exc:
+        print("DB ERROR create_latest_hidden_action_from_memory:", exc, flush=True)
+        return None
+
+    finally:
+        conn.close()
+
+
+def send_hidden_ai_action_menu(bot_id, chat_id, user_id):
+    """
+    /hidden 開發者功能選單。
+
+    聊天模式預設不在 AI 訊息下方顯示任何特殊按鈕，
+    只有使用者手動輸入 /hidden 時，才顯示一層操作按鈕。
+    """
+    if _is_group_chat(chat_id):
+        send_message(bot_id, chat_id, "群組暫不開放 /hidden 開發者功能")
+        return False
+
+    action_id = _get_latest_ai_action_id(bot_id, chat_id, user_id)
+
+    if not action_id:
+        action_id = _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id)
+
+    if not action_id:
+        send_message(bot_id, chat_id, "目前沒有可操作的 AI 回覆")
+        return False
+
+    reply_markup = _hidden_reply_markup(action_id)
+
+    send_message(
+        bot_id,
+        chat_id,
+        "開發者功能｜選擇要操作的最近一則 AI 回覆",
+        reply_markup=reply_markup,
+    )
+
+    print(
+        f"HIDDEN MENU SENT action_id={action_id} bot_id={bot_id} chat_id={chat_id}",
+        flush=True,
+    )
+
+    return True
 
 
 def cache_ai_thought_summary(action_id, thought_text, status=None, reason=None):
@@ -663,7 +833,11 @@ def process_pending_edit_message(user_id, bot_id, chat_id, user_text, user_messa
         send_message(bot_id, chat_id, "修改內容是空的，已取消。")
         return True
 
-    keyboard = build_ai_action_keyboard(action.get("id"))
+    keyboard = (
+        build_ai_action_keyboard(action.get("id"))
+        if _should_show_ai_buttons(user_id, bot_id, chat_id)
+        else None
+    )
 
     edit_message_text(
         bot_id,
@@ -794,7 +968,11 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
 
     cache_ai_thought_summary(action.get("id"), thought_summary, status=thought_source)
 
-    keyboard = build_ai_action_keyboard(action.get("id"))
+    keyboard = (
+        build_ai_action_keyboard(action.get("id"))
+        if _should_show_ai_buttons_for_mode(context.get("mode"))
+        else None
+    )
 
     sent = send_message(
         bot_id,
@@ -894,7 +1072,11 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     if action_id:
         cache_ai_thought_summary(action_id, thought_summary, status=thought_source)
 
-    keyboard = build_ai_action_keyboard(action_id) if action_id else None
+    keyboard = (
+        build_ai_action_keyboard(action_id)
+        if action_id and _should_show_ai_buttons_for_mode(context.get("mode"))
+        else None
+    )
     sent = send_message(bot_id, chat_id, reply, reply_markup=keyboard)
     telegram_message_id = _extract_telegram_message_id(sent)
 
@@ -965,7 +1147,11 @@ def reply_ai_message(user_id, bot_id, chat_id, action_id):
         else:
             cache_ai_thought_summary(new_action_id, "", status="empty")
 
-    keyboard = build_ai_action_keyboard(new_action_id) if new_action_id else None
+    keyboard = (
+        build_ai_action_keyboard(new_action_id)
+        if new_action_id and _should_show_ai_buttons(user_id, bot_id, chat_id)
+        else None
+    )
 
     print(
         f"AI REPLY BUTTON RESEND START source_action_id={action_id} new_action_id={new_action_id} len={len(text)}",

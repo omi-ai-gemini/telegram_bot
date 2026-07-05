@@ -173,10 +173,16 @@ C:\Projects\telemini
 ### `services\ai_actions.py`
 - `_text_id()`
 - `_is_group_chat()`
+- `_should_show_ai_buttons_for_mode()`
+- `_should_show_ai_buttons()`
+- `_hidden_reply_markup()`
 - `_purge_expired_thought_cache()`
 - `_get_or_create_ai_thought_token()`
 - `get_ai_thought_url()`
 - `build_ai_action_keyboard()`
+- `_get_latest_ai_action_id()`
+- `_create_latest_hidden_action_from_memory()`
+- `send_hidden_ai_action_menu()`
 - `cache_ai_thought_summary()`
 - `clear_ai_thought_summary()`
 - `get_ai_thought_summary_by_token()`

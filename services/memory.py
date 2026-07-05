@@ -25,11 +25,21 @@ def _decrypt_safe(value, aad=""):
 # 清除當前記憶
 # 用於「記憶設定 / 清除當前記憶」
 # =========================
-def delete_current_memory(bot_id, chat_id):
+def delete_current_memory(bot_id, chat_id, include_important=False):
+    """
+    清除當前聊天室記憶。
+
+    include_important=False：
+    - 保留 facts_memory，也就是「重點記憶」
+
+    include_important=True：
+    - 一併刪除 facts_memory
+    """
 
     bot_id = str(bot_id)
     chat_id = str(chat_id)
     scope = _get_scope(chat_id)
+    include_important = bool(include_important)
 
     conn = get_conn()
 
@@ -51,14 +61,15 @@ def delete_current_memory(bot_id, chat_id):
                 scope
             ))
 
-            cursor.execute("""
-                DELETE FROM facts_memory
-                WHERE chat_id = %s
-                  AND scope = %s
-            """, (
-                chat_id,
-                scope
-            ))
+            if include_important:
+                cursor.execute("""
+                    DELETE FROM facts_memory
+                    WHERE chat_id = %s
+                      AND scope = %s
+                """, (
+                    chat_id,
+                    scope
+                ))
 
         # =========================
         # 私聊記憶是 bot_id + chat_id 獨立
@@ -76,16 +87,17 @@ def delete_current_memory(bot_id, chat_id):
                 scope
             ))
 
-            cursor.execute("""
-                DELETE FROM facts_memory
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND scope = %s
-            """, (
-                bot_id,
-                chat_id,
-                scope
-            ))
+            if include_important:
+                cursor.execute("""
+                    DELETE FROM facts_memory
+                    WHERE bot_id = %s
+                      AND chat_id = %s
+                      AND scope = %s
+                """, (
+                    bot_id,
+                    chat_id,
+                    scope
+                ))
 
         # =========================
         # AI 訊息操作 / pending 狀態
@@ -179,7 +191,7 @@ def delete_current_memory(bot_id, chat_id):
 
         conn.commit()
 
-        print("DEBUG current memory deleted:", bot_id, chat_id, scope)
+        print("DEBUG current memory deleted:", bot_id, chat_id, scope, "include_important=", include_important)
 
     except Exception as e:
         conn.rollback()
@@ -195,9 +207,9 @@ def delete_current_memory(bot_id, chat_id):
 # 舊函式保留，避免舊檔案 import 爆掉
 # 實際邏輯直接走 delete_current_memory
 # =========================
-def delete_character_memory(bot_id, chat_id):
+def delete_character_memory(bot_id, chat_id, include_important=False):
 
-    delete_current_memory(bot_id, chat_id)
+    delete_current_memory(bot_id, chat_id, include_important=include_important)
 
 
 # =========================

@@ -1,4 +1,4 @@
-from services.ai_actions import process_pending_edit_message
+from services.ai_actions import process_pending_edit_message, send_hidden_ai_action_menu
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
@@ -46,6 +46,14 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
             user_id=user_id,
             bot_id=bot_id,
             chat_id=chat_id
+        )
+        return
+
+    if user_text == "/hidden":
+        send_hidden_ai_action_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id
         )
         return
 

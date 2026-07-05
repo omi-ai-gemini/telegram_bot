@@ -412,11 +412,21 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認清除當前記憶
-    # 只刪記憶，不刪人物 / 劇本 / 回覆風格
+    # 第二層選項：可選擇是否一併刪除重點記憶 facts_memory
     # =========================
-    if user_text == "confirm_clear_current_memory":
+    if user_text in [
+        "confirm_clear_current_memory",
+        "confirm_clear_current_memory_keep_important",
+        "confirm_clear_current_memory_with_important",
+    ]:
 
-        delete_current_memory(bot_id, chat_id)
+        include_important = user_text == "confirm_clear_current_memory_with_important"
+
+        delete_current_memory(
+            bot_id,
+            chat_id,
+            include_important=include_important
+        )
 
         delete_message(
             bot_id,
@@ -427,7 +437,11 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="✅ 已清除當前記憶"
+            text=(
+                "✅ 已清除當前記憶與重點記憶"
+                if include_important
+                else "✅ 已清除當前記憶，已保留重點記憶"
+            )
         )
         return
 
@@ -544,22 +558,25 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 確認刪除人物 / 劇本設定
-    # 會刪：
-    # - 聊天模式人物設定
-    # - 劇本設定
-    # - 短期記憶
-    # - 長期記憶
-    # - 情緒狀態
-    # 不會刪：
-    # - 回覆風格
+    # 第二層選項：可選擇是否一併刪除重點記憶 facts_memory
     # =========================
-    if user_text == "confirm_delete_character":
+    if user_text in [
+        "confirm_delete_character",
+        "confirm_delete_character_keep_important",
+        "confirm_delete_character_with_important",
+    ]:
+
+        include_important = user_text == "confirm_delete_character_with_important"
 
         delete_chat_persona_settings(bot_id, chat_id)
 
         delete_character_settings(bot_id, chat_id)
 
-        delete_current_memory(bot_id, chat_id)
+        delete_current_memory(
+            bot_id,
+            chat_id,
+            include_important=include_important
+        )
 
         delete_message(
             bot_id,
@@ -570,7 +587,11 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         answer_callback_query(
             bot_id,
             callback_id,
-            text="✅ 已刪除人物 / 劇本設定與記憶"
+            text=(
+                "✅ 已刪除人物 / 劇本設定、記憶與重點記憶"
+                if include_important
+                else "✅ 已刪除人物 / 劇本設定與記憶，已保留重點記憶"
+            )
         )
         return
 

@@ -957,7 +957,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：624
+- 行數：645
 
 ## imports
 - services.ai_actions.run_continue_in_thread
@@ -1075,7 +1075,7 @@ def _send_script_opening(bot_id, chat_id):
 
     return True
 ...
-... 已省略 544 行
+... 已省略 565 行
 ```
 
 
@@ -1084,10 +1084,11 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：52
+- 行數：60
 
 ## imports
 - services.ai_actions.process_pending_edit_message
+- services.ai_actions.send_hidden_ai_action_menu
 - services.call_ai.run_ai
 - services.call_ai.run_reply_recovery
 - services.commands.send_setting_menu
@@ -1098,7 +1099,7 @@ def _send_script_opening(bot_id, chat_id):
 
 ## preview
 ```text
-from services.ai_actions import process_pending_edit_message
+from services.ai_actions import process_pending_edit_message, send_hidden_ai_action_menu
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
@@ -1146,6 +1147,14 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
             user_id=user_id,
             bot_id=bot_id,
             chat_id=chat_id
+        )
+        return
+
+    if user_text == "/hidden":
+        send_hidden_ai_action_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id
         )
         return
 
@@ -1657,7 +1666,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1014
+- 行數：1200
 
 ## imports
 - datetime.datetime
@@ -1693,10 +1702,16 @@ def thought_page(token):
 ## functions
 - _text_id
 - _is_group_chat
+- _should_show_ai_buttons_for_mode
+- _should_show_ai_buttons
+- _hidden_reply_markup
 - _purge_expired_thought_cache
 - _get_or_create_ai_thought_token
 - get_ai_thought_url
 - build_ai_action_keyboard
+- _get_latest_ai_action_id
+- _create_latest_hidden_action_from_memory
+- send_hidden_ai_action_menu
 - cache_ai_thought_summary
 - clear_ai_thought_summary
 - get_ai_thought_summary_by_token
@@ -1799,9 +1814,9 @@ def _is_group_chat(chat_id):
         return str(chat_id).startswith("-")
 
 
-def _purge_expired_thought_cache(now=None):
+def _should_show_ai_buttons_for_mode(mode):
 ...
-... 已省略 934 行
+... 已省略 1120 行
 ```
 
 
@@ -1908,7 +1923,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：482
+- 行數：496
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -2031,7 +2046,7 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
 
     retry_sent = send_message(bot_id, chat_id, text, reply_markup=None)
 ...
-... 已省略 402 行
+... 已省略 416 行
 ```
 
 
@@ -2265,7 +2280,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\commands.py
 
 - 類型：.py
-- 行數：403
+- 行數：435
 
 ## imports
 - os
@@ -2379,7 +2394,7 @@ def _build_important_memory_url(bot_id, chat_id, user_id):
         print("X BASE_URL not found")
         return None
 ...
-... 已省略 323 行
+... 已省略 355 行
 ```
 
 
@@ -2969,7 +2984,7 @@ def _with_structured_reply_instructions(prompt):
 # services\memory.py
 
 - 類型：.py
-- 行數：1094
+- 行數：1106
 
 ## imports
 - hashlib
@@ -3038,11 +3053,21 @@ def _decrypt_safe(value, aad=""):
 # 清除當前記憶
 # 用於「記憶設定 / 清除當前記憶」
 # =========================
-def delete_current_memory(bot_id, chat_id):
+def delete_current_memory(bot_id, chat_id, include_important=False):
+    """
+    清除當前聊天室記憶。
+
+    include_important=False：
+    - 保留 facts_memory，也就是「重點記憶」
+
+    include_important=True：
+    - 一併刪除 facts_memory
+    """
 
     bot_id = str(bot_id)
     chat_id = str(chat_id)
     scope = _get_scope(chat_id)
+    include_important = bool(include_important)
 
     conn = get_conn()
 
@@ -3064,14 +3089,15 @@ def delete_current_memory(bot_id, chat_id):
                 scope
             ))
 
-            cursor.execute("""
-                DELETE FROM facts_memory
-                WHERE chat_id = %s
-                  AND scope = %s
-            """, (
-                chat_id,
-                scope
-            ))
+            if include_important:
+                cursor.execute("""
+                    DELETE FROM facts_memory
+                    WHERE chat_id = %s
+                      AND scope = %s
+                """, (
+                    chat_id,
+                    scope
+                ))
 
         # =========================
         # 私聊記憶是 bot_id + chat_id 獨立
@@ -3080,19 +3106,8 @@ def delete_current_memory(bot_id, chat_id):
 
             cursor.execute("""
                 DELETE FROM chat_memory
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND scope = %s
-            """, (
-                bot_id,
-                chat_id,
-                scope
-            ))
-
-            cursor.execute("""
-                DELETE FROM facts_memory
 ...
-... 已省略 1014 行
+... 已省略 1026 行
 ```
 
 
@@ -6132,45 +6147,58 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：35
+- 行數：48
 
 ## preview
 ```text
-Telemini 接續回覆指令強化包
+Telemini 聊天模式隱藏 AI 操作按鈕 /hidden 開發者選單包
 
 只包含修改檔，不是全專案。
 
 覆蓋檔案：
 - services/ai_actions.py
+- services/call_ai.py
+- handlers/message_handler.py
 
 更新內容：
-1. 強化 ▶️ 接續回覆送進 Gemini 的控制指令。
-2. 明確告訴 Gemini：
-   - 這不是新的使用者對話
-   - 這不是重新回答上一句
-   - 要從上一則 AI 回覆的下一秒接下去
-   - 必須承接情緒、動作、場景、語氣、人物狀態
-   - 必須有新的劇情推進
-   - 不要重述、改寫、整理上一則回覆
-   - 不要像重新輸出同一段
-   - 不要等待使用者輸入
-   - 不要替使用者說話或行動
+1. 聊天模式下，AI 正常回覆不再自動掛訊息下方小按鈕。
+   - 不顯示 [🗣️] [✏️] [🔁] [🧠] [▶️]
+   - 回覆看起來更像一般真人聊天。
 
-會影響的功能：
-- AI 回覆下方 ▶️ 接續按鈕
-- 對「接續型 action」按 🔁 重跑時，也會使用同一套接續指令
+2. 劇場模式保留原本訊息下方小按鈕。
+   - 劇情操作仍可直接在每則 AI 回覆下使用。
 
-不會影響：
-- 一般聊天回覆
-- ✏️ 修改
-- 🗣️ 補送
-- 一般 🔁 重跑
-- /reply、/回覆 救援指令
+3. 新增 /hidden 指令。
+   - 只有輸入 /hidden 時，才會出現開發者功能選單。
+   - 選單是一層按鈕：
+     [🗣️] [✏️] [🔁] [🧠] [▶️]
+   - 預設操作最近一則可操作的 AI 回覆。
+
+4. 聊天模式雖然不顯示按鈕，但後台仍會建立 ai_message_actions。
+   - 所以 /hidden 可以叫出最近一則 AI 回覆的操作功能。
+   - 🧠 回覆依據仍會寫入 Render 記憶體快取。
+
+5. /reply、🗣️、🔁、▶️ 產生的新 AI 訊息，如果目前是聊天模式，也不再自動掛按鈕。
+   - 要操作請再輸入 /hidden。
+
+不影響：
+- /setting、/設定
+- /memory、/記憶
+- /reply、/回覆
 - 記憶資料表
 - 資料庫結構
+- Gemini 回覆流程
+- 劇場模式下方操作按鈕
 
 已做檢查：
-python -m py_compile services/ai_actions.py
+python -m py_compile services/ai_actions.py services/call_ai.py handlers/message_handler.py
+
+部署後測試：
+1. 切到聊天模式。
+2. 正常聊天，確認 AI 訊息下方沒有小按鈕。
+3. 輸入 /hidden，確認出現：
+   [🗣️] [✏️] [🔁] [🧠] [▶️]
+4. 切到劇場模式，確認 AI 訊息下方仍保留小按鈕。
 ```
 
 

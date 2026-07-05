@@ -362,9 +362,25 @@ def send_clear_memory_confirm_message(bot_id, chat_id):
     _send_new_message(
         bot_id,
         chat_id,
-        "⚠️ 確認清除所有記憶？\n\n會清除：\n- 短期聊天記憶\n- 長期記憶\n- 情緒狀態\n\n不會清除：\n- 聊天對象\n- 劇本設定\n- 回覆風格\n- bot token\n- Gemini API key",
+        """⚠️ 要清除哪些記憶？
+
+一般記憶包含：
+- 短期聊天記憶
+- 長期摘要記憶
+- 情緒狀態
+- AI 回覆操作紀錄
+
+重點記憶是你手動建立的客製化記憶，可以選擇保留或一併刪除。
+
+不會清除：
+- 聊天對象
+- 劇本設定
+- 回覆風格
+- bot token
+- Gemini API key""",
         [
-            [{"text": "✅ 確認清除", "callback_data": "confirm_clear_current_memory"}],
+            [{"text": "✅ 清除一般記憶｜保留重點記憶", "callback_data": "confirm_clear_current_memory_keep_important"}],
+            [{"text": "⚠️ 清除一般記憶＋重點記憶", "callback_data": "confirm_clear_current_memory_with_important"}],
             [{"text": "取消清除", "callback_data": "cancel_clear_current_memory"}]
         ]
     )
@@ -379,9 +395,25 @@ def send_delete_character_confirm_message(bot_id, chat_id):
     _send_new_message(
         bot_id,
         chat_id,
-        "⚠️ 確認刪除人物 / 劇本設定？\n\n會刪除：\n- 聊天對象\n- 劇本設定\n- 短期記憶\n- 長期記憶\n- 情緒狀態\n\n不會刪除：\n- 回覆風格\n- bot token\n- Gemini API key",
+        """⚠️ 刪除人物 / 劇本設定時，要不要一併刪除重點記憶？
+
+一定會刪除：
+- 聊天對象
+- 劇本設定
+- 短期聊天記憶
+- 長期摘要記憶
+- 情緒狀態
+- AI 回覆操作紀錄
+
+重點記憶是你手動建立的客製化記憶，可以選擇保留或一併刪除。
+
+不會刪除：
+- 回覆風格
+- bot token
+- Gemini API key""",
         [
-            [{"text": "✅ 確認刪除", "callback_data": "confirm_delete_character"}],
+            [{"text": "✅ 刪除設定｜保留重點記憶", "callback_data": "confirm_delete_character_keep_important"}],
+            [{"text": "⚠️ 刪除設定＋重點記憶", "callback_data": "confirm_delete_character_with_important"}],
             [{"text": "取消刪除", "callback_data": "cancel_delete_character"}]
         ]
     )

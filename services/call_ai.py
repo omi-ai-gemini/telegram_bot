@@ -135,6 +135,7 @@ def _attach_reply_buttons_in_background(
     thought_summary,
     thought_source="empty",
     label="AI",
+    show_buttons=True,
 ):
     """
     背景補掛 AI 操作按鈕與 🧠 推理摘要。
@@ -180,6 +181,14 @@ def _attach_reply_buttons_in_background(
             update_action_telegram_message_id(action_id, telegram_message_id)
 
             cache_ai_thought_summary(action_id, thought_summary, status=thought_source)
+
+            if not show_buttons:
+                print(
+                    f"{label} BUTTON HIDDEN action_id={action_id} telegram_message_id={telegram_message_id}",
+                    flush=True,
+                )
+                return
+
             reply_markup = build_ai_action_keyboard(action_id)
 
             print(
@@ -287,6 +296,7 @@ def _send_generated_reply(
         thought_summary=thought_summary,
         thought_source=thought_source,
         label=label,
+        show_buttons=settings["mode"] != "聊天模式",
     )
 
     maintain_memory_after_reply(gemini_key, bot_id, chat_id, user_id=user_id)
@@ -433,6 +443,9 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
                 label="REPLY RESEND",
             )
 
+            scope = "group" if _is_group_chat(chat_id) else "private"
+            settings = _get_generation_settings(bot_id, chat_id, user_id, scope)
+
             _attach_reply_buttons_in_background(
                 bot_id=bot_id,
                 chat_id=chat_id,
@@ -444,6 +457,7 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
                 generation_type="reply_resend",
                 thought_summary="",
                 label="REPLY RESEND",
+                show_buttons=settings["mode"] != "聊天模式",
             )
 
             print(
