@@ -67,6 +67,27 @@ _THOUGHT_TOKEN_INDEX = {}
 _THOUGHT_CACHE_LOCK = threading.Lock()
 
 
+# =========================
+# /hidden Reply Keyboard 狀態
+# =========================
+# Reply Keyboard 不是 callback，它會把按鈕文字送成使用者訊息。
+# 所以需要在記憶體記錄「目前這個 user 開啟的開發者鍵盤」對應哪一個 action_id。
+# 不寫 DB：Render 重啟後失效；失效時按鍵會自動關閉鍵盤，不會進 AI 聊天。
+HIDDEN_KEYBOARD_TTL_SECONDS = 10 * 60
+HIDDEN_KEYBOARD_CLOSE_TEXT = "關閉功能鍵盤"
+HIDDEN_KEYBOARD_ACTIONS = {
+    "🗣️": "reply",
+    "✏️": "edit",
+    "🔁": "regen",
+    "🧠": "thought",
+    "▶️": "continue",
+    HIDDEN_KEYBOARD_CLOSE_TEXT: "close",
+    "❌ 關閉功能鍵盤": "close",
+}
+_HIDDEN_KEYBOARD_SESSIONS = {}
+_HIDDEN_KEYBOARD_LOCK = threading.Lock()
+
+
 def _text_id(value):
     return str(value or "").strip()
 
@@ -99,29 +120,116 @@ def _should_show_ai_buttons(user_id, bot_id, chat_id):
         return False
 
 
-def _hidden_reply_markup(action_id):
-    """
-    /hidden 專用按鈕。
+def _hidden_keyboard_key(bot_id, chat_id, user_id):
+    return (_text_id(bot_id), _text_id(chat_id), _text_id(user_id))
 
-    這裡不能直接沿用 AI 訊息下方的 callback_data，
-    因為 /hidden 選單點完後要刪掉「選單訊息」與「/hidden 指令訊息」。
-    所以使用 hidden_ai_* 前綴，讓 call_handler 可以分辨：
-    - hidden_ai_*：刪除開發者選單
-    - ai_*：操作原本 AI 訊息，不刪 AI 訊息本體
-    """
-    if not action_id:
-        return None
 
+def _hidden_keyboard_markup():
+    """
+    /hidden 專用 Reply Keyboard。
+
+    這種鍵盤會出現在輸入框下面，不會掛在任何聊天訊息下方。
+    按下按鈕後 Telegram 會送出同文字訊息，所以 message_handler 需要攔截並刪除。
+    """
     return {
-        "inline_keyboard": [[
-            {"text": "🗣️", "callback_data": f"hidden_ai_reply:{action_id}"},
-            {"text": "✏️", "callback_data": f"hidden_ai_edit:{action_id}"},
-            {"text": "🔁", "callback_data": f"hidden_ai_regen:{action_id}"},
-            {"text": "🧠", "callback_data": f"hidden_ai_thought:{action_id}"},
-            {"text": "▶️", "callback_data": f"hidden_ai_continue:{action_id}"},
-        ]]
+        "keyboard": [
+            [
+                {"text": "🗣️"},
+                {"text": "✏️"},
+                {"text": "🔁"},
+                {"text": "🧠"},
+                {"text": "▶️"},
+            ],
+            [{"text": HIDDEN_KEYBOARD_CLOSE_TEXT}],
+        ],
+        "resize_keyboard": True,
+        "one_time_keyboard": False,
+        "selective": True,
     }
 
+
+def _remove_keyboard_markup():
+    return {
+        "remove_keyboard": True,
+        "selective": True,
+    }
+
+
+def _delete_message_later(bot_id, chat_id, message_id, delay_seconds=1.5):
+    """延遲刪除臨時訊息，讓 Telegram 用戶端有時間套用鍵盤狀態。"""
+    if not message_id:
+        return False
+
+    def _worker():
+        try:
+            time.sleep(delay_seconds)
+            delete_message(bot_id, chat_id, message_id)
+        except Exception as exc:
+            print("TEMP MESSAGE DELETE ERROR:", exc, flush=True)
+
+    threading.Thread(target=_worker, daemon=True).start()
+    return True
+
+
+def _save_hidden_keyboard_session(bot_id, chat_id, user_id, action_id, command_message_id=None, notice_message_id=None):
+    key = _hidden_keyboard_key(bot_id, chat_id, user_id)
+    expires_at = time.time() + HIDDEN_KEYBOARD_TTL_SECONDS
+
+    with _HIDDEN_KEYBOARD_LOCK:
+        _HIDDEN_KEYBOARD_SESSIONS[key] = {
+            "action_id": str(action_id),
+            "command_message_id": command_message_id,
+            "notice_message_id": notice_message_id,
+            "expires_at": expires_at,
+        }
+
+    return True
+
+
+def _pop_hidden_keyboard_session(bot_id, chat_id, user_id):
+    key = _hidden_keyboard_key(bot_id, chat_id, user_id)
+    now = time.time()
+
+    with _HIDDEN_KEYBOARD_LOCK:
+        item = _HIDDEN_KEYBOARD_SESSIONS.pop(key, None)
+
+    if not item:
+        return None
+
+    if item.get("expires_at", 0) <= now:
+        item["expired"] = True
+
+    return item
+
+
+def _close_hidden_keyboard(bot_id, chat_id, user_id, session=None, notice_text="功能鍵盤已關閉"):
+    """
+    收掉 Reply Keyboard，並刪除 /hidden 相關臨時訊息。
+
+    注意：Telegram 的 ReplyKeyboardRemove 必須跟著一則訊息送出，
+    所以這裡會送一則極短提示，再延遲刪除，維持聊天室乾淨。
+    """
+    session = session or _pop_hidden_keyboard_session(bot_id, chat_id, user_id) or {}
+
+    command_message_id = session.get("command_message_id")
+    notice_message_id = session.get("notice_message_id")
+
+    if command_message_id:
+        delete_message(bot_id, chat_id, command_message_id)
+
+    if notice_message_id:
+        delete_message(bot_id, chat_id, notice_message_id)
+
+    result = send_message(
+        bot_id,
+        chat_id,
+        notice_text,
+        reply_markup=_remove_keyboard_markup(),
+    )
+    remove_message_id = _extract_telegram_message_id(result)
+    _delete_message_later(bot_id, chat_id, remove_message_id, delay_seconds=1.2)
+
+    return True
 
 def _purge_expired_thought_cache(now=None):
     now = now or time.time()
@@ -338,18 +446,19 @@ def _extract_telegram_message_id(result):
 
 def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None):
     """
-    /hidden 開發者功能選單。
+    /hidden 開發者功能鍵盤。
 
-    聊天模式預設不在 AI 訊息下方顯示任何特殊按鈕，
-    只有使用者手動輸入 /hidden 時，才顯示一層操作按鈕。
-
-    source_message_id：
-    - 使用者輸入 /hidden 的訊息 id。
-    - 選單送出後會建立一筆 session。
-    - 使用者點任一 hidden_ai_* 按鈕時，call_handler 會刪掉選單與這則 /hidden。
+    改用 Reply Keyboard 顯示在輸入框下面：
+    - 不再產生訊息下方 Inline Keyboard。
+    - /hidden 指令訊息會刪除。
+    - 開啟提示會延遲刪除，但鍵盤會留在輸入框下方。
+    - 使用者按鍵後，該按鍵文字訊息會被刪除，並自動收起鍵盤。
     """
     if _is_group_chat(chat_id):
-        send_message(bot_id, chat_id, "群組暫不開放 /hidden 開發者功能")
+        if source_message_id:
+            delete_message(bot_id, chat_id, source_message_id)
+        result = send_message(bot_id, chat_id, "群組暫不開放 /hidden 開發者功能")
+        _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
         return False
 
     action_id = _get_latest_ai_action_id(bot_id, chat_id, user_id)
@@ -358,38 +467,127 @@ def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None)
         action_id = _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id)
 
     if not action_id:
-        send_message(bot_id, chat_id, "目前沒有可操作的 AI 回覆")
+        if source_message_id:
+            delete_message(bot_id, chat_id, source_message_id)
+        result = send_message(bot_id, chat_id, "目前沒有可操作的 AI 回覆")
+        _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
         return False
 
-    reply_markup = _hidden_reply_markup(action_id)
+    # 如果同一個人前一次開過 /hidden，先清掉舊狀態與舊臨時訊息。
+    old_session = _pop_hidden_keyboard_session(bot_id, chat_id, user_id)
+    if old_session:
+        if old_session.get("command_message_id"):
+            delete_message(bot_id, chat_id, old_session.get("command_message_id"))
+        if old_session.get("notice_message_id"):
+            delete_message(bot_id, chat_id, old_session.get("notice_message_id"))
 
     result = send_message(
         bot_id,
         chat_id,
-        "開發者功能｜選擇要操作的最近一則 AI 回覆",
-        reply_markup=reply_markup,
+        "開發者功能鍵盤已開啟",
+        reply_markup=_hidden_keyboard_markup(),
+    )
+    notice_message_id = _extract_telegram_message_id(result)
+
+    _save_hidden_keyboard_session(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        action_id=action_id,
+        command_message_id=source_message_id,
+        notice_message_id=notice_message_id,
     )
 
-    menu_message_id = _extract_telegram_message_id(result)
+    if source_message_id:
+        delete_message(bot_id, chat_id, source_message_id)
 
-    if menu_message_id and source_message_id:
-        save_setting_menu_session(
-            bot_id=bot_id,
-            chat_id=chat_id,
-            user_id=user_id,
-            menu_message_id=menu_message_id,
-            command_message_id=source_message_id,
-        )
+    # 保留一點時間讓 Telegram 用戶端套用 Reply Keyboard，再刪除提示訊息。
+    _delete_message_later(bot_id, chat_id, notice_message_id, delay_seconds=1.5)
 
     print(
-        f"HIDDEN MENU SENT action_id={action_id} bot_id={bot_id} "
-        f"chat_id={chat_id} menu_message_id={menu_message_id} "
-        f"source_message_id={source_message_id}",
+        f"HIDDEN REPLY KEYBOARD OPENED action_id={action_id} bot_id={bot_id} chat_id={chat_id}",
         flush=True,
     )
 
     return True
 
+
+def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_id=None):
+    """
+    攔截 /hidden Reply Keyboard 送出的按鍵文字。
+
+    回傳 True 代表已處理，不可以再丟進一般 AI 聊天或 pending edit。
+    """
+    action_type = HIDDEN_KEYBOARD_ACTIONS.get(str(user_text or "").strip())
+
+    if not action_type:
+        return False
+
+    # 先刪掉使用者按鍵文字，避免聊天室留下「🗣️ / ✏️ / 🔁」。
+    if message_id:
+        delete_message(bot_id, chat_id, message_id)
+
+    if _is_group_chat(chat_id):
+        return True
+
+    session = _pop_hidden_keyboard_session(bot_id, chat_id, user_id)
+
+    if not session or session.get("expired"):
+        _close_hidden_keyboard(
+            bot_id,
+            chat_id,
+            user_id,
+            session=session,
+            notice_text="功能鍵盤已失效",
+        )
+        return True
+
+    action_id = session.get("action_id")
+
+    # 關閉鍵盤只收掉鍵盤與臨時訊息，不做 AI 操作。
+    if action_type == "close":
+        _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
+        return True
+
+    # 其他功能鍵：用完就自動收起鍵盤。
+    _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
+
+    if action_type == "reply":
+        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        return True
+
+    if action_type == "edit":
+        ok, text = start_edit_ai_message(user_id, bot_id, chat_id, action_id)
+        if not ok:
+            result = send_message(bot_id, chat_id, text or "這則回覆已無法操作")
+            _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
+        return True
+
+    if action_type == "regen":
+        run_regenerate_in_thread(user_id, bot_id, chat_id, action_id)
+        return True
+
+    if action_type == "thought":
+        thought_url = get_ai_thought_url(action_id)
+
+        if thought_url:
+            result = send_message(
+                bot_id,
+                chat_id,
+                f"AI 回覆依據：\n{thought_url}",
+            )
+            # 給使用者一點時間點連結，之後自動刪除，避免聊天室髒掉。
+            _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=45)
+        else:
+            result = send_message(bot_id, chat_id, "回覆依據連結尚未建立")
+            _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
+        return True
+
+    if action_type == "continue":
+        run_continue_in_thread(user_id, bot_id, chat_id, action_id)
+        return True
+
+    return True
 
 def cache_ai_thought_summary(action_id, thought_text, status=None, reason=None):
     """

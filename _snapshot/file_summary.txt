@@ -957,9 +957,10 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：645
+- 行數：759
 
 ## imports
+- services.ai_actions.get_ai_thought_url
 - services.ai_actions.run_continue_in_thread
 - services.ai_actions.run_regenerate_in_thread
 - services.ai_actions.run_reply_ai_message_in_thread
@@ -990,11 +991,13 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 ## functions
 - _setting_fallback_text
 - _send_script_opening
+- _cleanup_session_bound_menu
 - handle_ui
 
 ## preview
 ```text
 from services.ai_actions import (
+    get_ai_thought_url,
     run_continue_in_thread,
     run_regenerate_in_thread,
     run_reply_ai_message_in_thread,
@@ -1073,9 +1076,8 @@ def _send_script_opening(bot_id, chat_id):
         chat_id
     )
 
-    return True
 ...
-... 已省略 565 行
+... 已省略 679 行
 ```
 
 
@@ -1084,9 +1086,10 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：60
+- 行數：85
 
 ## imports
+- services.ai_actions.handle_hidden_keyboard_message
 - services.ai_actions.process_pending_edit_message
 - services.ai_actions.send_hidden_ai_action_menu
 - services.call_ai.run_ai
@@ -1099,13 +1102,36 @@ def _send_script_opening(bot_id, chat_id):
 
 ## preview
 ```text
-from services.ai_actions import process_pending_edit_message, send_hidden_ai_action_menu
+from services.ai_actions import (
+    handle_hidden_keyboard_message,
+    process_pending_edit_message,
+    send_hidden_ai_action_menu,
+)
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
+
+    # =========================
+    # /hidden Reply Keyboard 按鍵
+    # 這些按鍵會以「使用者文字訊息」形式進來，必須先攔截：
+    # - 刪掉按鍵文字訊息
+    # - 不寫入記憶
+    # - 不送 Gemini
+    # - 不誤觸 pending edit
+    # =========================
+    handled = handle_hidden_keyboard_message(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_text=user_text,
+        message_id=message_id,
+    )
+
+    if handled:
+        return
 
     # =========================
     # AI 訊息修改模式
@@ -1138,7 +1164,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         send_memory_view_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id
+            user_id=user_id,
+            source_message_id=message_id
         )
         return
 
@@ -1154,11 +1181,9 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         send_hidden_ai_action_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id
-        )
-        return
-
-    run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
+            user_id=user_id,
+...
+... 已省略 5 行
 ```
 
 
@@ -1666,7 +1691,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1200
+- 行數：1443
 
 ## imports
 - datetime.datetime
@@ -1691,6 +1716,7 @@ def thought_page(token):
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
 - services.reply_style.get_reply_style_settings
+- services.setting_sessions.save_setting_menu_session
 - services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
 - services.telegram_service.send_message
@@ -1704,14 +1730,22 @@ def thought_page(token):
 - _is_group_chat
 - _should_show_ai_buttons_for_mode
 - _should_show_ai_buttons
-- _hidden_reply_markup
+- _hidden_keyboard_key
+- _hidden_keyboard_markup
+- _remove_keyboard_markup
+- _delete_message_later
+- _save_hidden_keyboard_session
+- _pop_hidden_keyboard_session
+- _close_hidden_keyboard
 - _purge_expired_thought_cache
 - _get_or_create_ai_thought_token
 - get_ai_thought_url
 - build_ai_action_keyboard
 - _get_latest_ai_action_id
 - _create_latest_hidden_action_from_memory
+- _extract_telegram_message_id
 - send_hidden_ai_action_menu
+- handle_hidden_keyboard_message
 - cache_ai_thought_summary
 - clear_ai_thought_summary
 - get_ai_thought_summary_by_token
@@ -1732,6 +1766,7 @@ def thought_page(token):
 - run_reply_ai_message_in_thread
 - run_regenerate_in_thread
 - run_continue_in_thread
+- _worker
 
 ## preview
 ```text
@@ -1762,6 +1797,7 @@ from services.reply_style import get_reply_style_settings
 from services.telegram_service import delete_message, edit_message_text, send_message
 from services.time_context import get_current_time_context
 from services.user_router import get_gemini_key
+from services.setting_sessions import save_setting_menu_session
 
 
 EDIT_PENDING_MINUTES = 5
@@ -1803,20 +1839,19 @@ _THOUGHT_TOKEN_INDEX = {}
 _THOUGHT_CACHE_LOCK = threading.Lock()
 
 
-def _text_id(value):
-    return str(value or "").strip()
-
-
-def _is_group_chat(chat_id):
-    try:
-        return int(chat_id) < 0
-    except Exception:
-        return str(chat_id).startswith("-")
-
-
-def _should_show_ai_buttons_for_mode(mode):
+# =========================
+# /hidden Reply Keyboard 狀態
+# =========================
+# Reply Keyboard 不是 callback，它會把按鈕文字送成使用者訊息。
+# 所以需要在記憶體記錄「目前這個 user 開啟的開發者鍵盤」對應哪一個 action_id。
+# 不寫 DB：Render 重啟後失效；失效時按鍵會自動關閉鍵盤，不會進 AI 聊天。
+HIDDEN_KEYBOARD_TTL_SECONDS = 10 * 60
+HIDDEN_KEYBOARD_CLOSE_TEXT = "關閉功能鍵盤"
+HIDDEN_KEYBOARD_ACTIONS = {
+    "🗣️": "reply",
+    "✏️": "edit",
 ...
-... 已省略 1120 行
+... 已省略 1363 行
 ```
 
 
@@ -3242,7 +3277,7 @@ def _rows_to_plain_text(bot_id, chat_id, scope, rows):
 # services\memory_view.py
 
 - 類型：.py
-- 行數：238
+- 行數：267
 
 ## imports
 - os
@@ -3253,6 +3288,8 @@ def _rows_to_plain_text(bot_id, chat_id, scope, rows):
 - services.memory_summary.list_memory_summaries
 - services.setting_auth.create_setting_token
 - services.setting_auth.is_group_chat
+- services.setting_sessions.pop_setting_menu_session
+- services.setting_sessions.save_setting_menu_session
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
@@ -3285,6 +3322,7 @@ from services.memory import (
 from services.memory_summary import delete_memory_summary, list_memory_summaries
 from services.setting_auth import create_setting_token, is_group_chat
 from services.telegram_service import answer_callback_query, delete_message, edit_message_text, send_message
+from services.setting_sessions import save_setting_menu_session, pop_setting_menu_session
 
 
 def _text_id(value):
@@ -3353,9 +3391,8 @@ def _send_or_edit(bot_id, chat_id, message_id, text, reply_markup):
     return send_message(bot_id, chat_id, text, reply_markup=reply_markup)
 
 
-def build_memory_view_menu_markup(bot_id, chat_id, user_id):
 ...
-... 已省略 158 行
+... 已省略 187 行
 ```
 
 
@@ -4143,7 +4180,7 @@ def _has_chat_persona(chat_persona_settings):
 # services\telegram_service.py
 
 - 類型：.py
-- 行數：94
+- 行數：97
 
 ## imports
 - config.TELEGRAM_API_BASE
@@ -4228,7 +4265,7 @@ def edit_message_text(bot_id, chat_id, message_id, text, reply_markup=None):
 # =========================
 # Telegram callback 提示
 # =========================
-def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False):
+def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False, url=None):
     payload = {
         "callback_query_id": callback_query_id
     }
@@ -4240,7 +4277,7 @@ def answer_callback_query(bot_id, callback_query_id, text=None, show_alert=False
         payload["show_alert"] = True
 
 ...
-... 已省略 14 行
+... 已省略 17 行
 ```
 
 
@@ -6147,58 +6184,71 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：48
+- 行數：61
 
 ## preview
 ```text
-Telemini 聊天模式隱藏 AI 操作按鈕 /hidden 開發者選單包
+Telemini /hidden 改成輸入框下方 Reply Keyboard 包
 
 只包含修改檔，不是全專案。
 
 覆蓋檔案：
 - services/ai_actions.py
+- services/telegram_service.py
+- services/memory_view.py
 - services/call_ai.py
 - handlers/message_handler.py
+- handlers/call_handler.py
 
 更新內容：
-1. 聊天模式下，AI 正常回覆不再自動掛訊息下方小按鈕。
-   - 不顯示 [🗣️] [✏️] [🔁] [🧠] [▶️]
-   - 回覆看起來更像一般真人聊天。
+1. /hidden 不再送出訊息下方 Inline Keyboard。
+   改成 Telegram 輸入框下面的 Reply Keyboard：
+   [🗣️] [✏️] [🔁] [🧠] [▶️]
+   [關閉功能鍵盤]
 
-2. 劇場模式保留原本訊息下方小按鈕。
-   - 劇情操作仍可直接在每則 AI 回覆下使用。
+2. 開啟 /hidden 後會清理：
+   - 使用者輸入的 /hidden 指令訊息
+   - bot 傳出的「開發者功能鍵盤已開啟」提示訊息
 
-3. 新增 /hidden 指令。
-   - 只有輸入 /hidden 時，才會出現開發者功能選單。
-   - 選單是一層按鈕：
-     [🗣️] [✏️] [🔁] [🧠] [▶️]
-   - 預設操作最近一則可操作的 AI 回覆。
+3. 按任一功能鍵後會清理：
+   - 使用者按鍵產生的文字訊息，例如 🗣️ / ✏️ / 🔁 / 🧠 / ▶️
+   - /hidden 指令訊息，如果還存在
+   - 開啟鍵盤提示訊息，如果還存在
+   - 自動收起 Reply Keyboard
 
-4. 聊天模式雖然不顯示按鈕，但後台仍會建立 ai_message_actions。
-   - 所以 /hidden 可以叫出最近一則 AI 回覆的操作功能。
-   - 🧠 回覆依據仍會寫入 Render 記憶體快取。
+4. 功能鍵行為：
+   - 🗣️：補送最近一則 AI 回覆
+   - ✏️：進入修改模式
+   - 🔁：重跑最近一則 AI 回覆
+   - 🧠：送出 AI 回覆依據連結，45 秒後自動刪除連結訊息
+   - ▶️：接續最近一則 AI 回覆
+   - 關閉功能鍵盤：只收起鍵盤並清理訊息
 
-5. /reply、🗣️、🔁、▶️ 產生的新 AI 訊息，如果目前是聊天模式，也不再自動掛按鈕。
-   - 要操作請再輸入 /hidden。
+5. /memory、/記憶 關閉清理保留：
+   - 按「❌ 關閉」會刪除記憶選單
+   - 同時刪除使用者輸入的 /memory 或 /記憶
 
-不影響：
-- /setting、/設定
-- /memory、/記憶
-- /reply、/回覆
-- 記憶資料表
-- 資料庫結構
-- Gemini 回覆流程
-- 劇場模式下方操作按鈕
+6. 從 /setting → 記憶設定 → 查看記憶 進入後：
+   - 按「❌ 關閉」會刪除目前記憶查看選單
+   - 同時刪除原本使用者輸入的 /setting 或 /設定
+
+7. 聊天模式仍不自動掛 AI 訊息下方按鈕。
+   劇場模式仍保留 AI 訊息下方小按鈕。
+
+注意：
+- Reply Keyboard 按鈕本質上會送出一則使用者文字訊息，本包已在 message_handler 最前面攔截並刪除，不會寫入記憶，也不會送進 Gemini。
+- 如果 Render 重啟後鍵盤還殘留在 Telegram 用戶端，使用者按任一功能鍵會自動收起鍵盤並顯示短暫「功能鍵盤已失效」。
+- 🧠 因 Reply Keyboard 不能直接放 URL，所以會短暫送出連結訊息，45 秒後自動刪除。
 
 已做檢查：
-python -m py_compile services/ai_actions.py services/call_ai.py handlers/message_handler.py
+python -m py_compile services/ai_actions.py services/telegram_service.py services/memory_view.py services/call_ai.py handlers/message_handler.py handlers/call_handler.py
 
-部署後測試：
-1. 切到聊天模式。
-2. 正常聊天，確認 AI 訊息下方沒有小按鈕。
-3. 輸入 /hidden，確認出現：
-   [🗣️] [✏️] [🔁] [🧠] [▶️]
-4. 切到劇場模式，確認 AI 訊息下方仍保留小按鈕。
+測試順序：
+1. 聊天模式正常聊天，確認 AI 訊息下方沒有小按鈕。
+2. 輸入 /hidden，確認輸入框下方出現 Reply Keyboard，聊天室不留下 /hidden 與開啟提示。
+3. 按 🗣️ / ✏️ / 🔁 / 🧠 / ▶️，確認按鍵文字會被刪除，鍵盤會自動收起。
+4. 輸入 /memory，按 ❌ 關閉，確認 /memory 與選單一起刪除。
+5. 輸入 /setting → 記憶設定 → 查看記憶 → ❌ 關閉，確認 /setting 與記憶選單一起刪除。
 ```
 
 

@@ -130,6 +130,7 @@ C:\Projects\telemini
 ### `handlers\call_handler.py`
 - `_setting_fallback_text()`
 - `_send_script_opening()`
+- `_cleanup_session_bound_menu()`
 - `handle_ui()`
 
 ### `handlers\message_handler.py`
@@ -175,14 +176,22 @@ C:\Projects\telemini
 - `_is_group_chat()`
 - `_should_show_ai_buttons_for_mode()`
 - `_should_show_ai_buttons()`
-- `_hidden_reply_markup()`
+- `_hidden_keyboard_key()`
+- `_hidden_keyboard_markup()`
+- `_remove_keyboard_markup()`
+- `_delete_message_later()`
+- `_save_hidden_keyboard_session()`
+- `_pop_hidden_keyboard_session()`
+- `_close_hidden_keyboard()`
 - `_purge_expired_thought_cache()`
 - `_get_or_create_ai_thought_token()`
 - `get_ai_thought_url()`
 - `build_ai_action_keyboard()`
 - `_get_latest_ai_action_id()`
 - `_create_latest_hidden_action_from_memory()`
+- `_extract_telegram_message_id()`
 - `send_hidden_ai_action_menu()`
+- `handle_hidden_keyboard_message()`
 - `cache_ai_thought_summary()`
 - `clear_ai_thought_summary()`
 - `get_ai_thought_summary_by_token()`
@@ -203,6 +212,7 @@ C:\Projects\telemini
 - `run_reply_ai_message_in_thread()`
 - `run_regenerate_in_thread()`
 - `run_continue_in_thread()`
+- `_worker()`
 
 ### `services\bot_router.py`
 - `_text_id()`
