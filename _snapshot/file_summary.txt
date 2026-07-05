@@ -1657,7 +1657,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：996
+- 行數：1014
 
 ## imports
 - datetime.datetime
@@ -1751,7 +1751,25 @@ from services.user_router import get_gemini_key
 
 EDIT_PENDING_MINUTES = 5
 THOUGHT_CACHE_TTL_SECONDS = 60 * 60
-CONTINUE_USER_TEXT = "（請你不要等待使用者輸入，直接順著目前對話、場景、角色狀態與語氣，自然接續下一句。不要重複上一句。）"
+CONTINUE_USER_TEXT = """
+【接續劇情指令】
+這不是新的使用者對話，也不是重新回答上一句。
+這是使用者按下「接續」功能後送進來的控制指令。
+
+請把目前短期記憶中的最後一則 AI 回覆，視為剛剛才發生的上一幕，
+從那一幕的下一秒自然接下去。
+
+接續要求：
+1. 必須承接上一句的情緒、動作、場景、語氣與人物狀態。
+2. 必須有新的劇情推進，可以是新的反應、動作、對話轉折、情緒變化或事件線索。
+3. 不要重述上一則回覆，不要改寫上一則回覆，不要整理上一則回覆。
+4. 不要像重新輸出同一段，不要回到場景開頭，不要重新介紹人物。
+5. 不要等待使用者輸入，不要問「要不要繼續」。
+6. 不要替使用者說話、行動或決定想法。
+7. 如果是聊天模式，就自然補上下一句；如果是劇場模式，就自然推進下一幕。
+
+請直接輸出接續內容。
+"""
 
 
 # =========================
@@ -1782,26 +1800,8 @@ def _is_group_chat(chat_id):
 
 
 def _purge_expired_thought_cache(now=None):
-    now = now or time.time()
-
-    expired_action_ids = [
-        action_id
-        for action_id, item in _THOUGHT_CACHE.items()
-        if item.get("expires_at", 0) <= now
-    ]
-
-    for action_id in expired_action_ids:
-        item = _THOUGHT_CACHE.pop(action_id, None) or {}
-        token = item.get("token")
-        if token:
-            _THOUGHT_TOKEN_INDEX.pop(token, None)
-
-
-def _get_or_create_ai_thought_token(action_id):
-    """
-    取得某則 AI 回覆的推理摘要網頁 token。
 ...
-... 已省略 916 行
+... 已省略 934 行
 ```
 
 
@@ -6132,44 +6132,45 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：34
+- 行數：35
 
 ## preview
 ```text
-Telemini 記憶設定 / AI 回覆按鈕小改版
+Telemini 接續回覆指令強化包
 
 只包含修改檔，不是全專案。
 
 覆蓋檔案：
-- services/commands.py
 - services/ai_actions.py
-- handlers/call_handler.py
 
 更新內容：
-1. 「⚙️ 設定中心」→「🧠 記憶設定」內新增：
-   - 📋 查看記憶
+1. 強化 ▶️ 接續回覆送進 Gemini 的控制指令。
+2. 明確告訴 Gemini：
+   - 這不是新的使用者對話
+   - 這不是重新回答上一句
+   - 要從上一則 AI 回覆的下一秒接下去
+   - 必須承接情緒、動作、場景、語氣、人物狀態
+   - 必須有新的劇情推進
+   - 不要重述、改寫、整理上一則回覆
+   - 不要像重新輸出同一段
+   - 不要等待使用者輸入
+   - 不要替使用者說話或行動
 
-   這顆按鈕會直接打開原本 /memory、/記憶 使用的記憶查看選單。
-   原本快捷指令 /memory、/記憶 保留不變。
+會影響的功能：
+- AI 回覆下方 ▶️ 接續按鈕
+- 對「接續型 action」按 🔁 重跑時，也會使用同一套接續指令
 
-2. AI 回覆下方小按鈕改為：
-   [🗣️] [✏️] [🔁] [🧠] [▶️]
-
-   🗣️：補送目前這則 AI 回覆。
-   - 不新增 chat_memory，避免短期記憶膨脹。
-   - 會重新建立新 action，補送出來的新訊息也會有完整小按鈕。
-   - 若原本的 🧠 回覆依據還在 Render 記憶體，會複製到新訊息。
-
-3. 保留原本 /reply、/回覆 快捷指令。
-
-部署後測試：
-- 私聊輸入 /設定 → 記憶設定 → 📋 查看記憶
-- 私聊輸入 /memory 或 /記憶
-- AI 回覆下方確認按鈕順序：[🗣️] [✏️] [🔁] [🧠] [▶️]
-- 點 🗣️ 應補送同一則 AI 回覆
+不會影響：
+- 一般聊天回覆
+- ✏️ 修改
+- 🗣️ 補送
+- 一般 🔁 重跑
+- /reply、/回覆 救援指令
+- 記憶資料表
+- 資料庫結構
 
 已做檢查：
-python -m py_compile services/commands.py services/ai_actions.py handlers/call_handler.py
+python -m py_compile services/ai_actions.py
 ```
 
 
