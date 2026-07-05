@@ -501,8 +501,10 @@ def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None)
     if source_message_id:
         delete_message(bot_id, chat_id, source_message_id)
 
-    # 保留一點時間讓 Telegram 用戶端套用 Reply Keyboard，再刪除提示訊息。
-    _delete_message_later(bot_id, chat_id, notice_message_id, delay_seconds=1.5)
+    # 注意：Reply Keyboard 會跟著這則 bot 訊息套用到 Telegram 用戶端。
+    # 不能在開啟後立刻刪掉提示訊息，否則部分 Telegram 用戶端會把鍵盤一起收回，
+    # 使用者會看到開發者鍵盤轉瞬即逝。
+    # 這則提示會在使用者按任一功能鍵或「關閉功能鍵盤」時，由 _close_hidden_keyboard() 一起刪除。
 
     print(
         f"HIDDEN REPLY KEYBOARD OPENED action_id={action_id} bot_id={bot_id} chat_id={chat_id}",

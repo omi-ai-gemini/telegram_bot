@@ -1,61 +1,27 @@
-Telemini /hidden 改成輸入框下方 Reply Keyboard 包
+Telemini /hidden Reply Keyboard 轉瞬即逝修正包
 
 只包含修改檔，不是全專案。
 
 覆蓋檔案：
 - services/ai_actions.py
-- services/telegram_service.py
-- services/memory_view.py
-- services/call_ai.py
-- handlers/message_handler.py
-- handlers/call_handler.py
 
-更新內容：
-1. /hidden 不再送出訊息下方 Inline Keyboard。
-   改成 Telegram 輸入框下面的 Reply Keyboard：
-   [🗣️] [✏️] [🔁] [🧠] [▶️]
-   [關閉功能鍵盤]
+修正問題：
+上一版 /hidden 送出 Reply Keyboard 後，會在 1.5 秒後刪除「開發者功能鍵盤已開啟」提示訊息。
+Telegram 的 Reply Keyboard 是靠這則 bot 訊息套用到使用者輸入框下方，部分 Telegram 用戶端在該訊息被刪除後，會把鍵盤一起收回。
+所以會看到開發者鍵盤轉瞬即逝，還沒來得及按就回到普通鍵盤。
 
-2. 開啟 /hidden 後會清理：
-   - 使用者輸入的 /hidden 指令訊息
-   - bot 傳出的「開發者功能鍵盤已開啟」提示訊息
-
-3. 按任一功能鍵後會清理：
-   - 使用者按鍵產生的文字訊息，例如 🗣️ / ✏️ / 🔁 / 🧠 / ▶️
-   - /hidden 指令訊息，如果還存在
-   - 開啟鍵盤提示訊息，如果還存在
-   - 自動收起 Reply Keyboard
-
-4. 功能鍵行為：
-   - 🗣️：補送最近一則 AI 回覆
-   - ✏️：進入修改模式
-   - 🔁：重跑最近一則 AI 回覆
-   - 🧠：送出 AI 回覆依據連結，45 秒後自動刪除連結訊息
-   - ▶️：接續最近一則 AI 回覆
-   - 關閉功能鍵盤：只收起鍵盤並清理訊息
-
-5. /memory、/記憶 關閉清理保留：
-   - 按「❌ 關閉」會刪除記憶選單
-   - 同時刪除使用者輸入的 /memory 或 /記憶
-
-6. 從 /setting → 記憶設定 → 查看記憶 進入後：
-   - 按「❌ 關閉」會刪除目前記憶查看選單
-   - 同時刪除原本使用者輸入的 /setting 或 /設定
-
-7. 聊天模式仍不自動掛 AI 訊息下方按鈕。
-   劇場模式仍保留 AI 訊息下方小按鈕。
-
-注意：
-- Reply Keyboard 按鈕本質上會送出一則使用者文字訊息，本包已在 message_handler 最前面攔截並刪除，不會寫入記憶，也不會送進 Gemini。
-- 如果 Render 重啟後鍵盤還殘留在 Telegram 用戶端，使用者按任一功能鍵會自動收起鍵盤並顯示短暫「功能鍵盤已失效」。
-- 🧠 因 Reply Keyboard 不能直接放 URL，所以會短暫送出連結訊息，45 秒後自動刪除。
+本版修正：
+- /hidden 指令訊息仍會刪除。
+- 「開發者功能鍵盤已開啟」提示訊息不再立刻刪除。
+- 提示訊息會等使用者按任一功能鍵或「關閉功能鍵盤」時，由 _close_hidden_keyboard() 一起刪除。
+- 功能鍵按出的 emoji 訊息仍會刪除。
+- 執行功能後仍會收起鍵盤。
 
 已做檢查：
-python -m py_compile services/ai_actions.py services/telegram_service.py services/memory_view.py services/call_ai.py handlers/message_handler.py handlers/call_handler.py
+python -m py_compile services/ai_actions.py
 
-測試順序：
-1. 聊天模式正常聊天，確認 AI 訊息下方沒有小按鈕。
-2. 輸入 /hidden，確認輸入框下方出現 Reply Keyboard，聊天室不留下 /hidden 與開啟提示。
-3. 按 🗣️ / ✏️ / 🔁 / 🧠 / ▶️，確認按鍵文字會被刪除，鍵盤會自動收起。
-4. 輸入 /memory，按 ❌ 關閉，確認 /memory 與選單一起刪除。
-5. 輸入 /setting → 記憶設定 → 查看記憶 → ❌ 關閉，確認 /setting 與記憶選單一起刪除。
+測試：
+1. 輸入 /hidden。
+2. 確認輸入框下方鍵盤會停留。
+3. 按 🗣️ / ✏️ / 🔁 / 🧠 / ▶️ 或「關閉功能鍵盤」。
+4. 確認提示訊息與按鍵文字會被清掉，鍵盤會收起。
