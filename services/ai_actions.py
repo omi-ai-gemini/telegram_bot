@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import threading
+import time
 
 from services.bot_router import get_bot_token
 from services.character import get_character_settings
@@ -25,7 +26,24 @@ from services.user_router import get_gemini_key
 
 
 EDIT_PENDING_MINUTES = 5
+THOUGHT_CACHE_TTL_SECONDS = 60 * 60
 CONTINUE_USER_TEXT = "（請你不要等待使用者輸入，直接順著目前對話、場景、角色狀態與語氣，自然接續下一句。不要重複上一句。）"
+
+
+# =========================
+# Gemini 推理摘要暫存
+# =========================
+# 只放 Render 記憶體：
+# - 不寫 DB
+# - 不寫檔案
+# - Render 重啟會消失
+# - 超過 THOUGHT_CACHE_TTL_SECONDS 自動視為過期
+#
+# action_id 用在 Telegram 訊息操作按鈕。
+# token 用在網頁網址，避免 action_id 直接裸露或被猜。
+_THOUGHT_CACHE = {}
+_THOUGHT_TOKEN_INDEX = {}
+_THOUGHT_CACHE_LOCK = threading.Lock()
 
 
 def _text_id(value):
@@ -39,15 +57,207 @@ def _is_group_chat(chat_id):
         return str(chat_id).startswith("-")
 
 
+def _purge_expired_thought_cache(now=None):
+    now = now or time.time()
+
+    expired_action_ids = [
+        action_id
+        for action_id, item in _THOUGHT_CACHE.items()
+        if item.get("expires_at", 0) <= now
+    ]
+
+    for action_id in expired_action_ids:
+        item = _THOUGHT_CACHE.pop(action_id, None) or {}
+        token = item.get("token")
+        if token:
+            _THOUGHT_TOKEN_INDEX.pop(token, None)
+
+
+def _get_or_create_ai_thought_token(action_id):
+    """
+    取得某則 AI 回覆的推理摘要網頁 token。
+
+    token 只存在 Render 記憶體，不寫 DB。
+    build keyboard 時會先建立 token，cache thought 時再補上文字。
+    """
+    if not action_id:
+        return ""
+
+    action_id = str(action_id)
+    now = time.time()
+
+    with _THOUGHT_CACHE_LOCK:
+        _purge_expired_thought_cache(now)
+
+        item = _THOUGHT_CACHE.get(action_id)
+        if item and item.get("token"):
+            item["expires_at"] = now + THOUGHT_CACHE_TTL_SECONDS
+            return item.get("token")
+
+        import secrets
+        token = secrets.token_urlsafe(32)
+
+        _THOUGHT_CACHE[action_id] = {
+            "token": token,
+            "text": "",
+            "created_at": now,
+            "expires_at": now + THOUGHT_CACHE_TTL_SECONDS,
+        }
+        _THOUGHT_TOKEN_INDEX[token] = action_id
+
+        return token
+
+
+def get_ai_thought_url(action_id):
+    """
+    建立 🧠 按鈕用的網頁網址。
+
+    需要 Render 設定 BASE_URL。
+    沒有 BASE_URL 時回傳 None，讓按鈕退回 callback 提示。
+    """
+    import os
+
+    base_url = os.getenv("BASE_URL", "").rstrip("/")
+
+    if not base_url or not action_id:
+        return None
+
+    token = _get_or_create_ai_thought_token(action_id)
+
+    if not token:
+        return None
+
+    return f"{base_url}/thought/{token}"
+
+
 def build_ai_action_keyboard(action_id):
+    thought_url = get_ai_thought_url(action_id)
+
+    thought_button = (
+        {"text": "🧠", "url": thought_url}
+        if thought_url
+        else {"text": "🧠", "callback_data": f"ai_thought_missing:{action_id}"}
+    )
+
     return {
         "inline_keyboard": [[
             {"text": "✏️", "callback_data": f"ai_edit:{action_id}"},
             {"text": "🔁", "callback_data": f"ai_regen:{action_id}"},
+            thought_button,
             {"text": "▶️", "callback_data": f"ai_continue:{action_id}"},
         ]]
     }
 
+
+def cache_ai_thought_summary(action_id, thought_text):
+    """
+    暫存 Gemini thought summary。
+
+    不保存到資料庫；只讓 🧠 網頁短時間內可查看。
+    """
+    if not action_id:
+        return False
+
+    thought_text = str(thought_text or "").strip()
+
+    if not thought_text:
+        return False
+
+    action_id = str(action_id)
+    now = time.time()
+
+    with _THOUGHT_CACHE_LOCK:
+        _purge_expired_thought_cache(now)
+
+        item = _THOUGHT_CACHE.get(action_id) or {}
+        token = item.get("token")
+
+        if not token:
+            import secrets
+            token = secrets.token_urlsafe(32)
+            _THOUGHT_TOKEN_INDEX[token] = action_id
+
+        _THOUGHT_CACHE[action_id] = {
+            "token": token,
+            "text": thought_text,
+            "created_at": item.get("created_at") or now,
+            "expires_at": now + THOUGHT_CACHE_TTL_SECONDS,
+        }
+        _THOUGHT_TOKEN_INDEX[token] = action_id
+
+    return True
+
+
+def clear_ai_thought_summary(action_id):
+    if not action_id:
+        return
+
+    with _THOUGHT_CACHE_LOCK:
+        item = _THOUGHT_CACHE.pop(str(action_id), None) or {}
+        token = item.get("token")
+        if token:
+            _THOUGHT_TOKEN_INDEX.pop(token, None)
+
+
+def get_ai_thought_summary_by_token(token):
+    """
+    推理摘要網頁讀取入口。
+
+    回傳 None 代表：
+    - token 不存在
+    - Render 重啟後記憶體消失
+    - 快取已過期
+    """
+    token = str(token or "").strip()
+
+    if not token:
+        return None
+
+    now = time.time()
+
+    with _THOUGHT_CACHE_LOCK:
+        _purge_expired_thought_cache(now)
+
+        action_id = _THOUGHT_TOKEN_INDEX.get(token)
+
+        if not action_id:
+            return None
+
+        item = _THOUGHT_CACHE.get(action_id)
+
+        if not item:
+            _THOUGHT_TOKEN_INDEX.pop(token, None)
+            return None
+
+        if item.get("expires_at", 0) <= now:
+            _THOUGHT_CACHE.pop(action_id, None)
+            _THOUGHT_TOKEN_INDEX.pop(token, None)
+            return None
+
+        text = str(item.get("text") or "").strip()
+
+        if not text:
+            return None
+
+        return {
+            "action_id": action_id,
+            "text": text,
+            "created_at": item.get("created_at"),
+            "expires_at": item.get("expires_at"),
+        }
+
+
+def _split_gemini_result(result):
+    """
+    相容舊回傳字串與新回傳 dict。
+    """
+    if isinstance(result, dict):
+        return (
+            result.get("text"),
+            result.get("thoughts", ""),
+        )
+
+    return result, ""
 
 def create_ai_message_action(
     bot_id,
@@ -393,6 +603,9 @@ def process_pending_edit_message(user_id, bot_id, chat_id, user_text, user_messa
         text=text,
     )
 
+    # 使用者手動改掉 AI 回覆後，原本的推理摘要已經不再對應這則文字。
+    clear_ai_thought_summary(action.get("id"))
+
     return True
 
 
@@ -435,7 +648,7 @@ def _load_generation_context(user_id, bot_id, chat_id):
     }
 
 
-def _generate_reply(context, history, user_text):
+def _generate_reply(context, history, user_text, include_thoughts=True):
     return ask_gemini(
         gemini_key=context["gemini_key"],
         history=history,
@@ -448,6 +661,8 @@ def _generate_reply(context, history, user_text):
         facts=context["facts"],
         memory_context=context["memory_context"],
         time_context=context["time_context"],
+        include_thoughts=include_thoughts,
+        return_meta=include_thoughts,
     )
 
 
@@ -489,7 +704,8 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
         history = get_chat_until(bot_id, chat_id, source_user.get("id"), user_id=user_id)
         user_text = source_user.get("text") or ""
 
-    reply = _generate_reply(context, history, user_text)
+    gemini_result = _generate_reply(context, history, user_text, include_thoughts=True)
+    reply, thought_summary = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
         reply = "內容被安全阻擋"
@@ -497,6 +713,8 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
     if not reply:
         print("AI ACTION REGEN SKIP: empty reply")
         return
+
+    cache_ai_thought_summary(action.get("id"), thought_summary)
 
     keyboard = build_ai_action_keyboard(action.get("id"))
 
@@ -566,7 +784,8 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
         finally:
             conn.close()
 
-    reply = _generate_reply(context, history, CONTINUE_USER_TEXT)
+    gemini_result = _generate_reply(context, history, CONTINUE_USER_TEXT, include_thoughts=True)
+    reply, thought_summary = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
         send_message(bot_id, chat_id, "內容被安全阻擋")
@@ -593,6 +812,9 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
         context_chat_id=context_chat_id,
         generation_type="continue",
     )
+
+    if action_id:
+        cache_ai_thought_summary(action_id, thought_summary)
 
     keyboard = build_ai_action_keyboard(action_id) if action_id else None
     sent = send_message(bot_id, chat_id, reply, reply_markup=keyboard)

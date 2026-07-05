@@ -115,6 +115,15 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         run_regenerate_in_thread(user_id, bot_id, chat_id, action_id)
         return
 
+    if isinstance(user_text, str) and user_text.startswith("ai_thought_missing:"):
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="推理摘要網頁連結尚未建立，請確認 BASE_URL 環境變數",
+            show_alert=True
+        )
+        return
+
     if isinstance(user_text, str) and user_text.startswith("ai_continue:"):
         action_id = user_text.split(":", 1)[1]
 

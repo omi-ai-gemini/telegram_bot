@@ -8,6 +8,7 @@ from services.database import get_conn
 from config import SECRET_KEY
 from routes.admin import admin_bp
 from routes.setting import setting_bp
+from routes.thought import thought_bp
 
 #init_db()
 
@@ -16,6 +17,7 @@ app = Flask(__name__)
 app.secret_key = SECRET_KEY
 app.register_blueprint(admin_bp)
 app.register_blueprint(setting_bp)
+app.register_blueprint(thought_bp)
 
 db_initialized = False
 

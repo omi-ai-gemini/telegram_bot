@@ -1,5 +1,6 @@
 from services.ai_actions import (
     build_ai_action_keyboard,
+    cache_ai_thought_summary,
     create_ai_message_action,
     update_action_telegram_message_id,
 )
@@ -139,7 +140,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
         # =========================
         # Gemini 回覆
         # =========================
-        reply = ask_gemini(
+        gemini_result = ask_gemini(
             gemini_key=gemini_key,
             history=history,
             user_text=user_text,
@@ -150,8 +151,17 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
             reply_style_settings=reply_style_settings,
             facts=facts,
             memory_context=memory_context,
-            time_context=time_context
+            time_context=time_context,
+            include_thoughts=True,
+            return_meta=True
         )
+
+        if isinstance(gemini_result, dict):
+            reply = gemini_result.get("text")
+            thought_summary = gemini_result.get("thoughts", "")
+        else:
+            reply = gemini_result
+            thought_summary = ""
 
         # =========================
         # Gemini 回覆被安全層阻擋
@@ -197,6 +207,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
             )
 
             if action_id:
+                cache_ai_thought_summary(action_id, thought_summary)
                 reply_markup = build_ai_action_keyboard(action_id)
 
         # =========================

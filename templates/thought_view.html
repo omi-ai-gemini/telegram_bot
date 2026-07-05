@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gemini 推理摘要</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background:
+        radial-gradient(circle at top left, rgba(96, 165, 250, 0.22), transparent 30%),
+        radial-gradient(circle at bottom right, rgba(168, 85, 247, 0.18), transparent 28%),
+        #0f172a;
+      color: #ffffff;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 860px;
+      margin: 0 auto;
+      padding: 24px 0;
+    }
+
+    .card {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 24px;
+      background: rgba(15, 23, 42, 0.72);
+      box-shadow: 0 24px 70px rgba(0, 0, 0, 0.42);
+      overflow: hidden;
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .header {
+      padding: 22px 24px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0.02em;
+    }
+
+    .desc {
+      margin: 10px 0 0;
+      color: rgba(255, 255, 255, 0.68);
+      font-size: 14px;
+      line-height: 1.7;
+    }
+
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      padding: 16px 24px 0;
+    }
+
+    .pill {
+      padding: 7px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      color: rgba(255, 255, 255, 0.72);
+      font-size: 12px;
+      line-height: 1;
+    }
+
+    .content {
+      padding: 22px 24px 26px;
+    }
+
+    .thought {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-wrap: anywhere;
+      line-height: 1.82;
+      font-size: 16px;
+      color: rgba(255, 255, 255, 0.9);
+    }
+
+    .expired-box {
+      padding: 28px 24px;
+      text-align: center;
+    }
+
+    .expired-icon {
+      font-size: 42px;
+      margin-bottom: 14px;
+    }
+
+    .expired-title {
+      font-size: 21px;
+      font-weight: 800;
+      margin-bottom: 10px;
+    }
+
+    .expired-text {
+      margin: 0 auto;
+      max-width: 520px;
+      color: rgba(255, 255, 255, 0.68);
+      line-height: 1.8;
+      font-size: 14px;
+    }
+
+    .footer {
+      padding: 14px 24px 20px;
+      color: rgba(255, 255, 255, 0.48);
+      font-size: 12px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 600px) {
+      body { padding: 14px; }
+      .page { padding: 8px 0; }
+      .header, .content, .footer { padding-left: 18px; padding-right: 18px; }
+      h1 { font-size: 22px; }
+      .thought { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <section class="card">
+      {% if expired %}
+        <div class="expired-box">
+          <div class="expired-icon">🧠</div>
+          <div class="expired-title">推理摘要已過期</div>
+          <p class="expired-text">
+            這筆推理摘要只保存在 Render 記憶體快取中，可能已超過保存時間，或服務重啟後快取已消失。
+            系統沒有把它寫進資料庫或檔案。
+          </p>
+        </div>
+      {% else %}
+        <div class="header">
+          <h1>🧠 Gemini 推理摘要</h1>
+          <p class="desc">
+            這是 Gemini API 回傳的 thought summary。它只從記憶體快取讀取，不會寫入短期記憶、長期記憶、資料庫或檔案。
+          </p>
+        </div>
+
+        <div class="meta">
+          {% if created_at %}<span class="pill">建立：{{ created_at }}</span>{% endif %}
+          {% if expires_at %}<span class="pill">過期：{{ expires_at }}</span>{% endif %}
+        </div>
+
+        <div class="content">
+          <pre class="thought">{{ thought_text }}</pre>
+        </div>
+
+        <div class="footer">
+          關閉這個頁面不會影響聊天紀錄；Render 重啟或快取過期後，此連結會失效。
+        </div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

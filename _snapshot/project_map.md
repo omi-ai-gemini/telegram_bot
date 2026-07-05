@@ -22,6 +22,7 @@ C:\Projects\telemini
 - `docs\PRIVACY_SYNC_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
+- `docs\THOUGHT_WEB_VIEW_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -29,6 +30,7 @@ C:\Projects\telemini
 - `requirements.txt`
 - `routes\admin.py`
 - `routes\setting.py`
+- `routes\thought.py`
 - `services\__init__.py`
 - `services\ai_actions.py`
 - `services\bot_router.py`
@@ -68,6 +70,7 @@ C:\Projects\telemini
 - `templates\login.html`
 - `templates\manual.html`
 - `templates\reply_style_form.html`
+- `templates\thought_view.html`
 - `test_db.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
@@ -108,6 +111,9 @@ C:\Projects\telemini
 - `/setting/reply_style/save` → `save_reply_style_setting`
 - `/setting/chat_persona/save` → `save_chat_persona_setting`
 - `/setting/character/save` → `save_character_setting`
+
+### `routes\thought.py`
+- `/thought/<token>` → `thought_page`
 
 ## Python 函式總覽
 
@@ -156,10 +162,21 @@ C:\Projects\telemini
 - `save_chat_persona_setting()`
 - `save_character_setting()`
 
+### `routes\thought.py`
+- `_format_time()`
+- `thought_page()`
+
 ### `services\ai_actions.py`
 - `_text_id()`
 - `_is_group_chat()`
+- `_purge_expired_thought_cache()`
+- `_get_or_create_ai_thought_token()`
+- `get_ai_thought_url()`
 - `build_ai_action_keyboard()`
+- `cache_ai_thought_summary()`
+- `clear_ai_thought_summary()`
+- `get_ai_thought_summary_by_token()`
+- `_split_gemini_result()`
 - `create_ai_message_action()`
 - `update_action_telegram_message_id()`
 - `get_ai_message_action()`
@@ -265,12 +282,15 @@ C:\Projects\telemini
 - `list_encrypted_metadata()`
 
 ### `services\gemini_service.py`
+- `_build_gemini_config()`
 - `_enum_name()`
 - `_read_attr()`
 - `_extract_finish_reason()`
 - `get_gemini_block_reason()`
 - `debug_gemini_response()`
 - `_safe_response_text()`
+- `_extract_answer_and_thoughts()`
+- `_meta_result()`
 - `ask_gemini()`
 - `summarize_memory()`
 
