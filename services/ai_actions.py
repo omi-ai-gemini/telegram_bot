@@ -157,16 +157,16 @@ def build_ai_action_keyboard(action_id):
     }
 
 
-def cache_ai_thought_summary(action_id, thought_text):
+def cache_ai_thought_summary(action_id, thought_text, status=None, reason=None):
     """
-    暫存 Gemini thought summary。
+    暫存 🧠 回覆依據。
 
     不保存到資料庫；只讓 🧠 網頁短時間內可查看。
 
-    注意：
-    - thought_text 可能是空字串。
-    - 空字串代表 Gemini / SDK / 模型沒有回傳 thought summary，
-      但這一筆仍然存在於 Render 記憶體，不應該誤顯示成「過期」。
+    status：
+    - official：Gemini API 回傳的 thought summary。
+    - generated：同次 JSON 輸出的 reasoning_note。
+    - empty：本次沒有可顯示內容。
     """
     if not action_id:
         return False
@@ -175,8 +175,21 @@ def cache_ai_thought_summary(action_id, thought_text):
     action_id = str(action_id)
     now = time.time()
 
-    status = "ready" if thought_text else "empty"
-    reason = "" if thought_text else "Gemini 這次沒有回傳 thought summary；可能是模型或 SDK 不支援，或本次回覆沒有 thought part。"
+    status = str(status or "").strip()
+
+    if status not in ["official", "generated", "empty"]:
+        status = "generated" if thought_text else "empty"
+
+    if not thought_text:
+        status = "empty"
+
+    if reason is None:
+        if status == "official":
+            reason = "這是 Gemini API 回傳的 thought summary，不是完整逐字內部推理。"
+        elif status == "generated":
+            reason = "這是 Gemini 同次輸出的回覆依據摘要，不代表完整內部推理。"
+        else:
+            reason = "Gemini 這次沒有提供可顯示的 thought summary 或 reasoning_note。"
 
     with _THOUGHT_CACHE_LOCK:
         _purge_expired_thought_cache(now)
@@ -192,7 +205,7 @@ def cache_ai_thought_summary(action_id, thought_text):
             "token": token,
             "text": thought_text,
             "status": status,
-            "reason": reason,
+            "reason": str(reason or ""),
             "created_at": item.get("created_at") or now,
             "expires_at": now + THOUGHT_CACHE_TTL_SECONDS,
             "pid": os.getpid(),
@@ -290,14 +303,20 @@ def get_ai_thought_summary_by_token(token):
 def _split_gemini_result(result):
     """
     相容舊回傳字串與新回傳 dict。
+
+    回傳：
+    - reply：正式回覆
+    - thought_summary：🧠 要顯示的回覆依據
+    - thought_source：official / generated / empty
     """
     if isinstance(result, dict):
         return (
             result.get("text"),
             result.get("thoughts", ""),
+            result.get("thought_source", "empty"),
         )
 
-    return result, ""
+    return result, "", "empty"
 
 def create_ai_message_action(
     bot_id,
@@ -745,7 +764,7 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
         user_text = source_user.get("text") or ""
 
     gemini_result = _generate_reply(context, history, user_text, include_thoughts=True)
-    reply, thought_summary = _split_gemini_result(gemini_result)
+    reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
         reply = "內容被安全阻擋"
@@ -754,7 +773,7 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
         print("AI ACTION REGEN SKIP: empty reply")
         return
 
-    cache_ai_thought_summary(action.get("id"), thought_summary)
+    cache_ai_thought_summary(action.get("id"), thought_summary, status=thought_source)
 
     keyboard = build_ai_action_keyboard(action.get("id"))
 
@@ -825,7 +844,7 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
             conn.close()
 
     gemini_result = _generate_reply(context, history, CONTINUE_USER_TEXT, include_thoughts=True)
-    reply, thought_summary = _split_gemini_result(gemini_result)
+    reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
         send_message(bot_id, chat_id, "內容被安全阻擋")
@@ -854,7 +873,7 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     )
 
     if action_id:
-        cache_ai_thought_summary(action_id, thought_summary)
+        cache_ai_thought_summary(action_id, thought_summary, status=thought_source)
 
     keyboard = build_ai_action_keyboard(action_id) if action_id else None
     sent = send_message(bot_id, chat_id, reply, reply_markup=keyboard)

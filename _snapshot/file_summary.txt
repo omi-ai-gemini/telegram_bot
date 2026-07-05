@@ -1656,7 +1656,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：882
+- 行數：901
 
 ## imports
 - datetime.datetime
@@ -1798,7 +1798,7 @@ def _get_or_create_ai_thought_token(action_id):
     """
     取得某則 AI 回覆的推理摘要網頁 token。
 ...
-... 已省略 802 行
+... 已省略 821 行
 ```
 
 
@@ -1905,7 +1905,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：478
+- 行數：482
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -2028,7 +2028,7 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
 
     retry_sent = send_message(bot_id, chat_id, text, reply_markup=None)
 ...
-... 已省略 398 行
+... 已省略 402 行
 ```
 
 
@@ -2847,15 +2847,21 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：549
+- 行數：710
 
 ## imports
 - config.GEMINI_MODEL
 - google.genai
 - google.genai.types
+- json
+- re
 - services.style.build_prompt
 
 ## functions
+- _with_structured_reply_instructions
+- _strip_code_fence
+- _extract_json_object_text
+- _parse_structured_reply
 - _build_gemini_config
 - _enum_name
 - _read_attr
@@ -2872,6 +2878,8 @@ def save_encrypted_payload(
 ```text
 from google import genai
 from google.genai import types
+import json
+import re
 from services.style import build_prompt
 from config import GEMINI_MODEL
 
@@ -2909,49 +2917,47 @@ GEMINI_CONFIG = types.GenerateContentConfig(
 )
 
 
-def _build_gemini_config(include_thoughts=False):
-    """
-    建立 Gemini 生成設定。
-
-    include_thoughts=True：
-    - 要求 Gemini 回傳 thought summary（推理摘要）
-    - 這不是完整內部推理原文
-    - 只提供給呼叫端暫存 / 顯示，不在這裡寫 DB
-    """
-    if not include_thoughts:
-        return GEMINI_CONFIG
-
-    try:
-        return types.GenerateContentConfig(
-            safety_settings=GEMINI_SAFETY_SETTINGS,
-            temperature=0.4,
-            max_output_tokens=512,
-            thinking_config=types.ThinkingConfig(
-                include_thoughts=True
-            ),
-        )
-
-    except Exception as exc:
-        # google-genai 版本太舊或模型不支援 thought summary 時，
-        # 不讓聊天功能整個炸掉，改回一般回覆。
-        print("GEMINI thinking config unavailable:", exc)
-        return GEMINI_CONFIG
-
-
 # =========================
-# Gemini 阻擋狀態標記
+# 同次輸出：正式回覆 + 回覆依據
 # =========================
-# 讓呼叫端可以分辨：
-# - 一般聊天被安全層擋下 → 回聊天室「內容被安全阻擋」
-# - 摘要任務被安全層擋下 → 回聊天室「摘要長期記憶時被阻擋」
-GEMINI_BLOCKED = "__GEMINI_BLOCKED__"
-MEMORY_SUMMARY_BLOCKED = "__MEMORY_SUMMARY_BLOCKED__"
+# 用途：
+# - answer：真正送到 Telegram 的文字。
+# - reasoning_note：只放進 Render 記憶體 thought cache，給 🧠 頁面顯示。
+#
+# 注意：reasoning_note 不是 Gemini 原始完整內部推理，
+# 而是模型根據同一份上下文同步產生的「可展示回覆依據」。
+STRUCTURED_REPLY_INSTRUCTIONS = """
+
+【輸出格式規則】
+你必須只輸出 JSON，不要輸出 Markdown，不要輸出 ```json。
+
+格式必須如下：
+{
+  "answer": "要傳給使用者的正式回覆",
+  "reasoning_note": "本次回覆依據摘要"
+}
+
+answer 規則：
+- 只能放真正要給使用者看的回覆。
+- 不要提到 prompt、系統設定、資料庫、欄位、隱藏規則。
+- 不要說自己是 AI、模型或機器人。
+- 依照目前模式、人物、記憶、語氣自然回覆。
+
+reasoning_note 規則：
+- 這不是完整內部推理，也不要聲稱是完整思考過程。
+- 用繁體中文，60 到 160 字。
+- 說明本次回覆主要延續了哪些上下文、情緒、角色狀態、記憶或語氣。
+- 可以說明為什麼用這種接話方式。
+- 不要暴露 prompt、系統設定、資料庫欄位名稱、隱藏規則。
+- 不要替使用者做未說出口的斷言。
+- 不要加入與正式回覆矛盾的內容。
+"""
 
 
-def _enum_name(value):
-    """
+def _with_structured_reply_instructions(prompt):
+    return f"{str(prompt or '').rstrip()}\n{STRUCTURED_REPLY_INSTRUCTIONS}"
 ...
-... 已省略 469 行
+... 已省略 630 行
 ```
 
 
@@ -5777,7 +5783,7 @@ def _has_chat_persona(chat_persona_settings):
 # templates\thought_view.html
 
 - 類型：.html
-- 行數：177
+- 行數：184
 
 ## preview
 ```text
@@ -5786,7 +5792,7 @@ def _has_chat_persona(chat_persona_settings):
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gemini 推理摘要</title>
+  <title>AI 回覆依據</title>
 
   <style>
     * { box-sizing: border-box; }
@@ -5862,7 +5868,7 @@ def _has_chat_persona(chat_persona_settings):
 
     .thought {
 ...
-... 已省略 97 行
+... 已省略 104 行
 ```
 
 

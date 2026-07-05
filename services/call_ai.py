@@ -133,6 +133,7 @@ def _attach_reply_buttons_in_background(
     source_user_chat_id,
     generation_type,
     thought_summary,
+    thought_source="empty",
     label="AI",
 ):
     """
@@ -178,7 +179,7 @@ def _attach_reply_buttons_in_background(
             # 修改/重跑/接續仍有機會靠 action 對到原訊息。
             update_action_telegram_message_id(action_id, telegram_message_id)
 
-            cache_ai_thought_summary(action_id, thought_summary)
+            cache_ai_thought_summary(action_id, thought_summary, status=thought_source)
             reply_markup = build_ai_action_keyboard(action_id)
 
             print(
@@ -246,9 +247,11 @@ def _send_generated_reply(
     if isinstance(gemini_result, dict):
         reply = gemini_result.get("text")
         thought_summary = gemini_result.get("thoughts", "")
+        thought_source = gemini_result.get("thought_source", "empty")
     else:
         reply = gemini_result
         thought_summary = ""
+        thought_source = "empty"
 
     if reply == GEMINI_BLOCKED:
         print(f"{label} BLOCKED SEND: Gemini blocked chat reply", flush=True)
@@ -282,6 +285,7 @@ def _send_generated_reply(
         source_user_chat_id=source_user_chat_id,
         generation_type="reply",
         thought_summary=thought_summary,
+        thought_source=thought_source,
         label=label,
     )
 

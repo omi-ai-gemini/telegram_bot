@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Gemini 推理摘要</title>
+  <title>AI 回覆依據</title>
 
   <style>
     * { box-sizing: border-box; }
@@ -141,13 +141,20 @@
         </div>
       {% else %}
         <div class="header">
-          <h1>🧠 Gemini 推理摘要</h1>
+          <h1>🧠 AI 回覆依據</h1>
           <p class="desc">
-            這是 Gemini API 回傳的 thought summary。它只從記憶體快取讀取，不會寫入短期記憶、長期記憶、資料庫或檔案。
+            這裡顯示本次 AI 回覆依據。可能是 Gemini API 回傳的 thought summary，也可能是同次回覆中產生的 reasoning_note。它只從記憶體快取讀取，不會寫入短期記憶、長期記憶、資料庫或檔案。
           </p>
         </div>
 
         <div class="meta">
+          {% if status == "official" %}
+            <span class="pill">來源：Gemini thought summary</span>
+          {% elif status == "generated" %}
+            <span class="pill">來源：同次生成回覆依據</span>
+          {% elif status == "empty" %}
+            <span class="pill">來源：沒有可顯示內容</span>
+          {% endif %}
           {% if created_at %}<span class="pill">建立：{{ created_at }}</span>{% endif %}
           {% if expires_at %}<span class="pill">過期：{{ expires_at }}</span>{% endif %}
         </div>
@@ -159,16 +166,16 @@
         {% else %}
           <div class="expired-box">
             <div class="expired-icon">🧠</div>
-            <div class="expired-title">這筆沒有推理摘要</div>
+            <div class="expired-title">這筆沒有回覆依據</div>
             <p class="expired-text">
-              這個連結仍然有效，代表快取還在；只是 Gemini 這次沒有回傳 thought summary。
-              {{ reason or "可能是目前模型、SDK 版本或本次回覆沒有提供 thought part。" }}
+              這個連結仍然有效，代表快取還在；只是這次沒有可顯示的 thought summary 或 reasoning_note。
+              {{ reason or "可能是模型沒有提供 thought part，或這次 JSON 解析沒有產生 reasoning_note。" }}
             </p>
           </div>
         {% endif %}
 
         <div class="footer">
-          關閉這個頁面不會影響聊天紀錄；Render 重啟或快取過期後，此連結會失效。
+          這不是完整逐字內部推理；它只用來說明本次回覆主要依據。關閉這個頁面不會影響聊天紀錄；Render 重啟或快取過期後，此連結會失效。
         </div>
       {% endif %}
     </section>

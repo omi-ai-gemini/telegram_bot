@@ -291,6 +291,10 @@ C:\Projects\telemini
 - `list_encrypted_metadata()`
 
 ### `services\gemini_service.py`
+- `_with_structured_reply_instructions()`
+- `_strip_code_fence()`
+- `_extract_json_object_text()`
+- `_parse_structured_reply()`
 - `_build_gemini_config()`
 - `_enum_name()`
 - `_read_attr()`
