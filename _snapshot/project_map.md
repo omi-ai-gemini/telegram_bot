@@ -12,6 +12,8 @@ C:\Projects\telemini
 
 ## 主要檔案列表
 
+- `#U6a21#U5f0f-#U4f7f#U7528#U8aaa#U660e.txt`
+- `#U958b#U5834-#U66f4#U65b0#U8aaa#U660e.txt`
 - `__init__.py`
 - `api.py`
 - `check_db.py`
@@ -20,6 +22,7 @@ C:\Projects\telemini
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
+- `docs\REPLY_RECOVERY_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
@@ -201,7 +204,12 @@ C:\Projects\telemini
 ### `services\call_ai.py`
 - `_is_group_chat()`
 - `_extract_telegram_message_id()`
+- `_send_ai_message_with_retry()`
+- `_get_generation_settings()`
+- `_create_reply_buttons()`
+- `_send_generated_reply()`
 - `run_ai()`
+- `run_reply_recovery()`
 
 ### `services\character.py`
 - `_text_id()`

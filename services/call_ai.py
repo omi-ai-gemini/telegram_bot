@@ -20,10 +20,14 @@ from services.memory import (
     get_facts,
     update_emotion,
     detect_emotion,
-    get_emotion
+    get_emotion,
+    list_recent_chat_memory,
 )
 
 
+# =========================
+# 共用工具
+# =========================
 def _is_group_chat(chat_id):
     try:
         return int(chat_id) < 0
@@ -39,13 +43,201 @@ def _extract_telegram_message_id(result):
     return message.get("message_id")
 
 
+def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label="AI"):
+    """
+    傳送 AI 訊息，並補上明確 log。
+
+    目的：
+    - 追查 Gemini 已回覆但 Telegram 沒收到的狀況。
+    - 如果帶 Inline Keyboard 送失敗，立刻改純文字重送一次，避免整則回覆消失。
+    """
+    text = str(text or "")
+
+    print(
+        f"{label} SEND START len={len(text)} has_buttons={bool(reply_markup)}",
+        flush=True
+    )
+
+    sent = send_message(bot_id, chat_id, text, reply_markup=reply_markup)
+    telegram_message_id = _extract_telegram_message_id(sent)
+
+    print(
+        f"{label} SEND RESULT ok={bool(telegram_message_id)} "
+        f"telegram_message_id={telegram_message_id} raw_ok={bool(sent)}",
+        flush=True
+    )
+
+    if telegram_message_id or not reply_markup:
+        return sent, telegram_message_id
+
+    print(
+        f"{label} SEND RETRY without buttons because first send failed",
+        flush=True
+    )
+
+    retry_sent = send_message(bot_id, chat_id, text, reply_markup=None)
+    retry_message_id = _extract_telegram_message_id(retry_sent)
+
+    print(
+        f"{label} SEND RETRY RESULT ok={bool(retry_message_id)} "
+        f"telegram_message_id={retry_message_id} raw_ok={bool(retry_sent)}",
+        flush=True
+    )
+
+    return retry_sent, retry_message_id
+
+
+def _get_generation_settings(bot_id, chat_id, user_id, scope):
+    """集中取得 Gemini 回覆所需的設定與上下文。"""
+    history = get_chat(bot_id, chat_id, user_id=user_id)
+    facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
+    memory_context = get_memory_context(bot_id, chat_id, scope, user_id=user_id)
+
+    character_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
+    mode = character_settings.get("mode", "聊天模式")
+
+    chat_persona_settings = None
+    if mode == "聊天模式":
+        chat_persona_settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
+
+    reply_style_settings = get_reply_style_settings(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        style_type=mode,
+        user_id=user_id,
+    )
+
+    time_context = get_current_time_context()
+
+    return {
+        "history": history,
+        "facts": facts,
+        "memory_context": memory_context,
+        "character_settings": character_settings,
+        "mode": mode,
+        "chat_persona_settings": chat_persona_settings,
+        "reply_style_settings": reply_style_settings,
+        "time_context": time_context,
+    }
+
+
+def _create_reply_buttons(bot_id, chat_id, user_id, assistant_chat_id, source_user_chat_id, generation_type, thought_summary):
+    """
+    私聊建立 [✏️][🔁][🧠][▶️] 按鈕。
+    群組目前不建立按鈕。
+    """
+    if _is_group_chat(chat_id):
+        return None, None
+
+    action_id = create_ai_message_action(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        assistant_chat_id=assistant_chat_id,
+        source_user_chat_id=source_user_chat_id,
+        context_chat_id=source_user_chat_id,
+        generation_type=generation_type,
+    )
+
+    print(
+        f"AI ACTION CREATED action_id={action_id} assistant_chat_id={assistant_chat_id} "
+        f"source_user_chat_id={source_user_chat_id} type={generation_type}",
+        flush=True,
+    )
+
+    if not action_id:
+        return None, None
+
+    cache_ai_thought_summary(action_id, thought_summary)
+    return action_id, build_ai_action_keyboard(action_id)
+
+
+def _send_generated_reply(
+    gemini_key,
+    bot_id,
+    chat_id,
+    user_id,
+    user_text,
+    source_user_chat_id,
+    label="AI",
+):
+    """
+    對既有 user 記憶產生 AI 回覆。
+
+    用於：
+    - 正常 run_ai：source_user_chat_id 是剛寫入的 user 記憶。
+    - /reply 救援：source_user_chat_id 是短期記憶最後一筆 user。
+    """
+    scope = "group" if _is_group_chat(chat_id) else "private"
+    emotion = get_emotion(chat_id)
+    settings = _get_generation_settings(bot_id, chat_id, user_id, scope)
+
+    gemini_result = ask_gemini(
+        gemini_key=gemini_key,
+        history=settings["history"],
+        user_text=user_text,
+        emotion=emotion,
+        mode=settings["mode"],
+        chat_persona_settings=settings["chat_persona_settings"],
+        character_settings=settings["character_settings"],
+        reply_style_settings=settings["reply_style_settings"],
+        facts=settings["facts"],
+        memory_context=settings["memory_context"],
+        time_context=settings["time_context"],
+        include_thoughts=True,
+        return_meta=True,
+    )
+
+    if isinstance(gemini_result, dict):
+        reply = gemini_result.get("text")
+        thought_summary = gemini_result.get("thoughts", "")
+    else:
+        reply = gemini_result
+        thought_summary = ""
+
+    if reply == GEMINI_BLOCKED:
+        print(f"{label} BLOCKED SEND: Gemini blocked chat reply", flush=True)
+        _send_ai_message_with_retry(bot_id, chat_id, "內容被安全阻擋", label=label)
+        return False
+
+    if not reply:
+        print(f"{label} SKIP SEND: Gemini returned empty reply", flush=True)
+        _send_ai_message_with_retry(bot_id, chat_id, "Gemini 沒有回傳可用文字，請稍後再用 /reply 補一次。", label=label)
+        return False
+
+    assistant_chat_id = add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
+
+    action_id, reply_markup = _create_reply_buttons(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        assistant_chat_id=assistant_chat_id,
+        source_user_chat_id=source_user_chat_id,
+        generation_type="reply",
+        thought_summary=thought_summary,
+    )
+
+    sent, telegram_message_id = _send_ai_message_with_retry(
+        bot_id,
+        chat_id,
+        reply,
+        reply_markup=reply_markup,
+        label=label,
+    )
+
+    if action_id and telegram_message_id:
+        update_action_telegram_message_id(action_id, telegram_message_id)
+
+    maintain_memory_after_reply(gemini_key, bot_id, chat_id, user_id=user_id)
+    return bool(telegram_message_id or sent)
+
+
 # =========================
-# 取得 AI 回覆並發送
+# 正常 AI 回覆流程
 # =========================
 def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message_id=None):
 
     try:
-
         gemini_key = get_gemini_key(user_id)
         bot_token = get_bot_token(bot_id)
 
@@ -64,11 +256,6 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
         send_once_user_notice(user_id, bot_id, chat_id)
 
         # =========================
-        # scope 判斷
-        # =========================
-        scope = "group" if _is_group_chat(chat_id) else "private"
-
-        # =========================
         # 先寫入使用者短期記憶
         # 注意：短期記憶不在 add_chat 內直接刪舊資料。
         # 舊資料會在長期摘要成功後才清理。
@@ -79,7 +266,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
             "user",
             user_text,
             user_id=user_id,
-            telegram_message_id=user_message_id
+            telegram_message_id=user_message_id,
         )
 
         # =========================
@@ -87,146 +274,147 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
         # =========================
         delta = detect_emotion(user_text)
         update_emotion(chat_id, delta)
-        emotion = get_emotion(chat_id)
 
         # =========================
         # 一般文字不再觸發「手動記憶」
         # 重點記憶統一從設定中心的「⭐ 重點記憶」寫入 facts_memory。
         # =========================
-
-        # =========================
-        # 短期記憶
-        # =========================
-        history = get_chat(bot_id, chat_id, user_id=user_id)
-
-        # =========================
-        # 重點記憶
-        # =========================
-        facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
-
-        # =========================
-        # 摘要型長期記憶
-        # =========================
-        memory_context = get_memory_context(bot_id, chat_id, scope, user_id=user_id)
-
-        # =========================
-        # 人物 / 劇本設定
-        # =========================
-        character_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
-        mode = character_settings.get("mode", "聊天模式")
-
-        chat_persona_settings = None
-
-        if mode == "聊天模式":
-            chat_persona_settings = get_chat_persona_settings(bot_id, chat_id, user_id=user_id)
-
-        # =========================
-        # 獨立回覆風格設定
-        # 聊天 / 劇場各自保存，不跟人物或劇本綁定
-        # =========================
-        reply_style_settings = get_reply_style_settings(
+        _send_generated_reply(
+            gemini_key=gemini_key,
             bot_id=bot_id,
             chat_id=chat_id,
-            style_type=mode,
-            user_id=user_id
-        )
-
-        # =========================
-        # 目前現實時間
-        # 每次回覆前即時計算，不寫 DB。
-        # =========================
-        time_context = get_current_time_context()
-
-        # =========================
-        # Gemini 回覆
-        # =========================
-        gemini_result = ask_gemini(
-            gemini_key=gemini_key,
-            history=history,
+            user_id=user_id,
             user_text=user_text,
-            emotion=emotion,
-            mode=mode,
-            chat_persona_settings=chat_persona_settings,
-            character_settings=character_settings,
-            reply_style_settings=reply_style_settings,
-            facts=facts,
-            memory_context=memory_context,
-            time_context=time_context,
-            include_thoughts=True,
-            return_meta=True
+            source_user_chat_id=user_chat_id,
+            label="AI",
         )
 
-        if isinstance(gemini_result, dict):
-            reply = gemini_result.get("text")
-            thought_summary = gemini_result.get("thoughts", "")
-        else:
-            reply = gemini_result
-            thought_summary = ""
+    except Exception as e:
+        print("AI ERROR:", e, flush=True)
+        return
 
-        # =========================
-        # Gemini 回覆被安全層阻擋
-        # - 回聊天室 debug 訊息
-        # - 不寫入 assistant 短期記憶
-        # =========================
-        if reply == GEMINI_BLOCKED:
-            print("AI BLOCKED SEND: Gemini blocked chat reply")
-            send_message(bot_id, chat_id, "內容被安全阻擋")
+
+# =========================
+# /reply 救援指令
+# =========================
+def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
+    """
+    /reply 救援指令：
+
+    - 如果短期記憶最後一句是 assistant：把最後一句 AI 訊息重送到聊天室。
+    - 如果短期記憶最後一句是 user：不重複寫 user 記憶，直接讓 Gemini 補回覆。
+    """
+    try:
+        gemini_key = get_gemini_key(user_id)
+        bot_token = get_bot_token(bot_id)
+
+        if not gemini_key or not bot_token:
+            send_message(
+                bot_id,
+                chat_id,
+                f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
+            )
+            return
+
+        recent_rows = list_recent_chat_memory(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            limit=20,
+            user_id=user_id,
+        )
+
+        if not recent_rows:
+            _send_ai_message_with_retry(
+                bot_id,
+                chat_id,
+                "目前沒有短期記憶可救援。",
+                label="REPLY RECOVERY",
+            )
+            return
+
+        last = recent_rows[0]
+        last_role = str(last.get("role") or "").strip()
+        last_text = str(last.get("text") or "").strip()
+        last_id = last.get("id")
+
+        print(
+            f"REPLY RECOVERY START last_id={last_id} last_role={last_role} len={len(last_text)}",
+            flush=True,
+        )
+
+        if not last_text:
+            _send_ai_message_with_retry(
+                bot_id,
+                chat_id,
+                "最後一筆短期記憶是空的，無法救援。",
+                label="REPLY RECOVERY",
+            )
             return
 
         # =========================
-        # Gemini 沒有回傳可用文字，但不是明確安全阻擋
-        # - 不傳假訊息
-        # - 不寫入 assistant 短期記憶
-        # - 詳細原因看 Render 的 GEMINI DEBUG log
+        # 最後一句是 AI：直接重送最後一筆 AI 記憶。
+        # 不新增 chat_memory，避免短期記憶膨脹。
         # =========================
-        if not reply:
-            print("AI SKIP SEND: Gemini returned empty reply")
-            return
+        if last_role == "assistant":
+            source_user_chat_id = None
 
-        # =========================
-        # 寫入 AI 短期記憶
-        # =========================
-        assistant_chat_id = add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
+            for row in recent_rows[1:]:
+                if str(row.get("role") or "").strip() == "user":
+                    source_user_chat_id = row.get("id")
+                    break
 
-        # =========================
-        # 私聊回覆附加小按鈕：改 / 重跑 / 接續
-        # 群組先保留延伸，不開放。
-        # =========================
-        reply_markup = None
-        action_id = None
-
-        if scope == "private":
-            action_id = create_ai_message_action(
+            action_id, reply_markup = _create_reply_buttons(
                 bot_id=bot_id,
                 chat_id=chat_id,
                 user_id=user_id,
-                assistant_chat_id=assistant_chat_id,
-                source_user_chat_id=user_chat_id,
-                context_chat_id=user_chat_id,
-                generation_type="reply"
+                assistant_chat_id=last_id,
+                source_user_chat_id=source_user_chat_id,
+                generation_type="reply_resend",
+                thought_summary="",
             )
 
-            if action_id:
-                cache_ai_thought_summary(action_id, thought_summary)
-                reply_markup = build_ai_action_keyboard(action_id)
+            sent, telegram_message_id = _send_ai_message_with_retry(
+                bot_id,
+                chat_id,
+                last_text,
+                reply_markup=reply_markup,
+                label="REPLY RESEND",
+            )
+
+            if action_id and telegram_message_id:
+                update_action_telegram_message_id(action_id, telegram_message_id)
+
+            print(
+                f"REPLY RECOVERY RESEND DONE action_id={action_id} telegram_message_id={telegram_message_id}",
+                flush=True,
+            )
+            return
 
         # =========================
-        # 回傳 Telegram
+        # 最後一句是使用者：不重複寫 user 記憶，直接補 Gemini 回覆。
         # =========================
-        sent = send_message(bot_id, chat_id, reply, reply_markup=reply_markup)
-        telegram_message_id = _extract_telegram_message_id(sent)
+        if last_role == "user":
+            _send_generated_reply(
+                gemini_key=gemini_key,
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                user_text=last_text,
+                source_user_chat_id=last_id,
+                label="REPLY GENERATE",
+            )
+            return
 
-        if action_id and telegram_message_id:
-            update_action_telegram_message_id(action_id, telegram_message_id)
+        _send_ai_message_with_retry(
+            bot_id,
+            chat_id,
+            f"最後一筆短期記憶角色是 {last_role or '未知'}，無法用 /reply 救援。",
+            label="REPLY RECOVERY",
+        )
 
-        # =========================
-        # 記憶維護
-        # - 每 100 則短期訊息摘要一次（約 50 輪對話）
-        # - 摘要成功後才清理超過 100 則的短期訊息
-        # - 長期摘要過多時再封存摘要
-        # =========================
-        maintain_memory_after_reply(gemini_key, bot_id, chat_id, user_id=user_id)
-
-    except Exception as e:
-        print("AI ERROR:", e)
-        return
+    except Exception as exc:
+        print("REPLY RECOVERY ERROR:", exc, flush=True)
+        try:
+            send_message(bot_id, chat_id, "執行 /reply 時發生錯誤，請看 Render log。")
+        except Exception:
+            pass

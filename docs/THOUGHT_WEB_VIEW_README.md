@@ -72,3 +72,21 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 2. Gemini 這次沒有回傳 thought summary。
    - 這版會顯示「這筆沒有推理摘要」，不再誤顯示成過期。
    - Render log 會印出 `GEMINI extracted lengths` 與 `THOUGHT cache saved`，可用來確認。
+<<<<<<< HEAD
+=======
+
+## /reply 救援搭配
+
+如果出現 Gemini 已回覆但聊天室沒有收到訊息，可輸入：
+
+```text
+/reply
+```
+
+系統會讀短期記憶最後一筆：
+
+- 最後是 AI：重送最後一筆 AI 記憶。
+- 最後是使用者：直接讓 Gemini 補回覆，不重複寫入 user 記憶。
+
+私聊重送時仍會嘗試附上 `[✏️][🔁][🧠][▶️]`。如果按鈕導致 Telegram 拒收，會自動純文字重送。
+>>>>>>> e6a4d43 (log-reply)

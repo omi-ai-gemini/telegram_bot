@@ -1,3 +1,81 @@
+# #U6a21#U5f0f-#U4f7f#U7528#U8aaa#U660e.txt
+
+- 類型：.txt
+- 行數：29
+
+## preview
+```text
+Telemini 人物 / 劇本模式更新包
+
+請把 zip 解壓縮後，依照資料夾結構覆蓋到你的專案：
+
+新增：
+- services/chat_persona.py
+- templates/chat_persona_form.html
+
+覆蓋：
+- services/database.py
+- routes/setting.py
+- services/commands.py
+- handlers/call_handler.py
+- services/style.py
+- services/gemini_service.py
+- services/call_ai.py
+
+功能：
+1. 聊天模式：人物設定按鈕會打開聊天人物表單。
+2. 劇場模式：人物設定按鈕會打開原本劇本表單。
+3. 聊天模式 AI 回覆會讀 chat_persona_settings。
+4. 劇場模式 AI 回覆會讀 character_settings。
+5. 記憶設定清除只刪記憶。
+6. 人物設定刪除所有設定會刪聊天人物設定、劇本設定、記憶。
+
+注意：
+- Render 需要有 BASE_URL 環境變數。
+- 第一次部署後，init_db() 會自動建立 chat_persona_settings 表。
+- Telegram 舊按鈕可能還是舊 callback，請重新輸入 /設定 產生新的按鈕。
+```
+
+
+================================================================================
+
+# #U958b#U5834-#U66f4#U65b0#U8aaa#U660e.txt
+
+- 類型：.txt
+- 行數：25
+
+## preview
+```text
+Telemini 開場白狀態更新包
+
+覆蓋檔案：
+- services/database.py
+- services/character.py
+- services/commands.py
+- handlers/call_handler.py
+- routes/setting.py
+- templates/character_form.html
+
+功能：
+1. AI 開場白改為非必填。
+2. 設定中心原本「API設定」改為「開始劇本」狀態按鈕。
+3. 開始劇本按鈕有三種狀態：
+   - 開始劇本 | 無開場白
+   - 開始劇本 | 未開場
+   - 開始劇本 | 已開場
+4. 未開場時點擊會刪除選單、傳送開場白、寫入短期記憶。
+5. 已開場時點擊會進入確認選單，避免誤觸重發。
+6. 劇本內容真的改動時，會自動回到未開場。
+7. 沒有開場白時，只刪除選單，不傳送訊息。
+
+注意：
+- database.py 已加入 ALTER TABLE，部署後第一次請求會自動補 opening_sent 與 script_hash 欄位。
+- Telegram 舊選單按鈕不會自己更新，請重新輸入 /設定 產生新選單。
+```
+
+
+================================================================================
+
 # __init__.py
 
 - 類型：.py
@@ -542,6 +620,71 @@ DB 不保存使用者資料庫密碼明文。
 
 ================================================================================
 
+# docs\REPLY_RECOVERY_README.md
+
+- 類型：.md
+- 行數：53
+
+## preview
+```text
+# Telemini /reply 救援指令
+
+## 功能
+
+新增指令：
+
+```text
+/reply
+/回覆
+```
+
+用途：當 Gemini 已產生內容但 Telegram 沒送出，或上一輪真的沒有 AI 回覆時，手動補救。
+
+## 判斷邏輯
+
+讀取目前聊天室的短期記憶最後一筆：
+
+```text
+最後一筆是 assistant
+→ 直接把最後一筆 AI 短期記憶重送到聊天室
+→ 不新增 chat_memory，避免記憶變大
+
+最後一筆是 user
+→ 不重複寫 user 記憶
+→ 直接用最後一筆 user 內容再打一輪 Gemini
+→ 成功後寫入一筆 assistant chat_memory
+```
+
+## 按鈕
+
+私聊中救援送出的 AI 訊息仍會附上：
+
+```text
+[✏️][🔁][🧠][▶️]
+```
+
+如果 Telegram 因為按鈕或 URL 拒收，系統會自動改成純文字重送一次，避免整則訊息消失。
+
+## Log
+
+新增關鍵 log：
+
+```text
+AI ACTION CREATED ...
+AI SEND START ...
+AI SEND RESULT ...
+AI SEND RETRY ...
+REPLY RECOVERY START ...
+REPLY RESEND ...
+REPLY GENERATE ...
+```
+
+這些 log 用來判斷是 Gemini 沒回、Telegram 沒送出、按鈕出錯，還是救援指令有成功補送。
+```
+
+
+================================================================================
+
 # docs\SETTING_LINK_AUTH_README.md
 
 - 類型：.md
@@ -656,7 +799,11 @@ setting_menu_sessions
 # docs\THOUGHT_WEB_VIEW_README.md
 
 - 類型：.md
+<<<<<<< HEAD
 - 行數：74
+=======
+- 行數：89
+>>>>>>> e6a4d43 (log-reply)
 
 ## preview
 ```text
@@ -734,6 +881,17 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 2. Gemini 這次沒有回傳 thought summary。
    - 這版會顯示「這筆沒有推理摘要」，不再誤顯示成過期。
    - Render log 會印出 `GEMINI extracted lengths` 與 `THOUGHT cache saved`，可用來確認。
+<<<<<<< HEAD
+=======
+
+## /reply 救援搭配
+
+如果出現 Gemini 已回覆但聊天室沒有收到訊息，可輸入：
+
+```text
+...
+... 已省略 9 行
+>>>>>>> e6a4d43 (log-reply)
 ```
 
 
@@ -880,11 +1038,12 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：44
+- 行數：52
 
 ## imports
 - services.ai_actions.process_pending_edit_message
 - services.call_ai.run_ai
+- services.call_ai.run_reply_recovery
 - services.commands.send_setting_menu
 - services.memory_view.send_memory_view_menu
 
@@ -894,7 +1053,7 @@ def _send_script_opening(bot_id, chat_id):
 ## preview
 ```text
 from services.ai_actions import process_pending_edit_message
-from services.call_ai import run_ai
+from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 
@@ -933,6 +1092,14 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
             bot_id=bot_id,
             chat_id=chat_id,
             user_id=user_id
+        )
+        return
+
+    if user_text in ["/reply", "/回覆"]:
+        run_reply_recovery(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id
         )
         return
 
@@ -1693,7 +1860,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：232
+- 行數：420
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -1710,6 +1877,7 @@ def clear_bot_token_cache(bot_id: str):
 - services.memory.get_chat
 - services.memory.get_emotion
 - services.memory.get_facts
+- services.memory.list_recent_chat_memory
 - services.memory.update_emotion
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
@@ -1722,7 +1890,12 @@ def clear_bot_token_cache(bot_id: str):
 ## functions
 - _is_group_chat
 - _extract_telegram_message_id
+- _send_ai_message_with_retry
+- _get_generation_settings
+- _create_reply_buttons
+- _send_generated_reply
 - run_ai
+- run_reply_recovery
 
 ## preview
 ```text
@@ -1748,10 +1921,14 @@ from services.memory import (
     get_facts,
     update_emotion,
     detect_emotion,
-    get_emotion
+    get_emotion,
+    list_recent_chat_memory,
 )
 
 
+# =========================
+# 共用工具
+# =========================
 def _is_group_chat(chat_id):
     try:
         return int(chat_id) < 0
@@ -1767,47 +1944,43 @@ def _extract_telegram_message_id(result):
     return message.get("message_id")
 
 
-# =========================
-# 取得 AI 回覆並發送
-# =========================
-def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message_id=None):
+def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label="AI"):
+    """
+    傳送 AI 訊息，並補上明確 log。
 
-    try:
+    目的：
+    - 追查 Gemini 已回覆但 Telegram 沒收到的狀況。
+    - 如果帶 Inline Keyboard 送失敗，立刻改純文字重送一次，避免整則回覆消失。
+    """
+    text = str(text or "")
 
-        gemini_key = get_gemini_key(user_id)
-        bot_token = get_bot_token(bot_id)
+    print(
+        f"{label} SEND START len={len(text)} has_buttons={bool(reply_markup)}",
+        flush=True
+    )
 
-        if not gemini_key or not bot_token:
-            send_message(
-                bot_id,
-                chat_id,
-                f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
-            )
-            return
+    sent = send_message(bot_id, chat_id, text, reply_markup=reply_markup)
+    telegram_message_id = _extract_telegram_message_id(sent)
 
-        # =========================
-        # 全體使用者一次性公告
-        # 每個 user + bot 只會收到一次
-        # =========================
-        send_once_user_notice(user_id, bot_id, chat_id)
+    print(
+        f"{label} SEND RESULT ok={bool(telegram_message_id)} "
+        f"telegram_message_id={telegram_message_id} raw_ok={bool(sent)}",
+        flush=True
+    )
 
-        # =========================
-        # scope 判斷
-        # =========================
-        scope = "group" if _is_group_chat(chat_id) else "private"
+    if telegram_message_id or not reply_markup:
+        return sent, telegram_message_id
 
-        # =========================
-        # 先寫入使用者短期記憶
-        # 注意：短期記憶不在 add_chat 內直接刪舊資料。
-        # 舊資料會在長期摘要成功後才清理。
-        # =========================
-        user_chat_id = add_chat(
-            bot_id,
-            chat_id,
-            "user",
-            user_text,
+    print(
+        f"{label} SEND RETRY without buttons because first send failed",
+        flush=True
+    )
+
+    retry_sent = send_message(bot_id, chat_id, text, reply_markup=None)
+    retry_message_id = _extract_telegram_message_id(retry_sent)
+
 ...
-... 已省略 152 行
+... 已省略 340 行
 ```
 
 
