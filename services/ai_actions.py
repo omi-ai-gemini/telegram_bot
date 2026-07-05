@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 import os
+import secrets
 import threading
 import time
 
@@ -95,7 +96,6 @@ def _get_or_create_ai_thought_token(action_id):
             item["expires_at"] = now + THOUGHT_CACHE_TTL_SECONDS
             return item.get("token")
 
-        import secrets
         token = secrets.token_urlsafe(32)
 
         _THOUGHT_CACHE[action_id] = {

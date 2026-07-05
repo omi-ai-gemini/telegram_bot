@@ -1,81 +1,3 @@
-# #U6a21#U5f0f-#U4f7f#U7528#U8aaa#U660e.txt
-
-- 類型：.txt
-- 行數：29
-
-## preview
-```text
-Telemini 人物 / 劇本模式更新包
-
-請把 zip 解壓縮後，依照資料夾結構覆蓋到你的專案：
-
-新增：
-- services/chat_persona.py
-- templates/chat_persona_form.html
-
-覆蓋：
-- services/database.py
-- routes/setting.py
-- services/commands.py
-- handlers/call_handler.py
-- services/style.py
-- services/gemini_service.py
-- services/call_ai.py
-
-功能：
-1. 聊天模式：人物設定按鈕會打開聊天人物表單。
-2. 劇場模式：人物設定按鈕會打開原本劇本表單。
-3. 聊天模式 AI 回覆會讀 chat_persona_settings。
-4. 劇場模式 AI 回覆會讀 character_settings。
-5. 記憶設定清除只刪記憶。
-6. 人物設定刪除所有設定會刪聊天人物設定、劇本設定、記憶。
-
-注意：
-- Render 需要有 BASE_URL 環境變數。
-- 第一次部署後，init_db() 會自動建立 chat_persona_settings 表。
-- Telegram 舊按鈕可能還是舊 callback，請重新輸入 /設定 產生新的按鈕。
-```
-
-
-================================================================================
-
-# #U958b#U5834-#U66f4#U65b0#U8aaa#U660e.txt
-
-- 類型：.txt
-- 行數：25
-
-## preview
-```text
-Telemini 開場白狀態更新包
-
-覆蓋檔案：
-- services/database.py
-- services/character.py
-- services/commands.py
-- handlers/call_handler.py
-- routes/setting.py
-- templates/character_form.html
-
-功能：
-1. AI 開場白改為非必填。
-2. 設定中心原本「API設定」改為「開始劇本」狀態按鈕。
-3. 開始劇本按鈕有三種狀態：
-   - 開始劇本 | 無開場白
-   - 開始劇本 | 未開場
-   - 開始劇本 | 已開場
-4. 未開場時點擊會刪除選單、傳送開場白、寫入短期記憶。
-5. 已開場時點擊會進入確認選單，避免誤觸重發。
-6. 劇本內容真的改動時，會自動回到未開場。
-7. 沒有開場白時，只刪除選單，不傳送訊息。
-
-注意：
-- database.py 已加入 ALTER TABLE，部署後第一次請求會自動補 opening_sent 與 script_hash 欄位。
-- Telegram 舊選單按鈕不會自己更新，請重新輸入 /設定 產生新選單。
-```
-
-
-================================================================================
-
 # __init__.py
 
 - 類型：.py
@@ -620,10 +542,86 @@ DB 不保存使用者資料庫密碼明文。
 
 ================================================================================
 
+# docs\REPLY_NONBLOCKING_BUTTONS_README.md
+
+- 類型：.md
+- 行數：64
+
+## preview
+```text
+# Telemini 回覆不被推理摘要 / 按鈕阻塞修正
+
+## 修正目標
+
+主回覆必須優先送到 Telegram。
+
+以下附加流程全部改成背景補掛：
+
+```text
+AI action 建立
+🧠 thought summary 快取
+🧠 thought URL token
+[✏️][🔁][🧠][▶️] Inline Keyboard
+```
+
+## 新流程
+
+```text
+Gemini 回覆成功
+→ 寫入 assistant 短期記憶
+→ 立刻 sendMessage 純文字給使用者
+→ 背景建立 action / thought cache / buttons
+→ 用 editMessageText 把同一則訊息補上按鈕
+```
+
+## 效果
+
+就算背景流程發生錯誤，例如：
+
+```text
+secrets 未匯入
+token 建立失敗
+BASE_URL 錯誤
+Inline Keyboard 被 Telegram 拒收
+thought summary 為空
+```
+
+使用者仍然會先收到 AI 文字回覆。
+
+## Log
+
+主回覆：
+
+```text
+AI SEND START len=... has_buttons=False
+AI SEND RESULT ok=True telegram_message_id=...
+```
+
+背景補掛：
+
+```text
+AI ACTION CREATED action_id=...
+THOUGHT cache saved ...
+AI BUTTON ATTACH START ...
+AI BUTTON ATTACH RESULT ok=True/False
+```
+
+如果背景補掛失敗：
+
+```text
+AI BUTTON BACKGROUND ERROR action_id=...: ...
+```
+
+這種錯誤不會再卡住主回覆。
+```
+
+
+================================================================================
+
 # docs\REPLY_RECOVERY_README.md
 
 - 類型：.md
-- 行數：53
+- 行數：59
 
 ## preview
 ```text
@@ -680,6 +678,60 @@ REPLY GENERATE ...
 ```
 
 這些 log 用來判斷是 Gemini 沒回、Telegram 沒送出、按鈕出錯，還是救援指令有成功補送。
+
+## 回覆不被推理摘要阻塞
+
+`/reply` 救援重送時，也改成先送純文字，再背景補掛操作按鈕與 🧠 推理摘要網址。
+
+所以就算 thought cache / token / Inline Keyboard 發生錯誤，救援回覆仍會先送進聊天室。
+```
+
+
+================================================================================
+
+# docs\REPLY_RECOVERY_SECRET_FIX_README.md
+
+- 類型：.md
+- 行數：36
+
+## preview
+```text
+# Telemini /reply secrets 修正包
+
+## 修正問題
+
+`/reply` 救援時，如果最後一筆短期記憶是 assistant，流程會：
+
+1. 建立 AI action。
+2. 建立 🧠 推理摘要網頁 token。
+3. 重送最後一筆 AI 回覆。
+
+上一版 `services/ai_actions.py` 在 `cache_ai_thought_summary()` 裡使用 `secrets.token_urlsafe()`，但檔案頂部漏掉 `import secrets`，所以會出現：
+
+```text
+REPLY RECOVERY ERROR: name 'secrets' is not defined
+```
+
+## 修改檔案
+
+- `services/ai_actions.py`
+
+## 部署後測試
+
+部署完成後重新輸入：
+
+```text
+/reply
+```
+
+正常會看到 log：
+
+```text
+THOUGHT token created ...
+AI ACTION CREATED ...
+REPLY RESEND SEND START ...
+REPLY RESEND SEND RESULT ok=True ...
+```
 ```
 
 
@@ -799,11 +851,7 @@ setting_menu_sessions
 # docs\THOUGHT_WEB_VIEW_README.md
 
 - 類型：.md
-<<<<<<< HEAD
-- 行數：74
-=======
-- 行數：89
->>>>>>> e6a4d43 (log-reply)
+- 行數：92
 
 ## preview
 ```text
@@ -887,11 +935,8 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 ## /reply 救援搭配
 
 如果出現 Gemini 已回覆但聊天室沒有收到訊息，可輸入：
-
-```text
 ...
-... 已省略 9 行
->>>>>>> e6a4d43 (log-reply)
+... 已省略 12 行
 ```
 
 
@@ -1674,6 +1719,7 @@ def thought_page(token):
 ```text
 from datetime import datetime, timedelta
 import os
+import secrets
 import threading
 import time
 
@@ -1751,7 +1797,6 @@ def _purge_expired_thought_cache(now=None):
 def _get_or_create_ai_thought_token(action_id):
     """
     取得某則 AI 回覆的推理摘要網頁 token。
-
 ...
 ... 已省略 802 行
 ```
@@ -1860,7 +1905,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：420
+- 行數：478
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -1882,20 +1927,23 @@ def clear_bot_token_cache(bot_id: str):
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
 - services.reply_style.get_reply_style_settings
+- services.telegram_service.edit_message_text
 - services.telegram_service.send_message
 - services.time_context.get_current_time_context
 - services.user_notice.send_once_user_notice
 - services.user_router.get_gemini_key
+- threading
 
 ## functions
 - _is_group_chat
 - _extract_telegram_message_id
 - _send_ai_message_with_retry
 - _get_generation_settings
-- _create_reply_buttons
+- _attach_reply_buttons_in_background
 - _send_generated_reply
 - run_ai
 - run_reply_recovery
+- worker
 
 ## preview
 ```text
@@ -1908,13 +1956,15 @@ from services.ai_actions import (
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
-from services.telegram_service import send_message
+from services.telegram_service import send_message, edit_message_text
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
 from services.time_context import get_current_time_context
+import threading
+
 from services.memory import (
     add_chat,
     get_chat,
@@ -1977,10 +2027,8 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
     )
 
     retry_sent = send_message(bot_id, chat_id, text, reply_markup=None)
-    retry_message_id = _extract_telegram_message_id(retry_sent)
-
 ...
-... 已省略 340 行
+... 已省略 398 行
 ```
 
 

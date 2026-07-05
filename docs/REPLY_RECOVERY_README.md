@@ -51,3 +51,9 @@ REPLY GENERATE ...
 ```
 
 這些 log 用來判斷是 Gemini 沒回、Telegram 沒送出、按鈕出錯，還是救援指令有成功補送。
+
+## 回覆不被推理摘要阻塞
+
+`/reply` 救援重送時，也改成先送純文字，再背景補掛操作按鈕與 🧠 推理摘要網址。
+
+所以就算 thought cache / token / Inline Keyboard 發生錯誤，救援回覆仍會先送進聊天室。

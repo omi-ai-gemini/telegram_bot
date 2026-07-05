@@ -7,13 +7,15 @@ from services.ai_actions import (
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
-from services.telegram_service import send_message
+from services.telegram_service import send_message, edit_message_text
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
 from services.time_context import get_current_time_context
+import threading
+
 from services.memory import (
     add_chat,
     get_chat,
@@ -121,36 +123,89 @@ def _get_generation_settings(bot_id, chat_id, user_id, scope):
     }
 
 
-def _create_reply_buttons(bot_id, chat_id, user_id, assistant_chat_id, source_user_chat_id, generation_type, thought_summary):
+def _attach_reply_buttons_in_background(
+    bot_id,
+    chat_id,
+    user_id,
+    reply_text,
+    telegram_message_id,
+    assistant_chat_id,
+    source_user_chat_id,
+    generation_type,
+    thought_summary,
+    label="AI",
+):
     """
-    私聊建立 [✏️][🔁][🧠][▶️] 按鈕。
-    群組目前不建立按鈕。
+    背景補掛 AI 操作按鈕與 🧠 推理摘要。
+
+    重要：
+    - 主回覆已經送出後才跑這段。
+    - 這段任何錯誤都只印 log，不可以影響使用者收到文字回覆。
+    - 🧠 thought cache / token / URL / Inline Keyboard 都屬於附加功能。
     """
     if _is_group_chat(chat_id):
-        return None, None
+        print(f"{label} BUTTON SKIP: group chat", flush=True)
+        return
 
-    action_id = create_ai_message_action(
-        bot_id=bot_id,
-        chat_id=chat_id,
-        user_id=user_id,
-        assistant_chat_id=assistant_chat_id,
-        source_user_chat_id=source_user_chat_id,
-        context_chat_id=source_user_chat_id,
-        generation_type=generation_type,
-    )
+    if not telegram_message_id:
+        print(f"{label} BUTTON SKIP: missing telegram_message_id", flush=True)
+        return
 
-    print(
-        f"AI ACTION CREATED action_id={action_id} assistant_chat_id={assistant_chat_id} "
-        f"source_user_chat_id={source_user_chat_id} type={generation_type}",
-        flush=True,
-    )
+    def worker():
+        action_id = None
 
-    if not action_id:
-        return None, None
+        try:
+            action_id = create_ai_message_action(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                assistant_chat_id=assistant_chat_id,
+                source_user_chat_id=source_user_chat_id,
+                context_chat_id=source_user_chat_id,
+                generation_type=generation_type,
+            )
 
-    cache_ai_thought_summary(action_id, thought_summary)
-    return action_id, build_ai_action_keyboard(action_id)
+            print(
+                f"{label} ACTION CREATED action_id={action_id} assistant_chat_id={assistant_chat_id} "
+                f"source_user_chat_id={source_user_chat_id} type={generation_type}",
+                flush=True,
+            )
 
+            if not action_id:
+                return
+
+            # 先更新 Telegram message id。就算後面按鈕或 thought cache 出錯，
+            # 修改/重跑/接續仍有機會靠 action 對到原訊息。
+            update_action_telegram_message_id(action_id, telegram_message_id)
+
+            cache_ai_thought_summary(action_id, thought_summary)
+            reply_markup = build_ai_action_keyboard(action_id)
+
+            print(
+                f"{label} BUTTON ATTACH START action_id={action_id} telegram_message_id={telegram_message_id}",
+                flush=True,
+            )
+
+            edited = edit_message_text(
+                bot_id,
+                chat_id,
+                telegram_message_id,
+                reply_text,
+                reply_markup=reply_markup,
+            )
+
+            print(
+                f"{label} BUTTON ATTACH RESULT action_id={action_id} ok={bool(edited)}",
+                flush=True,
+            )
+
+        except Exception as exc:
+            print(
+                f"{label} BUTTON BACKGROUND ERROR action_id={action_id}: {exc}",
+                flush=True,
+            )
+
+    threading.Thread(target=worker, daemon=True).start()
 
 def _send_generated_reply(
     gemini_key,
@@ -207,26 +262,28 @@ def _send_generated_reply(
 
     assistant_chat_id = add_chat(bot_id, chat_id, "assistant", reply, user_id=user_id)
 
-    action_id, reply_markup = _create_reply_buttons(
-        bot_id=bot_id,
-        chat_id=chat_id,
-        user_id=user_id,
-        assistant_chat_id=assistant_chat_id,
-        source_user_chat_id=source_user_chat_id,
-        generation_type="reply",
-        thought_summary=thought_summary,
-    )
-
+    # 先送文字，按鈕與 🧠 推理摘要全部改成背景補掛。
+    # 這樣 thought/cache/button 任何一段炸掉，都不會卡住主要回覆。
     sent, telegram_message_id = _send_ai_message_with_retry(
         bot_id,
         chat_id,
         reply,
-        reply_markup=reply_markup,
+        reply_markup=None,
         label=label,
     )
 
-    if action_id and telegram_message_id:
-        update_action_telegram_message_id(action_id, telegram_message_id)
+    _attach_reply_buttons_in_background(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        reply_text=reply,
+        telegram_message_id=telegram_message_id,
+        assistant_chat_id=assistant_chat_id,
+        source_user_chat_id=source_user_chat_id,
+        generation_type="reply",
+        thought_summary=thought_summary,
+        label=label,
+    )
 
     maintain_memory_after_reply(gemini_key, bot_id, chat_id, user_id=user_id)
     return bool(telegram_message_id or sent)
@@ -363,29 +420,30 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
                     source_user_chat_id = row.get("id")
                     break
 
-            action_id, reply_markup = _create_reply_buttons(
-                bot_id=bot_id,
-                chat_id=chat_id,
-                user_id=user_id,
-                assistant_chat_id=last_id,
-                source_user_chat_id=source_user_chat_id,
-                generation_type="reply_resend",
-                thought_summary="",
-            )
-
+            # /reply 救援也一樣：先把文字送出去，按鈕背景補掛。
             sent, telegram_message_id = _send_ai_message_with_retry(
                 bot_id,
                 chat_id,
                 last_text,
-                reply_markup=reply_markup,
+                reply_markup=None,
                 label="REPLY RESEND",
             )
 
-            if action_id and telegram_message_id:
-                update_action_telegram_message_id(action_id, telegram_message_id)
+            _attach_reply_buttons_in_background(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                reply_text=last_text,
+                telegram_message_id=telegram_message_id,
+                assistant_chat_id=last_id,
+                source_user_chat_id=source_user_chat_id,
+                generation_type="reply_resend",
+                thought_summary="",
+                label="REPLY RESEND",
+            )
 
             print(
-                f"REPLY RECOVERY RESEND DONE action_id={action_id} telegram_message_id={telegram_message_id}",
+                f"REPLY RECOVERY RESEND DONE telegram_message_id={telegram_message_id}",
                 flush=True,
             )
             return
