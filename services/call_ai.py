@@ -27,6 +27,9 @@ from services.memory import (
 )
 
 
+
+BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
+
 # =========================
 # 共用工具
 # =========================
@@ -264,7 +267,7 @@ def _send_generated_reply(
 
     if reply == GEMINI_BLOCKED:
         print(f"{label} BLOCKED SEND: Gemini blocked chat reply", flush=True)
-        _send_ai_message_with_retry(bot_id, chat_id, "內容被安全阻擋", label=label)
+        _send_ai_message_with_retry(bot_id, chat_id, BLOCKED_REPLY_TEXT, label=label)
         return False
 
     if not reply:

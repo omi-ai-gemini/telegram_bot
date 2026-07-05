@@ -20,8 +20,19 @@ from services.memory import (
     detect_emotion,
     get_emotion,
 )
-from services.memory_summary import get_memory_context, maintain_memory_after_reply
-from services.reply_style import get_reply_style_settings
+from services.memory_summary import (
+    get_memory_context,
+    maintain_memory_after_reply,
+    summarize_pending_memory,
+    cleanup_long_term_memory,
+    count_pending_summary_messages,
+    SUMMARY_CHUNK_SIZE_MESSAGES,
+)
+from services.reply_style import (
+    get_reply_style_settings,
+    normalize_style_type,
+    resave_existing_reply_style_settings,
+)
 from services.telegram_service import delete_message, edit_message_text, send_message
 from services.time_context import get_current_time_context
 from services.user_router import get_gemini_key
@@ -30,6 +41,7 @@ from services.setting_sessions import save_setting_menu_session
 
 EDIT_PENDING_MINUTES = 5
 THOUGHT_CACHE_TTL_SECONDS = 60 * 60
+BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
 CONTINUE_USER_TEXT = """
 【接續劇情指令】
 這不是新的使用者對話，也不是重新回答上一句。
@@ -81,6 +93,7 @@ HIDDEN_KEYBOARD_ACTIONS = {
     "🔁": "regen",
     "🧠": "thought",
     "▶️": "continue",
+    "💾": "summary",
     HIDDEN_KEYBOARD_CLOSE_TEXT: "close",
     "❌ 關閉功能鍵盤": "close",
 }
@@ -139,6 +152,9 @@ def _hidden_keyboard_markup():
                 {"text": "🔁"},
                 {"text": "🧠"},
                 {"text": "▶️"},
+            ],
+            [
+                {"text": "💾"},
             ],
             [{"text": HIDDEN_KEYBOARD_CLOSE_TEXT}],
         ],
@@ -583,6 +599,10 @@ def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_
         else:
             result = send_message(bot_id, chat_id, "回覆依據連結尚未建立")
             _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
+        return True
+
+    if action_type == "summary":
+        run_passive_summarize_memory_in_thread(user_id, bot_id, chat_id)
         return True
 
     if action_type == "continue":
@@ -1205,7 +1225,7 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
     reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
-        reply = "內容被安全阻擋"
+        reply = BLOCKED_REPLY_TEXT
 
     if not reply:
         print("AI ACTION REGEN SKIP: empty reply")
@@ -1289,7 +1309,7 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
-        send_message(bot_id, chat_id, "內容被安全阻擋")
+        send_message(bot_id, chat_id, BLOCKED_REPLY_TEXT)
         return
 
     if not reply:
@@ -1332,6 +1352,91 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
 
 
 
+def _resave_current_custom_reply_style(user_id, bot_id, chat_id):
+    """🗣️ 除錯回覆前，先把目前模式對應的既有自訂風格原樣重存一次。"""
+    try:
+        settings = get_character_settings(bot_id, chat_id, user_id=user_id)
+        style_type = normalize_style_type(settings.get("mode", "聊天模式"))
+
+        updated_count = resave_existing_reply_style_settings(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            style_type=style_type,
+            user_id=user_id,
+        )
+
+        print(
+            "DEBUG hidden reply resave custom style:",
+            "bot_id=", bot_id,
+            "chat_id=", chat_id,
+            "style_type=", style_type,
+            "updated=", updated_count,
+            flush=True,
+        )
+
+        return updated_count
+
+    except Exception as exc:
+        print("DEBUG hidden reply resave custom style skipped:", exc, flush=True)
+        return 0
+
+
+def passive_summarize_memory(user_id, bot_id, chat_id):
+    """/hidden 💾 被動摘要：由使用者手動觸發一次長期記憶整理。"""
+    if _is_group_chat(chat_id):
+        send_message(bot_id, chat_id, "群組暫不開放這個功能")
+        return
+
+    gemini_key = get_gemini_key(user_id)
+
+    if not gemini_key:
+        send_message(bot_id, chat_id, f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}")
+        return
+
+    pending_count = count_pending_summary_messages(bot_id, chat_id)
+
+    if pending_count < SUMMARY_CHUNK_SIZE_MESSAGES:
+        send_message(
+            bot_id,
+            chat_id,
+            f"目前尚未滿 {SUMMARY_CHUNK_SIZE_MESSAGES} 筆可整理的短期記憶。\n"
+            f"目前未摘要筆數：{pending_count}",
+        )
+        return
+
+    chunks = summarize_pending_memory(
+        gemini_key=gemini_key,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_id=user_id,
+        max_chunks=5,
+    )
+
+    if chunks:
+        cleanup_long_term_memory(
+            gemini_key=gemini_key,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_id=user_id,
+        )
+        send_message(bot_id, chat_id, f"已整理 {chunks} 段摘要記憶")
+        return
+
+    send_message(
+        bot_id,
+        chat_id,
+        "這次沒有產生新的摘要記憶，可能是摘要被安全阻擋或 Gemini 回傳空摘要。",
+    )
+
+
+def run_passive_summarize_memory_in_thread(user_id, bot_id, chat_id):
+    threading.Thread(
+        target=passive_summarize_memory,
+        args=(user_id, bot_id, chat_id),
+        daemon=True,
+    ).start()
+
+
 def reply_ai_message(user_id, bot_id, chat_id, action_id):
     """
     🗣️ 補送目前這則 AI 回覆。
@@ -1346,6 +1451,8 @@ def reply_ai_message(user_id, bot_id, chat_id, action_id):
     if _is_group_chat(chat_id):
         send_message(bot_id, chat_id, "群組暫不開放這個功能")
         return
+
+    _resave_current_custom_reply_style(user_id, bot_id, chat_id)
 
     action = get_ai_message_action(action_id, bot_id, chat_id, user_id=user_id)
 

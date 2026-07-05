@@ -256,3 +256,98 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
 
     finally:
         conn.close()
+
+# =========================
+# 重新儲存既有自訂回覆風格
+# - 給 /hidden 🗣️ 除錯回覆使用
+# - 只重存已存在的 reply_style_settings 資料
+# - 不建立新資料、不回填預設風格、不覆蓋成預設文字
+# =========================
+def resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
+
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+
+    if style_type:
+        style_types = [normalize_style_type(style_type)]
+    else:
+        style_types = ["chat", "theater"]
+
+    conn = get_conn()
+    updated_count = 0
+
+    try:
+        cursor = conn.cursor()
+
+        for current_style_type in style_types:
+            cursor.execute("""
+                SELECT reply_style
+                FROM reply_style_settings
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND style_type = %s
+                LIMIT 1
+            """, (
+                bot_id,
+                chat_id,
+                current_style_type
+            ))
+
+            row = cursor.fetchone()
+
+            if not row:
+                continue
+
+            # 讀出使用者已經自訂好的風格，再用目前加密流程原樣寫回。
+            # 不使用 DEFAULT，也不從預設風格產生新資料。
+            current_reply_style = _decrypt_style(
+                bot_id,
+                chat_id,
+                current_style_type,
+                row[0]
+            )
+
+            encrypted_reply_style = _encrypt_style(
+                bot_id,
+                chat_id,
+                current_style_type,
+                current_reply_style
+            )
+
+            cursor.execute("""
+                UPDATE reply_style_settings
+                SET reply_style = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND style_type = %s
+            """, (
+                encrypted_reply_style,
+                bot_id,
+                chat_id,
+                current_style_type
+            ))
+
+            updated_count += cursor.rowcount or 0
+
+        conn.commit()
+
+        print(
+            "DEBUG existing reply style resaved:",
+            bot_id,
+            chat_id,
+            style_types,
+            "updated=",
+            updated_count,
+            flush=True
+        )
+
+        return updated_count
+
+    except Exception as e:
+        conn.rollback()
+        print("DB ERROR resave_existing_reply_style_settings:", e)
+        return 0
+
+    finally:
+        conn.close()

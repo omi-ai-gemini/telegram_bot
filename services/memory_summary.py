@@ -12,12 +12,39 @@ SUMMARY_CHUNK_SIZE_MESSAGES = 100
 ACTIVE_SUMMARY_KEEP = 12
 ARCHIVE_BATCH_SIZE = 6
 ARCHIVE_KEEP = 5
+BLOCK_RETRY_HINT = "使用🗣️嘗試重跑回覆"
 
 
-def _notify_summary_blocked(bot_id, chat_id):
-    """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
+def _with_retry_hint(text):
+    text = str(text or "").strip()
+
+    if not text:
+        return BLOCK_RETRY_HINT
+
+    if BLOCK_RETRY_HINT in text:
+        return text
+
+    return f"{text}\n{BLOCK_RETRY_HINT}"
+
+
+def _notify_summary_blocked(bot_id, chat_id, stage="segment"):
+    """摘要任務被 Gemini 安全層擋下時，依照階段回聊天室提示。"""
+    stage = str(stage or "segment")
+
+    messages = {
+        # 只有這個代表「這一段 100 則短期記憶沒有寫進 memory_summaries」。
+        "segment": "摘要長期記憶時被阻擋，本段沒有寫入長期記憶",
+
+        # 以下代表分段摘要已經存在，但後續整理/壓縮被擋。
+        "state": "更新目前記憶狀態時被阻擋，分段摘要已保留",
+        "archive": "壓縮舊長期記憶時被阻擋，既有摘要不受影響",
+        "archive_merge": "合併舊封存記憶時被阻擋，既有封存不受影響",
+    }
+
+    text = _with_retry_hint(messages.get(stage, messages["segment"]))
+
     try:
-        send_message(bot_id, chat_id, "摘要長期記憶時被阻擋")
+        send_message(bot_id, chat_id, text)
     except Exception as exc:
         print("TELEGRAM notify summary blocked error:", exc)
 
@@ -195,7 +222,7 @@ def _refresh_memory_state(gemini_key, bot_id, chat_id, scope, new_summary):
         )
 
         if _is_summary_blocked(state_text):
-            _notify_summary_blocked(bot_id, chat_id)
+            _notify_summary_blocked(bot_id, chat_id, stage="state")
             print("DEBUG memory state blocked by Gemini safety")
             return
 
@@ -307,7 +334,7 @@ def summarize_pending_memory(gemini_key, bot_id, chat_id, user_id=None, max_chun
         )
 
         if _is_summary_blocked(summary_text):
-            _notify_summary_blocked(bot_id, chat_id)
+            _notify_summary_blocked(bot_id, chat_id, stage="segment")
             print("DEBUG memory summary blocked by Gemini safety")
             return completed
 
@@ -415,7 +442,7 @@ def cleanup_long_term_memory(gemini_key, bot_id, chat_id, user_id=None):
     )
 
     if _is_summary_blocked(archive_text):
-        _notify_summary_blocked(bot_id, chat_id)
+        _notify_summary_blocked(bot_id, chat_id, stage="archive")
         print("DEBUG archive summary blocked by Gemini safety")
         return False
 
@@ -512,7 +539,7 @@ def _merge_old_archives_if_needed(gemini_key, bot_id, chat_id, scope):
     )
 
     if _is_summary_blocked(merged_text):
-        _notify_summary_blocked(bot_id, chat_id)
+        _notify_summary_blocked(bot_id, chat_id, stage="archive_merge")
         print("DEBUG archive merge blocked by Gemini safety")
         return False
 
@@ -557,6 +584,48 @@ def _merge_old_archives_if_needed(gemini_key, bot_id, chat_id, scope):
         conn.rollback()
         print("DB ERROR merge archives save:", exc)
         return False
+
+    finally:
+        conn.close()
+
+
+def count_pending_summary_messages(bot_id, chat_id, scope=None):
+    """計算目前尚未被摘要游標吃掉的短期記憶筆數，給 /hidden 💾 被動摘要判斷使用。"""
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _text_id(scope or _get_scope(chat_id))
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT last_summarized_chat_id
+            FROM memory_summary_state
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+
+        row = cursor.fetchone()
+        last_id = int(row[0]) if row and row[0] is not None else 0
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND id > %s
+        """, (bot_id, chat_id, scope, last_id))
+
+        count_row = cursor.fetchone()
+        return int(count_row[0]) if count_row else 0
+
+    except Exception as exc:
+        print("DB ERROR count_pending_summary_messages:", exc)
+        return 0
 
     finally:
         conn.close()
@@ -610,7 +679,20 @@ def list_memory_summaries(bot_id, chat_id, scope=None, limit=6):
 
 
 def delete_memory_summary(summary_id, bot_id, chat_id, scope=None):
-    """刪除單筆摘要記憶。"""
+    """
+    刪除單筆摘要記憶，並同步修正摘要游標。
+
+    為什麼要回退游標：
+    - 如果最新一段摘要剛好因為安全阻擋排查而被刪除，
+      memory_summary_state 不能繼續停在該段 end_chat_id。
+    - 否則下一次摘要只會抓 id > 舊 end_chat_id，
+      造成被刪掉的那段永遠不會重新摘要。
+
+    規則：
+    - 刪任一摘要後，memory_state 失效，直接清掉。
+    - memory_summary_state 回退到「目前仍存在的最大 end_chat_id」。
+    - 如果沒有任何摘要了，就刪掉 memory_summary_state，讓下次從可用短期記憶重新開始。
+    """
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _text_id(scope or _get_scope(chat_id))
@@ -624,6 +706,27 @@ def delete_memory_summary(summary_id, bot_id, chat_id, scope=None):
 
     try:
         cursor = conn.cursor()
+
+        # 先確認這筆摘要存在，順便拿範圍給 log / 回覆訊息使用。
+        cursor.execute("""
+            SELECT start_chat_id, end_chat_id
+            FROM memory_summaries
+            WHERE id = %s
+              AND bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            LIMIT 1
+        """, (summary_id, bot_id, chat_id, scope))
+
+        row = cursor.fetchone()
+
+        if not row:
+            conn.rollback()
+            return False, "找不到這筆摘要記憶"
+
+        deleted_start_id = int(row[0])
+        deleted_end_id = int(row[1])
+
         cursor.execute("""
             DELETE FROM memory_summaries
             WHERE id = %s
@@ -636,8 +739,68 @@ def delete_memory_summary(summary_id, bot_id, chat_id, scope=None):
             conn.rollback()
             return False, "找不到這筆摘要記憶"
 
+        # 摘要被刪後，目前狀態快照一定可能含有舊摘要內容，所以直接作廢。
+        cursor.execute("""
+            DELETE FROM memory_state
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+
+        # 重新計算目前仍存在摘要覆蓋到哪裡。
+        # 注意：不要只看 is_archived = FALSE，封存摘要仍然代表那段已經被摘要過。
+        cursor.execute("""
+            SELECT COALESCE(MAX(end_chat_id), 0)
+            FROM memory_summaries
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+
+        state_row = cursor.fetchone()
+        new_last_summarized_id = int(state_row[0]) if state_row and state_row[0] is not None else 0
+
+        if new_last_summarized_id > 0:
+            cursor.execute("""
+                INSERT INTO memory_summary_state (
+                    bot_id,
+                    chat_id,
+                    scope,
+                    last_summarized_chat_id,
+                    updated_at
+                )
+                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP)
+                ON CONFLICT (bot_id, chat_id, scope)
+                DO UPDATE SET
+                    last_summarized_chat_id = EXCLUDED.last_summarized_chat_id,
+                    updated_at = CURRENT_TIMESTAMP
+            """, (bot_id, chat_id, scope, new_last_summarized_id))
+        else:
+            cursor.execute("""
+                DELETE FROM memory_summary_state
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+
         conn.commit()
-        return True, "已刪除摘要記憶"
+
+        print(
+            "DEBUG memory summary deleted and cursor rolled back:",
+            bot_id,
+            chat_id,
+            scope,
+            "deleted_range=",
+            f"{deleted_start_id}-{deleted_end_id}",
+            "new_last=",
+            new_last_summarized_id,
+            flush=True
+        )
+
+        if new_last_summarized_id > 0:
+            return True, f"已刪除摘要記憶，摘要游標已回退到 {new_last_summarized_id}"
+
+        return True, "已刪除摘要記憶，摘要游標已重置"
 
     except Exception as exc:
         conn.rollback()
