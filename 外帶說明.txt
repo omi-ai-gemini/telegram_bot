@@ -1,20 +1,34 @@
-Telemini 除錯回覆修正包
+# Telemini callback run_reply_recovery 修正包
 
-覆蓋檔案：
-- services/ai_actions.py
+## 修正錯誤
+
+Render log：
+UnboundLocalError: cannot access local variable 'run_reply_recovery' where it is not associated with a value
+
+原因：
+handlers/call_handler.py 的 handle_ui() 內部在 blocked_reply_debug 分支有：
+from services.call_ai import run_reply_recovery
+
+Python 會因此把 run_reply_recovery 判定成 handle_ui() 的區域變數。
+前面的 ai_reply / hidden_ai_reply 分支先使用 run_reply_recovery 時，區域變數尚未被賦值，所以爆掉。
+
+## 修改檔案
+
 - handlers/call_handler.py
 
-修正內容：
-1. 🗣️ 除錯回覆不再直接補送按鈕綁定的舊 AI action。
-2. 🗣️ 改成走 /reply 救援邏輯，以目前聊天室最後一筆短期記憶為準。
-3. 如果最後一筆短期記憶是 user：
-   - 使用那一句 user 內容重新呼叫 Gemini 補回覆。
-   - 不重複寫入 user 記憶。
-4. 如果最後一筆短期記憶是 assistant：
-   - 直接把最後一筆 AI 回覆重送到聊天室。
-   - 不新增 chat_memory。
-5. /hidden Reply Keyboard 的 🗣️ 與 AI 訊息下方 Inline Keyboard 的 🗣️ 都修正。
-6. 安全阻擋提示的 🗣️ 原本已走 run_reply_recovery，本包保留。
+## 修改方式
 
-已檢查：
-python -m py_compile services/ai_actions.py handlers/call_handler.py
+1. 把 run_reply_recovery 移到檔案頂部 import。
+2. 移除 handle_ui() 裡面的區域 import。
+
+## 覆蓋位置
+
+把本包的：
+handlers/call_handler.py
+
+覆蓋到專案的：
+handlers/call_handler.py
+
+## 已測試
+
+python -m py_compile handlers/call_handler.py

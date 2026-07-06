@@ -7,6 +7,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
+from services.call_ai import run_reply_recovery
 from services.memory_view import handle_memory_view_callback
 from services.commands import (
     send_character_menu,
@@ -287,8 +288,6 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
             callback_id,
             text="正在嘗試重跑回覆"
         )
-
-        from services.call_ai import run_reply_recovery
 
         threading.Thread(
             target=run_reply_recovery,
