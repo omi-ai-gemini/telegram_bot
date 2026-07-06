@@ -266,6 +266,54 @@ def _prune_short_memory(cursor, bot_id, chat_id, scope):
     return cursor.rowcount or 0
 
 
+
+def count_pending_summary_messages(bot_id, chat_id, user_id=None):
+    """
+    回傳目前聊天室尚未被長期摘要處理的 chat_memory 筆數。
+
+    相容用途：
+    - services.ai_actions.py 可能會匯入這個函式，用來顯示 /hidden 或開發者選單中的摘要待處理數。
+    - 這個函式只讀 DB，不觸發 Gemini、不寫入摘要、不清理短期記憶。
+    """
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT last_summarized_chat_id
+            FROM memory_summary_state
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+
+        row = cursor.fetchone()
+        last_id = int(row[0]) if row and row[0] is not None else 0
+
+        cursor.execute("""
+            SELECT COUNT(*)
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+              AND id > %s
+        """, (bot_id, chat_id, scope, last_id))
+
+        count_row = cursor.fetchone()
+        return int(count_row[0]) if count_row else 0
+
+    except Exception as exc:
+        print("DB ERROR count_pending_summary_messages:", exc)
+        return 0
+
+    finally:
+        conn.close()
+
 def summarize_pending_memory(gemini_key, bot_id, chat_id, user_id=None, max_chunks=2):
     """
     每累積 100 則尚未摘要的 chat_memory（約 50 輪對話），就產生一段 memory_summaries。
