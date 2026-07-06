@@ -1,34 +1,13 @@
-# Telemini callback run_reply_recovery 修正包
+Telemini 移除「目前狀態」記憶引入修正包
 
-## 修正錯誤
+覆蓋檔案：
+- services/style.py
 
-Render log：
-UnboundLocalError: cannot access local variable 'run_reply_recovery' where it is not associated with a value
+修改內容：
+- 只移除 _build_memory_context_text() 中把 memory_context.state 加入 prompt 的區塊。
+- 也就是不再把「【目前狀態】」送進 Gemini prompt。
+- 其他 prompt 文字、BASE_STYLE、RESPONSE_RULES、聊天/劇場風格、摘要與封存摘要都沒有改。
 
-原因：
-handlers/call_handler.py 的 handle_ui() 內部在 blocked_reply_debug 分支有：
-from services.call_ai import run_reply_recovery
-
-Python 會因此把 run_reply_recovery 判定成 handle_ui() 的區域變數。
-前面的 ai_reply / hidden_ai_reply 分支先使用 run_reply_recovery 時，區域變數尚未被賦值，所以爆掉。
-
-## 修改檔案
-
-- handlers/call_handler.py
-
-## 修改方式
-
-1. 把 run_reply_recovery 移到檔案頂部 import。
-2. 移除 handle_ui() 裡面的區域 import。
-
-## 覆蓋位置
-
-把本包的：
-handlers/call_handler.py
-
-覆蓋到專案的：
-handlers/call_handler.py
-
-## 已測試
-
-python -m py_compile handlers/call_handler.py
+注意：
+- 這包不會刪除資料庫既有 memory_summary_state/current_state 資料。
+- 只是讓「目前狀態」不再被引入主遊戲 prompt。
