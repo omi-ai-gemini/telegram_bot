@@ -1075,14 +1075,16 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：759
+- 行數：834
 
 ## imports
 - services.ai_actions.get_ai_thought_url
 - services.ai_actions.run_continue_in_thread
 - services.ai_actions.run_regenerate_in_thread
+- services.ai_actions.run_repair_blocked_summary_in_thread
 - services.ai_actions.run_reply_ai_message_in_thread
 - services.ai_actions.start_edit_ai_message
+- services.call_ai.run_reply_recovery
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
 - services.character.mark_script_opening_sent
@@ -1105,6 +1107,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 - services.telegram_service.answer_callback_query
 - services.telegram_service.delete_message
 - services.telegram_service.send_message
+- threading
 
 ## functions
 - _setting_fallback_text
@@ -1114,11 +1117,13 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 
 ## preview
 ```text
+import threading
 from services.ai_actions import (
     get_ai_thought_url,
     run_continue_in_thread,
     run_regenerate_in_thread,
     run_reply_ai_message_in_thread,
+    run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
 from services.memory_view import handle_memory_view_callback
@@ -1192,10 +1197,8 @@ def _send_script_opening(bot_id, chat_id):
     mark_script_opening_sent(
         bot_id,
         chat_id
-    )
-
 ...
-... 已省略 679 行
+... 已省略 754 行
 ```
 
 
@@ -1204,7 +1207,7 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：57
+- 行數：88
 
 ## imports
 - services.ai_actions.handle_hidden_keyboard_message
@@ -1232,11 +1235,43 @@ from services.memory_view import send_memory_view_menu
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 
+    text = str(user_text or "").strip()
+
     # =========================
     # 明確指令優先處理
     # - 指令不需要先檢查 hidden keyboard / pending edit
     # - 避免指令被前置狀態檢查拖慢
     # =========================
+    if text in ["/setting", "/設定"]:
+        send_setting_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            source_message_id=message_id,
+            user_id=user_id,
+        )
+        return
+
+    if text in ["/memory", "/記憶"]:
+        send_memory_view_menu(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            source_message_id=message_id,
+            user_id=user_id,
+        )
+        return
+
+    if text in ["/reply", "/回覆"]:
+        run_reply_recovery(user_id, bot_id, chat_id)
+        return
+
+    if text == "/hidden":
+        send_hidden_ai_action_menu(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            source_message_id=message_id,
+        )
+        return
 
     # =========================
     # /hidden Reply Keyboard 按鍵
@@ -1268,15 +1303,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         user_id=user_id,
         bot_id=bot_id,
         chat_id=chat_id,
-        user_text=user_text,
-        user_message_id=message_id
-    )
-
-    if handled:
-        return
-
-
-    run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
+...
+... 已省略 8 行
 ```
 
 
@@ -1784,7 +1812,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1552
+- 行數：1626
 
 ## imports
 - datetime.datetime
@@ -1811,6 +1839,7 @@ def thought_page(token):
 - services.memory_summary.count_pending_summary_messages
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
+- services.memory_summary.repair_blocked_summary_attempt
 - services.memory_summary.summarize_pending_memory
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
@@ -1832,6 +1861,8 @@ def thought_page(token):
 - _hidden_keyboard_key
 - _hidden_keyboard_markup
 - _remove_keyboard_markup
+- build_blocked_reply_keyboard
+- send_blocked_reply_message
 - _delete_message_later
 - _save_hidden_keyboard_session
 - _pop_hidden_keyboard_session
@@ -1862,8 +1893,11 @@ def thought_page(token):
 - regenerate_ai_message
 - continue_ai_message
 - _resave_current_custom_reply_style
+- _run_manual_summary_after_cleanup
 - passive_summarize_memory
+- repair_blocked_summary_and_resummarize
 - run_passive_summarize_memory_in_thread
+- run_repair_blocked_summary_in_thread
 - reply_ai_message
 - run_reply_ai_message_in_thread
 - run_regenerate_in_thread
@@ -1900,6 +1934,7 @@ from services.memory_summary import (
     summarize_pending_memory,
     cleanup_long_term_memory,
     count_pending_summary_messages,
+    repair_blocked_summary_attempt,
     SUMMARY_CHUNK_SIZE_MESSAGES,
 )
 from services.reply_style import (
@@ -1915,7 +1950,7 @@ from services.setting_sessions import save_setting_menu_session
 
 EDIT_PENDING_MINUTES = 5
 THOUGHT_CACHE_TTL_SECONDS = 60 * 60
-BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
+BLOCKED_REPLY_TEXT = "內容被安全阻擋"
 CONTINUE_USER_TEXT = """
 【接續劇情指令】
 這不是新的使用者對話，也不是重新回答上一句。
@@ -1951,9 +1986,8 @@ CONTINUE_USER_TEXT = """
 _THOUGHT_CACHE = {}
 _THOUGHT_TOKEN_INDEX = {}
 _THOUGHT_CACHE_LOCK = threading.Lock()
-
 ...
-... 已省略 1472 行
+... 已省略 1546 行
 ```
 
 
@@ -2060,12 +2094,13 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：499
+- 行數：500
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
 - services.ai_actions.cache_ai_thought_summary
 - services.ai_actions.create_ai_message_action
+- services.ai_actions.send_blocked_reply_message
 - services.ai_actions.update_action_telegram_message_id
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
@@ -2107,6 +2142,7 @@ from services.ai_actions import (
     cache_ai_thought_summary,
     create_ai_message_action,
     update_action_telegram_message_id,
+    send_blocked_reply_message,
 )
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
@@ -2132,7 +2168,7 @@ from services.memory import (
 
 
 
-BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
+BLOCKED_REPLY_TEXT = "內容被安全阻擋"
 
 # =========================
 # 共用工具
@@ -2181,9 +2217,8 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
 
     print(
         f"{label} SEND RETRY without buttons because first send failed",
-        flush=True
 ...
-... 已省略 419 行
+... 已省略 420 行
 ```
 
 
@@ -3269,7 +3304,7 @@ def delete_current_memory(bot_id, chat_id, include_important=False):
 # services\memory_summary.py
 
 - 類型：.py
-- 行數：779
+- 行數：952
 
 ## imports
 - services.crypto_env.aad_for
@@ -3304,6 +3339,7 @@ def delete_current_memory(bot_id, chat_id, include_important=False):
 - _fetch_active_summaries
 - cleanup_long_term_memory
 - _merge_old_archives_if_needed
+- repair_blocked_summary_attempt
 - maintain_memory_after_reply
 - list_memory_summaries
 - delete_memory_summary
@@ -3328,10 +3364,28 @@ ARCHIVE_BATCH_SIZE = 6
 ARCHIVE_KEEP = 5
 
 
-def _notify_summary_blocked(bot_id, chat_id):
-    """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
+def _notify_summary_blocked(bot_id, chat_id, stage="unknown"):
+    """摘要任務被 Gemini 安全層擋下時，送出可一鍵修復的提示。"""
+    stage = str(stage or "unknown").strip() or "unknown"
+
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "清理後重跑摘要",
+                    "callback_data": f"summary_repair_confirm:{stage}",
+                }
+            ]
+        ]
+    }
+
     try:
-        send_message(bot_id, chat_id, "摘要長期記憶時被阻擋")
+        send_message(
+            bot_id,
+            chat_id,
+            "摘要長期記憶時被阻擋",
+            reply_markup=reply_markup,
+        )
     except Exception as exc:
         print("TELEGRAM notify summary blocked error:", exc)
 
@@ -3373,26 +3427,8 @@ def _fetch_unsummarized_rows(cursor, bot_id, chat_id, scope, limit):
         WHERE bot_id = %s
           AND chat_id = %s
           AND scope = %s
-    """, (bot_id, chat_id, scope))
-
-    row = cursor.fetchone()
-    last_id = int(row[0]) if row and row[0] is not None else 0
-
-    cursor.execute("""
-        SELECT id, role, text
-        FROM chat_memory
-        WHERE bot_id = %s
-          AND chat_id = %s
-          AND scope = %s
-          AND id > %s
-        ORDER BY id ASC
-        LIMIT %s
-    """, (bot_id, chat_id, scope, last_id, limit))
-
-    return cursor.fetchall()
-
 ...
-... 已省略 699 行
+... 已省略 872 行
 ```
 
 
@@ -6443,31 +6479,50 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：21
+- 行數：40
 
 ## preview
 ```text
-Telemini runtime cache hotfix 02
+Telemini blocked-button + summary-repair patch
 
 覆蓋檔案：
-- services/reply_style.py
+- handlers/message_handler.py
+- handlers/call_handler.py
+- services/ai_actions.py
+- services/call_ai.py
+- services/memory_summary.py
 
-修正問題：
-上一包 reply_style.py 沒有保留線上 ai_actions.py 需要匯入的：
-- resave_existing_reply_style_settings
+更新內容：
+1. 一般安全阻擋提示改成按鈕：
+   - 訊息只顯示「內容被安全阻擋」
+   - 下方出現「🗣️ 嘗試重跑回覆」
+   - 點擊後會刪除阻擋提示訊息
+   - 然後執行 /reply 救援式重跑
 
-造成 Render / Gunicorn 啟動時 ImportError：
-ImportError: cannot import name 'resave_existing_reply_style_settings' from 'services.reply_style'
+2. AI 操作流程被阻擋也改成按鈕：
+   - 重跑被擋：顯示「🗣️ 重新產生」
+   - 接續被擋：顯示「🗣️ 重新接續」
+   - 點擊後會刪除阻擋提示訊息
 
-本版修正：
-- 補回 resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None)
-- 不改使用者自訂風格內容
-- 有自訂內容時讀出後重新走 update_reply_style_settings()
-- 沒有自訂內容時只清快取，不硬寫空資料
-- 保留上一版 reply_style 快取
+3. 長期摘要阻擋提示改成按鈕：
+   - 訊息顯示「摘要長期記憶時被阻擋」
+   - 下方出現「清理後重跑摘要」
+   - 點擊後會刪除提示訊息
+   - 依阻擋階段清理可能半完成資料，再跑手動摘要
+
+4. 摘要修復會依階段處理：
+   - segment：分段摘要阻擋，重算摘要進度
+   - state：目前狀態摘要阻擋，刪除最新分段摘要與目前狀態後重跑
+   - archive：封存摘要阻擋，刪除最新封存並解除來源摘要封存
+   - archive_merge：封存合併阻擋，清理快取與摘要進度後重跑
+
+5. 順手修復目前最新 zip 裡的殘留問題：
+   - handlers/message_handler.py 補回 /setting /memory /hidden /reply 指令分支
+   - handlers/call_handler.py 移除多餘右括號
+   - services/ai_actions.py 移除多餘右括號
 
 已檢查：
-python -m py_compile services/reply_style.py
+python -m py_compile handlers/message_handler.py handlers/call_handler.py services/ai_actions.py services/call_ai.py services/memory_summary.py
 ```
 
 

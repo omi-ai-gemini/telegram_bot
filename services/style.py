@@ -333,7 +333,11 @@ def build_prompt(
     history_text = ""
 
     for msg in history:
-        history_text += f"{msg['role']}: {msg['text']}\n"
+        role = msg.get("role", "")
+        role_label = "使用者" if role == "user" else "AI" if role == "assistant" else role
+        time_label = str(msg.get("time_label") or "").strip()
+        prefix = f"[{time_label}] " if time_label else ""
+        history_text += f"{prefix}{role_label}: {msg.get('text', '')}\n"
 
     facts_text = _build_facts_text(facts)
     memory_context_text = _build_memory_context_text(memory_context)
@@ -377,6 +381,8 @@ def build_prompt(
 
 時間使用規則：
 - 聊天模式可以自然使用日期、星期、時間與時段接話，但不要每次都提。
+- 近期對話紀錄前面的 [剛剛/幾分鐘前/今天/昨天 HH:MM] 是訊息發生時間，判斷上下文時要一起參考。
+- 如果使用者故意在晚上說早安、半夜說午安，可以察覺時間不一致，但用自然聊天方式回應，不要說自己在讀資料庫。
 - 劇場模式不要主動用現實時間破壞劇情時間；除非使用者明確問現實時間或把聊天拉回現實。
 
 ===人物 / 劇本資料===

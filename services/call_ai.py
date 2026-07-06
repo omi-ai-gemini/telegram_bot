@@ -20,6 +20,7 @@ import threading
 from services.memory import (
     add_chat,
     get_chat,
+    get_chat_for_prompt,
     get_facts,
     update_emotion,
     detect_emotion,
@@ -95,12 +96,12 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
 
 def _get_generation_settings(bot_id, chat_id, user_id, scope):
     """集中取得 Gemini 回覆所需的設定與上下文。"""
-    history = get_chat(bot_id, chat_id, user_id=user_id)
-    facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
-    memory_context = get_memory_context(bot_id, chat_id, scope, user_id=user_id)
-
     character_settings = get_character_settings(bot_id, chat_id, user_id=user_id)
     mode = character_settings.get("mode", "聊天模式")
+
+    history = get_chat_for_prompt(bot_id, chat_id, user_id=user_id, mode=mode)
+    facts = get_facts(bot_id, chat_id, scope, user_id=user_id, limit=20)
+    memory_context = get_memory_context(bot_id, chat_id, scope, user_id=user_id)
 
     chat_persona_settings = None
     if mode == "聊天模式":

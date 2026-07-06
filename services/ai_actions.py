@@ -12,6 +12,7 @@ from services.gemini_service import GEMINI_BLOCKED, ask_gemini
 from services.memory import (
     add_chat,
     get_chat,
+    get_chat_for_prompt,
     get_chat_memory_item,
     get_chat_until,
     get_facts,
@@ -1320,7 +1321,7 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     if context_chat_id:
         history = get_chat_until(bot_id, chat_id, context_chat_id, user_id=user_id)
     else:
-        history = get_chat(bot_id, chat_id, user_id=user_id)
+        history = get_chat_for_prompt(bot_id, chat_id, user_id=user_id, mode=context.get("mode", "聊天模式"))
 
         # 如果找不到來源 action，就用目前最後一筆記憶 id。
         # 只查 id，不把內容印到 log。

@@ -182,6 +182,8 @@ C:\Projects\telemini
 - `_hidden_keyboard_key()`
 - `_hidden_keyboard_markup()`
 - `_remove_keyboard_markup()`
+- `build_blocked_reply_keyboard()`
+- `send_blocked_reply_message()`
 - `_delete_message_later()`
 - `_save_hidden_keyboard_session()`
 - `_pop_hidden_keyboard_session()`
@@ -212,8 +214,11 @@ C:\Projects\telemini
 - `regenerate_ai_message()`
 - `continue_ai_message()`
 - `_resave_current_custom_reply_style()`
+- `_run_manual_summary_after_cleanup()`
 - `passive_summarize_memory()`
+- `repair_blocked_summary_and_resummarize()`
 - `run_passive_summarize_memory_in_thread()`
+- `run_repair_blocked_summary_in_thread()`
 - `reply_ai_message()`
 - `run_reply_ai_message_in_thread()`
 - `run_regenerate_in_thread()`
@@ -388,6 +393,7 @@ C:\Projects\telemini
 - `_fetch_active_summaries()`
 - `cleanup_long_term_memory()`
 - `_merge_old_archives_if_needed()`
+- `repair_blocked_summary_attempt()`
 - `maintain_memory_after_reply()`
 - `list_memory_summaries()`
 - `delete_memory_summary()`

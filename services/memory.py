@@ -1,6 +1,8 @@
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for, is_encrypted
 from services.runtime_cache import get_cache, set_cache, delete_cache
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import re
 
@@ -12,6 +14,79 @@ def _text_id(value):
 def _get_scope(chat_id):
     chat_id = str(chat_id)
     return "group" if int(chat_id) < 0 else "private"
+
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
+
+
+def _to_taipei_datetime(value):
+    """把 DB created_at 轉成台灣時間。
+
+    Supabase / Postgres 可能回傳 aware datetime，也可能因欄位型態回傳 naive datetime。
+    naive 時先視為 UTC，再轉 Asia/Taipei，避免 Render 伺服器時區造成偏差。
+    """
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(TAIPEI_TZ)
+
+
+def _format_chat_time_label(created_at, now=None):
+    """產生給 Gemini 看得懂、但不浪費 token 的時間標籤。"""
+    dt = _to_taipei_datetime(created_at)
+
+    if not dt:
+        return ""
+
+    now = now or datetime.now(TAIPEI_TZ)
+    delta_seconds = int((now - dt).total_seconds())
+
+    # DB 時間如果因時區或同步誤差略晚於現在，仍顯示今天 HH:MM。
+    if delta_seconds < 0:
+        delta_seconds = 0
+
+    date_now = now.date()
+    date_dt = dt.date()
+    hhmm = dt.strftime("%H:%M")
+
+    if date_dt == date_now:
+        if delta_seconds < 60:
+            return f"剛剛 {hhmm}"
+        if delta_seconds < 60 * 60:
+            return f"{max(1, delta_seconds // 60)} 分鐘前 {hhmm}"
+        return f"今天 {hhmm}"
+
+    if (date_now - date_dt).days == 1:
+        return f"昨天 {hhmm}"
+
+    return dt.strftime("%m/%d %H:%M")
+
+
+def _history_item(role, value, bot_id, chat_id, scope, created_at=None):
+    role = role or "user"
+    aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+    text = _decrypt_safe(value, aad=aad)
+
+    if not text:
+        return None
+
+    return {
+        "role": role,
+        "text": text,
+        "created_at": str(created_at or ""),
+        "time_label": _format_chat_time_label(created_at),
+    }
 
 
 def _facts_cache_prefix(bot_id, chat_id, scope):
@@ -924,7 +999,7 @@ def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None):
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT role, text
+            SELECT role, text, created_at
             FROM chat_memory
             WHERE bot_id = %s
               AND chat_id = %s
@@ -936,18 +1011,10 @@ def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None):
         rows = cursor.fetchall()
         history = []
 
-        for role, value in rows:
-            role = role or "user"
-            aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
-            text = _decrypt_safe(value, aad=aad)
-
-            if not text:
-                continue
-
-            history.append({
-                "role": role,
-                "text": text
-            })
+        for role, value, created_at in rows:
+            item = _history_item(role, value, bot_id, chat_id, scope, created_at=created_at)
+            if item:
+                history.append(item)
 
         return history
 
@@ -971,7 +1038,7 @@ def get_chat(bot_id, chat_id, user_id=None):
         cursor = conn.cursor()
 
         cursor.execute("""
-            SELECT role, text
+            SELECT role, text, created_at
             FROM chat_memory
             WHERE bot_id = %s
               AND chat_id = %s
@@ -986,23 +1053,114 @@ def get_chat(bot_id, chat_id, user_id=None):
         rows = cursor.fetchall()
         history = []
 
-        for role, value in rows:
-            role = role or "user"
-            aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
-            text = _decrypt_safe(value, aad=aad)
-
-            if not text:
-                continue
-
-            history.append({
-                "role": role,
-                "text": text
-            })
+        for role, value, created_at in rows:
+            item = _history_item(role, value, bot_id, chat_id, scope, created_at=created_at)
+            if item:
+                history.append(item)
 
         return history
 
     except Exception as e:
         print("DB ERROR get_chat:", e)
+        raise
+
+    finally:
+        conn.close()
+
+
+def get_chat_for_prompt(bot_id, chat_id, user_id=None, mode="聊天模式"):
+    """取得要送進 Gemini 的近期對話，並加上時間標籤。
+
+    設計：
+    - 聊天模式：保留 60 分鐘內最多 60 則，外加更早的 20 則補上下文。
+    - 劇場模式：保留 180 分鐘內最多 80 則，外加更早的 30 則補場景。
+    - 不改 DB，只使用 chat_memory.created_at。
+    """
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+    mode = str(mode or "聊天模式")
+
+    if mode == "劇場模式":
+        window_minutes = 180
+        max_window_rows = 80
+        fallback_rows = 30
+    else:
+        window_minutes = 60
+        max_window_rows = 60
+        fallback_rows = 20
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id, role, text, created_at
+            FROM chat_memory
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            ORDER BY id ASC
+        """, (bot_id, chat_id, scope))
+
+        rows = cursor.fetchall()
+        now = datetime.now(TAIPEI_TZ)
+        window_seconds = window_minutes * 60
+
+        parsed = []
+        for row_id, role, value, created_at in rows:
+            item = _history_item(role, value, bot_id, chat_id, scope, created_at=created_at)
+            if not item:
+                continue
+
+            dt = _to_taipei_datetime(created_at)
+            age_seconds = None
+            if dt:
+                age_seconds = int((now - dt).total_seconds())
+
+            item["id"] = int(row_id)
+            item["age_seconds"] = age_seconds
+            parsed.append(item)
+
+        if not parsed:
+            return []
+
+        in_window = [
+            item for item in parsed
+            if item.get("age_seconds") is not None
+            and item.get("age_seconds") >= 0
+            and item.get("age_seconds") <= window_seconds
+        ]
+
+        if not in_window:
+            selected = parsed[-max_window_rows:]
+        else:
+            in_window = in_window[-max_window_rows:]
+            first_window_id = in_window[0]["id"]
+            older = [item for item in parsed if item["id"] < first_window_id]
+            selected = older[-fallback_rows:] + in_window
+
+        # 去重並保留時間順序。
+        seen = set()
+        result = []
+        for item in selected:
+            item_id = item.get("id")
+            if item_id in seen:
+                continue
+            seen.add(item_id)
+            item.pop("age_seconds", None)
+            result.append(item)
+
+        print(
+            f"[MEMORY TIME] mode={mode} window_minutes={window_minutes} "
+            f"rows={len(result)} total={len(parsed)} scope={scope}",
+            flush=True,
+        )
+
+        return result
+
+    except Exception as e:
+        print("DB ERROR get_chat_for_prompt:", e)
         raise
 
     finally:

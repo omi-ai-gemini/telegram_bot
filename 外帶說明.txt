@@ -1,40 +1,41 @@
-Telemini blocked-button + summary-repair patch
+Telemini 時間感知更新包
 
 覆蓋檔案：
-- handlers/message_handler.py
-- handlers/call_handler.py
-- services/ai_actions.py
+- services/memory.py
+- services/style.py
 - services/call_ai.py
-- services/memory_summary.py
+- services/ai_actions.py
 
 更新內容：
-1. 一般安全阻擋提示改成按鈕：
-   - 訊息只顯示「內容被安全阻擋」
-   - 下方出現「🗣️ 嘗試重跑回覆」
-   - 點擊後會刪除阻擋提示訊息
-   - 然後執行 /reply 救援式重跑
+1. 近期對話紀錄會帶入每筆 chat_memory.created_at 的時間標籤。
+   例如：
+   [剛剛 23:41] 使用者: ...
+   [8 分鐘前 23:33] AI: ...
+   [昨天 01:20] 使用者: ...
 
-2. AI 操作流程被阻擋也改成按鈕：
-   - 重跑被擋：顯示「🗣️ 重新產生」
-   - 接續被擋：顯示「🗣️ 重新接續」
-   - 點擊後會刪除阻擋提示訊息
+2. 不改 DB 結構。
+   直接使用既有 chat_memory.created_at。
 
-3. 長期摘要阻擋提示改成按鈕：
-   - 訊息顯示「摘要長期記憶時被阻擋」
-   - 下方出現「清理後重跑摘要」
-   - 點擊後會刪除提示訊息
-   - 依阻擋階段清理可能半完成資料，再跑手動摘要
+3. created_at 會轉成 Asia/Taipei 台灣時間。
+   若 DB 回傳 naive datetime，程式會先視為 UTC，再轉台灣時間。
 
-4. 摘要修復會依階段處理：
-   - segment：分段摘要阻擋，重算摘要進度
-   - state：目前狀態摘要阻擋，刪除最新分段摘要與目前狀態後重跑
-   - archive：封存摘要阻擋，刪除最新封存並解除來源摘要封存
-   - archive_merge：封存合併阻擋，清理快取與摘要進度後重跑
+4. 聊天模式：
+   - 保留 60 分鐘內最多 60 則
+   - 外加更早的 20 則補上下文
 
-5. 順手修復目前最新 zip 裡的殘留問題：
-   - handlers/message_handler.py 補回 /setting /memory /hidden /reply 指令分支
-   - handlers/call_handler.py 移除多餘右括號
-   - services/ai_actions.py 移除多餘右括號
+5. 劇場模式：
+   - 保留 180 分鐘內最多 80 則
+   - 外加更早的 30 則補場景
+
+6. 重跑 / 接續流程也會帶時間標籤。
+
+7. Prompt 新增時間使用規則：
+   - 近期對話前的時間標籤是訊息發生時間
+   - 可以察覺「晚上說早安」這種時間不一致
+   - 但不能說自己在讀資料庫
+
+8. Render log 會出現：
+   [MEMORY TIME] mode=聊天模式 window_minutes=60 rows=... total=... scope=private
 
 已檢查：
-python -m py_compile handlers/message_handler.py handlers/call_handler.py services/ai_actions.py services/call_ai.py services/memory_summary.py
+python -m py_compile services/memory.py services/style.py services/call_ai.py services/ai_actions.py
