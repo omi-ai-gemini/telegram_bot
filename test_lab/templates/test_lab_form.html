@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Test Lab</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: #0f172a;
+      color: #fff;
+    }
+    .page { max-width: 920px; margin: 0 auto; }
+    .card {
+      background: rgba(255,255,255,.08);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 22px;
+      padding: 22px;
+      box-shadow: 0 18px 45px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 26px; }
+    .desc { color: rgba(255,255,255,.72); line-height: 1.7; margin-bottom: 20px; }
+    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .field { margin: 16px 0; }
+    label { display: block; margin-bottom: 8px; color: rgba(255,255,255,.86); font-size: 14px; font-weight: 700; }
+    input, textarea {
+      width: 100%;
+      border: 1px solid rgba(255,255,255,.16);
+      border-radius: 14px;
+      background: rgba(15,23,42,.82);
+      color: #fff;
+      padding: 12px;
+      font-size: 15px;
+      line-height: 1.6;
+      outline: none;
+    }
+    textarea { min-height: 150px; resize: vertical; }
+    textarea.large { min-height: 240px; }
+    button {
+      width: 100%;
+      margin-top: 18px;
+      border: 0;
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: #60a5fa;
+      color: #07111f;
+      font-weight: 800;
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .note {
+      margin: 16px 0;
+      padding: 12px;
+      border-radius: 14px;
+      background: rgba(96,165,250,.12);
+      border: 1px solid rgba(96,165,250,.26);
+      color: #bfdbfe;
+      line-height: 1.7;
+      font-size: 13px;
+    }
+    @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>Prompt Test Lab</h1>
+      <div class="desc">
+        這裡只修改 test_ 資料表中的調教設定，不會修改主遊戲風格、主遊戲記憶或主遊戲 Gemini API Key。
+      </div>
+
+      <div class="note">
+        bot_id：{{ bot_id }}<br>
+        real_user_id：{{ user_id }}<br>
+        test_user_id：{{ profile.test_user_id }}<br>
+        Gemini API Key：{% if profile.gemini_api_key_saved %}已保存{% else %}尚未保存，請回 Telegram 輸入 /test 設定{% endif %}
+      </div>
+
+      <form method="POST" action="/test_lab/save">
+        <input type="hidden" name="bot_id" value="{{ bot_id }}">
+        <input type="hidden" name="chat_id" value="{{ chat_id }}">
+        <input type="hidden" name="user_id" value="{{ user_id }}">
+        <input type="hidden" name="token" value="{{ token }}">
+
+        <div class="grid">
+          <div class="field">
+            <label>Gemini model</label>
+            <input name="model" value="{{ profile.model }}">
+          </div>
+          <div class="field">
+            <label>temperature</label>
+            <input name="temperature" value="{{ profile.temperature }}">
+          </div>
+          <div class="field">
+            <label>max_output_tokens</label>
+            <input name="max_output_tokens" value="{{ profile.max_output_tokens }}">
+          </div>
+        </div>
+
+        <div class="field">
+          <label>調教目標</label>
+          <textarea name="lab_goal">{{ profile.lab_goal }}</textarea>
+        </div>
+
+        <div class="field">
+          <label>基礎真人風格</label>
+          <textarea name="base_style" class="large">{{ profile.base_style }}</textarea>
+        </div>
+
+        <div class="field">
+          <label>回覆規則</label>
+          <textarea name="response_rules" class="large">{{ profile.response_rules }}</textarea>
+        </div>
+
+        <div class="field">
+          <label>重點參考風格（測試時高權重）</label>
+          <textarea name="reference_style" class="large">{{ profile.reference_style }}</textarea>
+        </div>
+
+        <div class="field">
+          <label>目前實驗 prompt（/test_generate 會改寫這裡）</label>
+          <textarea name="current_prompt" class="large">{{ profile.current_prompt }}</textarea>
+        </div>
+
+        <button type="submit">儲存 Prompt Test 設定</button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

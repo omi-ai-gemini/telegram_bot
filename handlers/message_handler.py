@@ -7,6 +7,7 @@ from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 from services.telegram_service import send_message
+from test_lab.service import handle_test_lab_message
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
@@ -29,6 +30,21 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
             chat_id,
             "歡迎使用Telemini AI"
         )
+        return
+
+    # =========================
+    # Prompt Test Lab 子專案分流
+    # - /test 進入調教模式
+    # - test 模式中的一般文字不進主遊戲 run_ai
+    # - 不寫主遊戲 chat_memory / user_config
+    # =========================
+    if handle_test_lab_message(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_text=text,
+        message_id=message_id,
+    ):
         return
 
     if text in ["/setting", "/設定"]:

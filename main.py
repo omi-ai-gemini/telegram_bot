@@ -9,6 +9,9 @@ from config import SECRET_KEY
 from routes.admin import admin_bp
 from routes.setting import setting_bp
 from routes.thought import thought_bp
+from test_lab.db import init_test_lab_db
+from test_lab.routes import test_lab_bp
+from test_lab.service import should_skip_main_user_config
 
 #init_db()
 
@@ -18,6 +21,7 @@ app.secret_key = SECRET_KEY
 app.register_blueprint(admin_bp)
 app.register_blueprint(setting_bp)
 app.register_blueprint(thought_bp)
+app.register_blueprint(test_lab_bp)
 
 db_initialized = False
 
@@ -26,6 +30,7 @@ def init_once():
     global db_initialized
     if not db_initialized:
         init_db()
+        init_test_lab_db()
         db_initialized = True
 
 # =========================
@@ -85,20 +90,23 @@ def webhook(bot_id):
     # =========================
     # 自動保存 user_id
     # =========================
-    conn = get_conn()
-    cursor = conn.cursor()
+    # Prompt Test Lab 模式使用 test_profiles / test_sessions。
+    # /test 相關訊息不寫入主遊戲 user_config，避免調教模組污染主遊戲帳號資料。
+    if not should_skip_main_user_config(bot_id, chat_id, user_id, user_text):
+        conn = get_conn()
+        cursor = conn.cursor()
 
-    cursor.execute("""
-    INSERT INTO user_config (user_id, gemini_key)
-    VALUES (%s, %s)
-    ON CONFLICT (user_id) DO NOTHING
-    """, (
-        str(user_id),
-        None
-    ))
+        cursor.execute("""
+        INSERT INTO user_config (user_id, gemini_key)
+        VALUES (%s, %s)
+        ON CONFLICT (user_id) DO NOTHING
+        """, (
+            str(user_id),
+            None
+        ))
 
-    conn.commit()
-    conn.close()
+        conn.commit()
+        conn.close()
 
     print("DEBUG bot_id:", bot_id)
 

@@ -1075,7 +1075,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：834
+- 行數：843
 
 ## imports
 - services.ai_actions.get_ai_thought_url
@@ -1198,7 +1198,7 @@ def _send_script_opening(bot_id, chat_id):
         bot_id,
         chat_id
 ...
-... 已省略 754 行
+... 已省略 763 行
 ```
 
 
@@ -1813,7 +1813,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1627
+- 行數：1644
 
 ## imports
 - datetime.datetime
@@ -1821,6 +1821,7 @@ def thought_page(token):
 - os
 - secrets
 - services.bot_router.get_bot_token
+- services.call_ai.run_reply_recovery
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
 - services.database.get_conn
@@ -1989,7 +1990,7 @@ CONTINUE_USER_TEXT = """
 _THOUGHT_CACHE = {}
 _THOUGHT_TOKEN_INDEX = {}
 ...
-... 已省略 1547 行
+... 已省略 1564 行
 ```
 
 
@@ -6489,24 +6490,30 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：14
+- 行數：20
 
 ## preview
 ```text
-Telemini /start 指令攔截更新包
+Telemini 除錯回覆修正包
 
 覆蓋檔案：
-- handlers/message_handler.py
+- services/ai_actions.py
+- handlers/call_handler.py
 
-更新內容：
-1. 新增 /start 指令。
-2. 收到 /start 時直接回覆：歡迎使用Telemini AI
-3. /start 不會進 run_ai()。
-4. /start 不會寫入短期記憶。
-5. /start 不會呼叫 Gemini，避免浪費模型回應次數。
+修正內容：
+1. 🗣️ 除錯回覆不再直接補送按鈕綁定的舊 AI action。
+2. 🗣️ 改成走 /reply 救援邏輯，以目前聊天室最後一筆短期記憶為準。
+3. 如果最後一筆短期記憶是 user：
+   - 使用那一句 user 內容重新呼叫 Gemini 補回覆。
+   - 不重複寫入 user 記憶。
+4. 如果最後一筆短期記憶是 assistant：
+   - 直接把最後一筆 AI 回覆重送到聊天室。
+   - 不新增 chat_memory。
+5. /hidden Reply Keyboard 的 🗣️ 與 AI 訊息下方 Inline Keyboard 的 🗣️ 都修正。
+6. 安全阻擋提示的 🗣️ 原本已走 run_reply_recovery，本包保留。
 
 已檢查：
-python -m py_compile handlers/message_handler.py
+python -m py_compile services/ai_actions.py handlers/call_handler.py
 ```
 
 
