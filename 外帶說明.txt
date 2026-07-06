@@ -1,22 +1,21 @@
-Telemini runtime cache hotfix 01
-
-修正問題：
-部署後 Gunicorn 啟動失敗：
-ImportError: cannot import name 'count_pending_summary_messages' from 'services.memory_summary'
-
-原因：
-上一版快取包覆蓋 services/memory_summary.py 時，沒有保留目前 services/ai_actions.py 需要匯入的 count_pending_summary_messages。
-
-本版修正：
-- 補回 count_pending_summary_messages(bot_id, chat_id, user_id=None)
-- 此函式只計算尚未摘要的 chat_memory 筆數
-- 不觸發 Gemini
-- 不寫入 DB
-- 不清理短期記憶
-- 保留上一版 memory_context 快取
+Telemini runtime cache hotfix 02
 
 覆蓋檔案：
-- services/memory_summary.py
+- services/reply_style.py
 
-測試：
-python -m py_compile services/memory_summary.py
+修正問題：
+上一包 reply_style.py 沒有保留線上 ai_actions.py 需要匯入的：
+- resave_existing_reply_style_settings
+
+造成 Render / Gunicorn 啟動時 ImportError：
+ImportError: cannot import name 'resave_existing_reply_style_settings' from 'services.reply_style'
+
+本版修正：
+- 補回 resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None)
+- 不改使用者自訂風格內容
+- 有自訂內容時讀出後重新走 update_reply_style_settings()
+- 沒有自訂內容時只清快取，不硬寫空資料
+- 保留上一版 reply_style 快取
+
+已檢查：
+python -m py_compile services/reply_style.py

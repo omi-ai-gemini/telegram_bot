@@ -277,3 +277,57 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
 
     finally:
         conn.close()
+
+
+# =========================
+# 相容舊流程：重新儲存既有回覆風格
+# =========================
+def resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
+    """
+    給 ai_actions.py 的「🗣️ 重跑前重新儲存自訂風格」流程使用。
+
+    目的：
+    - 不改使用者已經自訂好的內容。
+    - 只是把目前 DB 內的 reply_style 讀出來，再走一次 update_reply_style_settings()。
+    - 可讓新加密 / 新 AAD / 新預設前綴流程重新套用。
+
+    style_type 可傳：
+    - chat / 聊天模式
+    - theater / 劇場模式
+    - None：兩種模式都嘗試重存
+    """
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+
+    style_types = [normalize_style_type(style_type)] if style_type else ["chat", "theater"]
+    changed = False
+
+    for item_style_type in style_types:
+        try:
+            settings = get_reply_style_settings(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                style_type=item_style_type,
+                user_id=user_id,
+            )
+
+            reply_style = str((settings or {}).get("reply_style") or "")
+
+            # 沒有自訂內容就不要硬寫入，避免把空資料洗進 DB。
+            if not reply_style.strip():
+                clear_reply_style_settings_cache(bot_id, chat_id, item_style_type)
+                continue
+
+            update_reply_style_settings(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                style_type=item_style_type,
+                reply_style=reply_style,
+                user_id=user_id,
+            )
+            changed = True
+
+        except Exception as exc:
+            print("DB ERROR resave_existing_reply_style_settings:", item_style_type, exc, flush=True)
+
+    return changed
