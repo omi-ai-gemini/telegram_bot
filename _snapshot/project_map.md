@@ -344,6 +344,9 @@ C:\Projects\telemini
 ### `services\memory.py`
 - `_text_id()`
 - `_get_scope()`
+- `_to_taipei_datetime()`
+- `_format_chat_time_label()`
+- `_history_item()`
 - `_facts_cache_prefix()`
 - `clear_facts_cache()`
 - `_decrypt_safe()`
@@ -368,6 +371,7 @@ C:\Projects\telemini
 - `get_chat_memory_item()`
 - `get_chat_until()`
 - `get_chat()`
+- `get_chat_for_prompt()`
 - `list_recent_chat_memory()`
 - `delete_chat_memory_item()`
 - `get_recent_chat()`

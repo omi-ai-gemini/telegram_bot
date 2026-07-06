@@ -1207,7 +1207,7 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：88
+- 行數：102
 
 ## imports
 - services.ai_actions.handle_hidden_keyboard_message
@@ -1217,6 +1217,7 @@ def _send_script_opening(bot_id, chat_id):
 - services.call_ai.run_reply_recovery
 - services.commands.send_setting_menu
 - services.memory_view.send_memory_view_menu
+- services.telegram_service.send_message
 
 ## functions
 - handle_message
@@ -1231,6 +1232,7 @@ from services.ai_actions import (
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
+from services.telegram_service import send_message
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
@@ -1242,6 +1244,19 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
     # - 指令不需要先檢查 hidden keyboard / pending edit
     # - 避免指令被前置狀態檢查拖慢
     # =========================
+    # =========================
+    # Telegram /start
+    # - 使用者第一次點開新 bot 時 Telegram 會自動送 /start
+    # - 這不是聊天內容，不寫入記憶、不送 Gemini，避免浪費模型次數
+    # =========================
+    if text == "/start":
+        send_message(
+            bot_id,
+            chat_id,
+            "歡迎使用Telemini AI"
+        )
+        return
+
     if text in ["/setting", "/設定"]:
         send_setting_menu(
             bot_id=bot_id,
@@ -1289,22 +1304,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         message_id=message_id,
     )
 
-    if handled:
-        return
-
-    # =========================
-    # AI 訊息修改模式
-    # 使用者按「✏️改」後，下一則文字只拿來替換原 AI 回覆：
-    # - 不丟 Gemini
-    # - 不寫入 user chat_memory
-    # - 修改稿與提示會自動刪除
-    # =========================
-    handled = process_pending_edit_message(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
 ...
-... 已省略 8 行
+... 已省略 22 行
 ```
 
 
@@ -1812,7 +1813,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1626
+- 行數：1627
 
 ## imports
 - datetime.datetime
@@ -1828,6 +1829,7 @@ def thought_page(token):
 - services.memory.add_chat
 - services.memory.detect_emotion
 - services.memory.get_chat
+- services.memory.get_chat_for_prompt
 - services.memory.get_chat_memory_item
 - services.memory.get_chat_until
 - services.memory.get_emotion
@@ -1920,6 +1922,7 @@ from services.gemini_service import GEMINI_BLOCKED, ask_gemini
 from services.memory import (
     add_chat,
     get_chat,
+    get_chat_for_prompt,
     get_chat_memory_item,
     get_chat_until,
     get_facts,
@@ -1985,9 +1988,8 @@ CONTINUE_USER_TEXT = """
 # token 用在網頁網址，避免 action_id 直接裸露或被猜。
 _THOUGHT_CACHE = {}
 _THOUGHT_TOKEN_INDEX = {}
-_THOUGHT_CACHE_LOCK = threading.Lock()
 ...
-... 已省略 1546 行
+... 已省略 1547 行
 ```
 
 
@@ -2094,7 +2096,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：500
+- 行數：501
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -2110,6 +2112,7 @@ def clear_bot_token_cache(bot_id: str):
 - services.memory.add_chat
 - services.memory.detect_emotion
 - services.memory.get_chat
+- services.memory.get_chat_for_prompt
 - services.memory.get_emotion
 - services.memory.get_facts
 - services.memory.list_recent_chat_memory
@@ -2159,6 +2162,7 @@ import threading
 from services.memory import (
     add_chat,
     get_chat,
+    get_chat_for_prompt,
     get_facts,
     update_emotion,
     detect_emotion,
@@ -2216,9 +2220,8 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
         return sent, telegram_message_id
 
     print(
-        f"{label} SEND RETRY without buttons because first send failed",
 ...
-... 已省略 420 行
+... 已省略 421 行
 ```
 
 
@@ -3167,9 +3170,11 @@ def _with_structured_reply_instructions(prompt):
 # services\memory.py
 
 - 類型：.py
-- 行數：1128
+- 行數：1286
 
 ## imports
+- datetime.datetime
+- datetime.timezone
 - hashlib
 - re
 - services.crypto_env.aad_for
@@ -3180,10 +3185,14 @@ def _with_structured_reply_instructions(prompt):
 - services.runtime_cache.delete_cache
 - services.runtime_cache.get_cache
 - services.runtime_cache.set_cache
+- zoneinfo.ZoneInfo
 
 ## functions
 - _text_id
 - _get_scope
+- _to_taipei_datetime
+- _format_chat_time_label
+- _history_item
 - _facts_cache_prefix
 - clear_facts_cache
 - _decrypt_safe
@@ -3208,6 +3217,7 @@ def _with_structured_reply_instructions(prompt):
 - get_chat_memory_item
 - get_chat_until
 - get_chat
+- get_chat_for_prompt
 - list_recent_chat_memory
 - delete_chat_memory_item
 - get_recent_chat
@@ -3217,6 +3227,8 @@ def _with_structured_reply_instructions(prompt):
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for, is_encrypted
 from services.runtime_cache import get_cache, set_cache, delete_cache
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 import hashlib
 import re
 
@@ -3230,72 +3242,70 @@ def _get_scope(chat_id):
     return "group" if int(chat_id) < 0 else "private"
 
 
-def _facts_cache_prefix(bot_id, chat_id, scope):
-    return ("facts", _text_id(bot_id), _text_id(chat_id), _text_id(scope))
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
 
 
-def clear_facts_cache(bot_id, chat_id, scope=None):
-    scope = _text_id(scope or _get_scope(chat_id))
-    delete_cache(_facts_cache_prefix(bot_id, chat_id, scope))
+def _to_taipei_datetime(value):
+    """把 DB created_at 轉成台灣時間。
+
+    Supabase / Postgres 可能回傳 aware datetime，也可能因欄位型態回傳 naive datetime。
+    naive 時先視為 UTC，再轉 Asia/Taipei，避免 Render 伺服器時區造成偏差。
+    """
+    if not value:
+        return None
+
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        try:
+            dt = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        except Exception:
+            return None
+
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+
+    return dt.astimezone(TAIPEI_TZ)
 
 
-def _decrypt_safe(value, aad=""):
-    try:
-        return decrypt_text(value, aad=aad)
-    except Exception as exc:
-        print("DECRYPT ERROR memory field skipped:", exc)
+def _format_chat_time_label(created_at, now=None):
+    """產生給 Gemini 看得懂、但不浪費 token 的時間標籤。"""
+    dt = _to_taipei_datetime(created_at)
+
+    if not dt:
         return ""
 
+    now = now or datetime.now(TAIPEI_TZ)
+    delta_seconds = int((now - dt).total_seconds())
 
-# =========================
-# 清除當前記憶
-# 用於「記憶設定 / 清除當前記憶」
-# =========================
-def delete_current_memory(bot_id, chat_id, include_important=False):
-    """
-    清除當前聊天室記憶。
+    # DB 時間如果因時區或同步誤差略晚於現在，仍顯示今天 HH:MM。
+    if delta_seconds < 0:
+        delta_seconds = 0
 
-    include_important=False：
-    - 保留 facts_memory，也就是「重點記憶」
+    date_now = now.date()
+    date_dt = dt.date()
+    hhmm = dt.strftime("%H:%M")
 
-    include_important=True：
-    - 一併刪除 facts_memory
-    """
+    if date_dt == date_now:
+        if delta_seconds < 60:
+            return f"剛剛 {hhmm}"
+        if delta_seconds < 60 * 60:
+            return f"{max(1, delta_seconds // 60)} 分鐘前 {hhmm}"
+        return f"今天 {hhmm}"
 
-    bot_id = str(bot_id)
-    chat_id = str(chat_id)
-    scope = _get_scope(chat_id)
-    include_important = bool(include_important)
+    if (date_now - date_dt).days == 1:
+        return f"昨天 {hhmm}"
 
-    conn = get_conn()
+    return dt.strftime("%m/%d %H:%M")
 
-    try:
-        cursor = conn.cursor()
 
-        # =========================
-        # 群組記憶目前是 chat_id 共用
-        # 所以群組清除時，清掉整個群組的記憶
-        # =========================
-        if scope == "group":
+def _history_item(role, value, bot_id, chat_id, scope, created_at=None):
+    role = role or "user"
+    aad = aad_for("chat_memory", "text", bot_id, chat_id, scope, role)
+    text = _decrypt_safe(value, aad=aad)
 
-            cursor.execute("""
-                DELETE FROM chat_memory
-                WHERE chat_id = %s
-                  AND scope = %s
-            """, (
-                chat_id,
-                scope
-            ))
-
-            if include_important:
-                cursor.execute("""
-                    DELETE FROM facts_memory
-                    WHERE chat_id = %s
-                      AND scope = %s
-                """, (
-                    chat_id,
 ...
-... 已省略 1048 行
+... 已省略 1206 行
 ```
 
 
@@ -4350,7 +4360,7 @@ def pop_setting_menu_session(bot_id, chat_id, menu_message_id, user_id=None):
 # services\style.py
 
 - 類型：.py
-- 行數：411
+- 行數：417
 
 ## imports
 - services.time_context.build_time_context_text
@@ -4448,7 +4458,7 @@ DEFAULT_THEATER_REPLY_STYLE = """
 """
 
 ...
-... 已省略 331 行
+... 已省略 337 行
 ```
 
 
@@ -6479,50 +6489,24 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 # 外帶說明.txt
 
 - 類型：.txt
-- 行數：40
+- 行數：14
 
 ## preview
 ```text
-Telemini blocked-button + summary-repair patch
+Telemini /start 指令攔截更新包
 
 覆蓋檔案：
 - handlers/message_handler.py
-- handlers/call_handler.py
-- services/ai_actions.py
-- services/call_ai.py
-- services/memory_summary.py
 
 更新內容：
-1. 一般安全阻擋提示改成按鈕：
-   - 訊息只顯示「內容被安全阻擋」
-   - 下方出現「🗣️ 嘗試重跑回覆」
-   - 點擊後會刪除阻擋提示訊息
-   - 然後執行 /reply 救援式重跑
-
-2. AI 操作流程被阻擋也改成按鈕：
-   - 重跑被擋：顯示「🗣️ 重新產生」
-   - 接續被擋：顯示「🗣️ 重新接續」
-   - 點擊後會刪除阻擋提示訊息
-
-3. 長期摘要阻擋提示改成按鈕：
-   - 訊息顯示「摘要長期記憶時被阻擋」
-   - 下方出現「清理後重跑摘要」
-   - 點擊後會刪除提示訊息
-   - 依阻擋階段清理可能半完成資料，再跑手動摘要
-
-4. 摘要修復會依階段處理：
-   - segment：分段摘要阻擋，重算摘要進度
-   - state：目前狀態摘要阻擋，刪除最新分段摘要與目前狀態後重跑
-   - archive：封存摘要阻擋，刪除最新封存並解除來源摘要封存
-   - archive_merge：封存合併阻擋，清理快取與摘要進度後重跑
-
-5. 順手修復目前最新 zip 裡的殘留問題：
-   - handlers/message_handler.py 補回 /setting /memory /hidden /reply 指令分支
-   - handlers/call_handler.py 移除多餘右括號
-   - services/ai_actions.py 移除多餘右括號
+1. 新增 /start 指令。
+2. 收到 /start 時直接回覆：歡迎使用Telemini AI
+3. /start 不會進 run_ai()。
+4. /start 不會寫入短期記憶。
+5. /start 不會呼叫 Gemini，避免浪費模型回應次數。
 
 已檢查：
-python -m py_compile handlers/message_handler.py handlers/call_handler.py services/ai_actions.py services/call_ai.py services/memory_summary.py
+python -m py_compile handlers/message_handler.py
 ```
 
 

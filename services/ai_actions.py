@@ -609,7 +609,24 @@ def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_
     _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
 
     if action_type == "reply":
-        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        # 🗣️ 是「除錯回覆」：必須以目前聊天室最後一筆短期記憶為準。
+        # - 最後一筆是 user：用那句話重新呼叫 Gemini 補回覆。
+        # - 最後一筆是 assistant：把最後一筆 AI 回覆重送。
+        #
+        # 注意：不要用 action_id 直接補送舊 AI，否則當最新記憶是 user 時，
+        # 仍會錯誤地把上一句 AI 丟回聊天室。
+        try:
+            from services.call_ai import run_reply_recovery
+
+            threading.Thread(
+                target=run_reply_recovery,
+                args=(user_id, bot_id, chat_id),
+                daemon=True,
+            ).start()
+        except Exception as exc:
+            print("HIDDEN REPLY RECOVERY START ERROR:", exc, flush=True)
+            send_message(bot_id, chat_id, "除錯回覆啟動失敗，請看 Render log。")
+
         return True
 
     if action_type == "edit":

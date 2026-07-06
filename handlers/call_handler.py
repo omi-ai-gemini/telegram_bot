@@ -132,16 +132,21 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     # 再執行原本 AI 操作。
     # =========================
     if isinstance(user_text, str) and user_text.startswith("hidden_ai_reply:"):
-        action_id = user_text.split(":", 1)[1]
+        # 🗣️ 除錯回覆必須走 /reply 救援邏輯，以最新短期記憶為準，
+        # 不可以直接補送 action 綁定的舊 AI 回覆。
         _cleanup_session_bound_menu(bot_id, chat_id, message_id, user_id=user_id, force_delete_menu=True)
 
         answer_callback_query(
             bot_id,
             callback_id,
-            text="正在補送這句話"
+            text="正在嘗試除錯回覆"
         )
 
-        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        threading.Thread(
+            target=run_reply_recovery,
+            args=(user_id, bot_id, chat_id),
+            daemon=True,
+        ).start()
         return
 
     if isinstance(user_text, str) and user_text.startswith("hidden_ai_edit:"):
@@ -210,15 +215,19 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     # 群組先保留延伸，不開放；實際限制在 ai_actions 內也會再檢查。
     # =========================
     if isinstance(user_text, str) and user_text.startswith("ai_reply:"):
-        action_id = user_text.split(":", 1)[1]
-
+        # AI 訊息下方的 🗣️ 也視為除錯回覆：
+        # 依目前聊天室最後一筆短期記憶決定補生成或重送，避免最後一筆 user 時誤補舊 AI。
         answer_callback_query(
             bot_id,
             callback_id,
-            text="正在補送這句話"
+            text="正在嘗試除錯回覆"
         )
 
-        run_reply_ai_message_in_thread(user_id, bot_id, chat_id, action_id)
+        threading.Thread(
+            target=run_reply_recovery,
+            args=(user_id, bot_id, chat_id),
+            daemon=True,
+        ).start()
         return
 
     if isinstance(user_text, str) and user_text.startswith("ai_edit:"):

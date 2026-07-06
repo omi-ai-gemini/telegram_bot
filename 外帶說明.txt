@@ -1,41 +1,20 @@
-Telemini 時間感知更新包
+Telemini 除錯回覆修正包
 
 覆蓋檔案：
-- services/memory.py
-- services/style.py
-- services/call_ai.py
 - services/ai_actions.py
+- handlers/call_handler.py
 
-更新內容：
-1. 近期對話紀錄會帶入每筆 chat_memory.created_at 的時間標籤。
-   例如：
-   [剛剛 23:41] 使用者: ...
-   [8 分鐘前 23:33] AI: ...
-   [昨天 01:20] 使用者: ...
-
-2. 不改 DB 結構。
-   直接使用既有 chat_memory.created_at。
-
-3. created_at 會轉成 Asia/Taipei 台灣時間。
-   若 DB 回傳 naive datetime，程式會先視為 UTC，再轉台灣時間。
-
-4. 聊天模式：
-   - 保留 60 分鐘內最多 60 則
-   - 外加更早的 20 則補上下文
-
-5. 劇場模式：
-   - 保留 180 分鐘內最多 80 則
-   - 外加更早的 30 則補場景
-
-6. 重跑 / 接續流程也會帶時間標籤。
-
-7. Prompt 新增時間使用規則：
-   - 近期對話前的時間標籤是訊息發生時間
-   - 可以察覺「晚上說早安」這種時間不一致
-   - 但不能說自己在讀資料庫
-
-8. Render log 會出現：
-   [MEMORY TIME] mode=聊天模式 window_minutes=60 rows=... total=... scope=private
+修正內容：
+1. 🗣️ 除錯回覆不再直接補送按鈕綁定的舊 AI action。
+2. 🗣️ 改成走 /reply 救援邏輯，以目前聊天室最後一筆短期記憶為準。
+3. 如果最後一筆短期記憶是 user：
+   - 使用那一句 user 內容重新呼叫 Gemini 補回覆。
+   - 不重複寫入 user 記憶。
+4. 如果最後一筆短期記憶是 assistant：
+   - 直接把最後一筆 AI 回覆重送到聊天室。
+   - 不新增 chat_memory。
+5. /hidden Reply Keyboard 的 🗣️ 與 AI 訊息下方 Inline Keyboard 的 🗣️ 都修正。
+6. 安全阻擋提示的 🗣️ 原本已走 run_reply_recovery，本包保留。
 
 已檢查：
-python -m py_compile services/memory.py services/style.py services/call_ai.py services/ai_actions.py
+python -m py_compile services/ai_actions.py handlers/call_handler.py

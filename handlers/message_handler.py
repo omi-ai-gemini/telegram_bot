@@ -6,6 +6,7 @@ from services.ai_actions import (
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
+from services.telegram_service import send_message
 
 
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
@@ -17,6 +18,19 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
     # - 指令不需要先檢查 hidden keyboard / pending edit
     # - 避免指令被前置狀態檢查拖慢
     # =========================
+    # =========================
+    # Telegram /start
+    # - 使用者第一次點開新 bot 時 Telegram 會自動送 /start
+    # - 這不是聊天內容，不寫入記憶、不送 Gemini，避免浪費模型次數
+    # =========================
+    if text == "/start":
+        send_message(
+            bot_id,
+            chat_id,
+            "歡迎使用Telemini AI"
+        )
+        return
+
     if text in ["/setting", "/設定"]:
         send_setting_menu(
             bot_id=bot_id,
