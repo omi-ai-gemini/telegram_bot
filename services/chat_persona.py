@@ -1,5 +1,6 @@
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for
+from services.runtime_cache import get_cache, set_cache, delete_cache
 
 
 DEFAULT_CHAT_PERSONA_SETTINGS = {
@@ -17,6 +18,14 @@ ENCRYPTED_CHAT_PERSONA_FIELDS = [
 
 def _text_id(value):
     return str(value)
+
+
+def _cache_key(bot_id, chat_id):
+    return ("chat_persona_settings", _text_id(bot_id), _text_id(chat_id))
+
+
+def clear_chat_persona_settings_cache(bot_id, chat_id):
+    delete_cache(_cache_key(bot_id, chat_id))
 
 
 def _decrypt_field(bot_id, chat_id, field, value):
@@ -57,6 +66,11 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    cache_key = _cache_key(bot_id, chat_id)
+
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
 
     conn = get_conn()
 
@@ -79,13 +93,15 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
         row = cursor.fetchone()
 
         if not row:
-            return DEFAULT_CHAT_PERSONA_SETTINGS.copy()
+            return set_cache(cache_key, DEFAULT_CHAT_PERSONA_SETTINGS.copy(), ttl=60)
 
-        return {
+        settings = {
             "persona_name": _decrypt_field(bot_id, chat_id, "persona_name", row[0]),
             "persona_gender": _decrypt_field(bot_id, chat_id, "persona_gender", row[1]),
             "persona_background": _decrypt_field(bot_id, chat_id, "persona_background", row[2]),
         }
+
+        return set_cache(cache_key, settings, ttl=60)
 
     except Exception as e:
         print("DB ERROR get_chat_persona_settings:", e)
@@ -143,6 +159,7 @@ def update_chat_persona_settings(bot_id, chat_id, settings, user_id=None):
         ))
 
         conn.commit()
+        clear_chat_persona_settings_cache(bot_id, chat_id)
 
         print("DEBUG encrypted chat persona updated:", bot_id, chat_id)
 
@@ -178,6 +195,7 @@ def delete_chat_persona_settings(bot_id, chat_id, user_id=None):
         ))
 
         conn.commit()
+        clear_chat_persona_settings_cache(bot_id, chat_id)
 
         print("DEBUG chat persona deleted:", bot_id, chat_id)
 

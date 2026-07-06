@@ -3,6 +3,7 @@ import json
 
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for
+from services.runtime_cache import get_cache, set_cache, delete_cache
 
 
 # =========================
@@ -58,6 +59,14 @@ def _text_id(value):
 
 def _clean_text(value):
     return str(value or "").strip()
+
+
+def _cache_key(bot_id, chat_id):
+    return ("character_settings", _text_id(bot_id), _text_id(chat_id))
+
+
+def clear_character_settings_cache(bot_id, chat_id):
+    delete_cache(_cache_key(bot_id, chat_id))
 
 
 def _decrypt_field(bot_id, chat_id, field, value):
@@ -137,6 +146,7 @@ def update_character_mode(bot_id, chat_id, mode):
         ))
 
         conn.commit()
+        clear_character_settings_cache(bot_id, chat_id)
 
         print("DEBUG character mode updated:", bot_id, chat_id, mode)
 
@@ -158,6 +168,11 @@ def get_character_settings(bot_id, chat_id, user_id=None):
 
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
+    cache_key = _cache_key(bot_id, chat_id)
+
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
 
     conn = get_conn()
 
@@ -188,9 +203,9 @@ def get_character_settings(bot_id, chat_id, user_id=None):
         row = cursor.fetchone()
 
         if not row:
-            return DEFAULT_CHARACTER_SETTINGS.copy()
+            return set_cache(cache_key, DEFAULT_CHARACTER_SETTINGS.copy(), ttl=60)
 
-        return {
+        settings = {
             "mode": row[0] or "聊天模式",
             "ai_name": _decrypt_field(bot_id, chat_id, "ai_name", row[1]),
             "ai_gender": _decrypt_field(bot_id, chat_id, "ai_gender", row[2]),
@@ -203,6 +218,8 @@ def get_character_settings(bot_id, chat_id, user_id=None):
             "opening_sent": bool(row[9]),
             "script_hash": row[10] or ""
         }
+
+        return set_cache(cache_key, settings, ttl=60)
 
     except Exception as e:
         print("DB ERROR get_character_settings:", e)
@@ -277,6 +294,7 @@ def mark_script_opening_sent(bot_id, chat_id):
         ))
 
         conn.commit()
+        clear_character_settings_cache(bot_id, chat_id)
 
         print("DEBUG script opening marked sent:", bot_id, chat_id)
 
@@ -397,6 +415,7 @@ def update_character_settings(bot_id, chat_id, settings, user_id=None):
         ))
 
         conn.commit()
+        clear_character_settings_cache(bot_id, chat_id)
 
         print("DEBUG encrypted character settings updated:", bot_id, chat_id, "opening_sent=", opening_sent)
 
@@ -432,6 +451,7 @@ def delete_character_settings(bot_id, chat_id, user_id=None):
         ))
 
         conn.commit()
+        clear_character_settings_cache(bot_id, chat_id)
 
     except Exception as e:
         conn.rollback()

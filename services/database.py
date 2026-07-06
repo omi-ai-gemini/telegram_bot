@@ -2,6 +2,7 @@ import os
 import psycopg2
 import threading
 import time
+from services.runtime_cache import delete_cache
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -149,6 +150,7 @@ def update_gemini_key(user_id, gemini_key):
         ))
 
         conn.commit()
+        delete_cache(("gemini_key", str(user_id)))
 
     except Exception:
         conn.rollback()

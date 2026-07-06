@@ -1,27 +1,57 @@
-Telemini /hidden Reply Keyboard 轉瞬即逝修正包
-
-只包含修改檔，不是全專案。
+Telemini 回覆速度優化：Runtime Cache 外帶包
 
 覆蓋檔案：
-- services/ai_actions.py
+- services/runtime_cache.py              新增：通用 TTL 快取工具
+- services/user_router.py                Gemini API key 快取 10 分鐘
+- services/database.py                   更新 Gemini key 後清快取
+- services/character.py                  劇本 / 模式設定快取 60 秒，更新 / 刪除 / 開場狀態變更後清快取
+- services/chat_persona.py               聊天人物設定快取 60 秒，更新 / 刪除後清快取
+- services/reply_style.py                回覆風格快取 60 秒，更新 / 刪除後清快取
+- services/memory.py                     重點記憶 facts 快取 30 秒，新增 / 修改 / 刪除後清快取
+- services/memory_summary.py             摘要記憶 context 快取 60 秒，摘要更新 / 刪除後清快取
 
-修正問題：
-上一版 /hidden 送出 Reply Keyboard 後，會在 1.5 秒後刪除「開發者功能鍵盤已開啟」提示訊息。
-Telegram 的 Reply Keyboard 是靠這則 bot 訊息套用到使用者輸入框下方，部分 Telegram 用戶端在該訊息被刪除後，會把鍵盤一起收回。
-所以會看到開發者鍵盤轉瞬即逝，還沒來得及按就回到普通鍵盤。
+這包做了什麼：
+1. 新增 services/runtime_cache.py
+   - get_cache(key)
+   - set_cache(key, value, ttl)
+   - delete_cache(key_or_prefix)
+   - clear_cache()
+   - get_cache_stats()
 
-本版修正：
-- /hidden 指令訊息仍會刪除。
-- 「開發者功能鍵盤已開啟」提示訊息不再立刻刪除。
-- 提示訊息會等使用者按任一功能鍵或「關閉功能鍵盤」時，由 _close_hidden_keyboard() 一起刪除。
-- 功能鍵按出的 emoji 訊息仍會刪除。
-- 執行功能後仍會收起鍵盤。
+2. 減少 AI 回覆前重複查 DB 的次數。
+   適合快取的資料先進 Render 記憶體：
+   - Gemini API key
+   - 聊天人物設定
+   - 劇本人物設定 / 模式
+   - 回覆風格
+   - 重點記憶
+   - 摘要記憶 context
 
-已做檢查：
-python -m py_compile services/ai_actions.py
+3. 會主動避免讀到舊設定：
+   - 後台更新 Gemini key 後清 key 快取
+   - 儲存 / 刪除人物設定後清人物快取
+   - 儲存 / 刪除回覆風格後清風格快取
+   - 新增 / 修改 / 刪除重點記憶後清 facts 快取
+   - 摘要記憶更新或刪除後清 memory_context 快取
 
-測試：
-1. 輸入 /hidden。
-2. 確認輸入框下方鍵盤會停留。
-3. 按 🗣️ / ✏️ / 🔁 / 🧠 / ▶️ 或「關閉功能鍵盤」。
-4. 確認提示訊息與按鍵文字會被清掉，鍵盤會收起。
+沒有改的東西：
+- 沒有改 DB 結構
+- 沒有改 Gemini prompt
+- 沒有改短期記憶筆數
+- 沒有改 webhook / threading
+- 沒有改按鈕流程
+
+注意：
+- 快取只存在單一 Render process 記憶體。
+- Render 重啟後快取會自動消失，這是正常的。
+- 如果你用 gunicorn 多 worker，每個 worker 會各自有一份快取。
+- 這包主要減少 DB 查詢與解密成本，不會消除 Gemini API 自身等待時間。
+
+已檢查：
+python -m py_compile services/runtime_cache.py services/user_router.py services/database.py services/character.py services/chat_persona.py services/reply_style.py services/memory.py services/memory_summary.py
+
+測試方式：
+1. 覆蓋檔案後部署。
+2. 連續對同一個 bot 傳 3～5 句話。
+3. Render log 應該會看到第二句之後 DB OPEN 次數變少。
+4. 到設定頁修改人物 / 風格 / 重點記憶後，再傳一句話，確認新設定立即生效。

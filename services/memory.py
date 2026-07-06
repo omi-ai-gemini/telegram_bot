@@ -1,5 +1,6 @@
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for, is_encrypted
+from services.runtime_cache import get_cache, set_cache, delete_cache
 import hashlib
 import re
 
@@ -11,6 +12,15 @@ def _text_id(value):
 def _get_scope(chat_id):
     chat_id = str(chat_id)
     return "group" if int(chat_id) < 0 else "private"
+
+
+def _facts_cache_prefix(bot_id, chat_id, scope):
+    return ("facts", _text_id(bot_id), _text_id(chat_id), _text_id(scope))
+
+
+def clear_facts_cache(bot_id, chat_id, scope=None):
+    scope = _text_id(scope or _get_scope(chat_id))
+    delete_cache(_facts_cache_prefix(bot_id, chat_id, scope))
 
 
 def _decrypt_safe(value, aad=""):
@@ -437,6 +447,7 @@ def add_fact(bot_id, chat_id, scope, fact, user_id=None, source_type="manual", i
         ))
 
         conn.commit()
+        clear_facts_cache(bot_id, chat_id, scope)
 
     except Exception as e:
         conn.rollback()
@@ -480,6 +491,15 @@ def get_facts(bot_id, chat_id, scope, user_id=None, limit=20, source_types=None)
         source_types = ["important"]
 
     limit = max(1, min(int(limit or 20), 50))
+    cache_key = _facts_cache_prefix(bot_id, chat_id, scope) + (
+        _text_id(user_id or ""),
+        limit,
+        tuple(source_types),
+    )
+
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
 
     conn = get_conn()
 
@@ -517,7 +537,7 @@ def get_facts(bot_id, chat_id, scope, user_id=None, limit=20, source_types=None)
             if fact:
                 facts.append(fact)
 
-        return facts
+        return set_cache(cache_key, facts, ttl=30)
 
     except Exception as e:
         print("DB ERROR get_facts:", e)
@@ -673,6 +693,7 @@ def update_important_fact(memory_id, bot_id, chat_id, fact, scope=None, user_id=
             return False, "找不到這筆重點記憶，或沒有可修改的資料。"
 
         conn.commit()
+        clear_facts_cache(bot_id, chat_id, scope)
         return True, "重點記憶已修改。"
 
     except Exception as e:
@@ -718,6 +739,7 @@ def delete_important_fact(memory_id, bot_id, chat_id, scope=None, user_id=None):
             return False, "找不到這筆重點記憶，或已經被刪除。"
 
         conn.commit()
+        clear_facts_cache(bot_id, chat_id, scope)
         return True, "重點記憶已刪除。"
 
     except Exception as e:

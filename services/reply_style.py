@@ -1,5 +1,6 @@
 from services.database import get_conn
 from services.crypto_env import encrypt_text, decrypt_text, aad_for
+from services.runtime_cache import get_cache, set_cache, delete_cache
 
 
 # =========================
@@ -16,6 +17,17 @@ DEFAULT_REPLY_STYLE_SETTINGS = {
 
 def _text_id(value):
     return str(value)
+
+
+def _cache_key(bot_id, chat_id, style_type=None):
+    if style_type is None:
+        return ("reply_style_settings", _text_id(bot_id), _text_id(chat_id))
+
+    return ("reply_style_settings", _text_id(bot_id), _text_id(chat_id), normalize_style_type(style_type))
+
+
+def clear_reply_style_settings_cache(bot_id, chat_id, style_type=None):
+    delete_cache(_cache_key(bot_id, chat_id, style_type))
 
 
 def _decrypt_style(bot_id, chat_id, style_type, value):
@@ -109,6 +121,11 @@ def get_reply_style_settings(bot_id, chat_id, style_type="chat", user_id=None):
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     style_type = normalize_style_type(style_type)
+    cache_key = _cache_key(bot_id, chat_id, style_type)
+
+    cached = get_cache(cache_key)
+    if cached is not None:
+        return cached
 
     conn = get_conn()
 
@@ -130,10 +147,11 @@ def get_reply_style_settings(bot_id, chat_id, style_type="chat", user_id=None):
         row = cursor.fetchone()
 
         if row:
-            return {
+            settings = {
                 "style_type": style_type,
                 "reply_style": _decrypt_style(bot_id, chat_id, style_type, row[0])
             }
+            return set_cache(cache_key, settings, ttl=60)
 
         legacy_reply_style = _get_legacy_reply_style(
             cursor,
@@ -142,10 +160,11 @@ def get_reply_style_settings(bot_id, chat_id, style_type="chat", user_id=None):
             style_type
         )
 
-        return {
+        settings = {
             "style_type": style_type,
             "reply_style": legacy_reply_style or ""
         }
+        return set_cache(cache_key, settings, ttl=60)
 
     except Exception as e:
         print("DB ERROR get_reply_style_settings:", e)
@@ -194,6 +213,7 @@ def update_reply_style_settings(bot_id, chat_id, style_type, reply_style, user_i
         ))
 
         conn.commit()
+        clear_reply_style_settings_cache(bot_id, chat_id, style_type)
 
         print("DEBUG encrypted reply style updated:", bot_id, chat_id, style_type)
 
@@ -246,6 +266,7 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
             ))
 
         conn.commit()
+        clear_reply_style_settings_cache(bot_id, chat_id, style_type)
 
         print("DEBUG reply style deleted:", bot_id, chat_id, style_type)
 
@@ -253,101 +274,6 @@ def delete_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
         conn.rollback()
         print("DB ERROR delete_reply_style_settings:", e)
         raise
-
-    finally:
-        conn.close()
-
-# =========================
-# 重新儲存既有自訂回覆風格
-# - 給 /hidden 🗣️ 除錯回覆使用
-# - 只重存已存在的 reply_style_settings 資料
-# - 不建立新資料、不回填預設風格、不覆蓋成預設文字
-# =========================
-def resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None):
-
-    bot_id = _text_id(bot_id)
-    chat_id = _text_id(chat_id)
-
-    if style_type:
-        style_types = [normalize_style_type(style_type)]
-    else:
-        style_types = ["chat", "theater"]
-
-    conn = get_conn()
-    updated_count = 0
-
-    try:
-        cursor = conn.cursor()
-
-        for current_style_type in style_types:
-            cursor.execute("""
-                SELECT reply_style
-                FROM reply_style_settings
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND style_type = %s
-                LIMIT 1
-            """, (
-                bot_id,
-                chat_id,
-                current_style_type
-            ))
-
-            row = cursor.fetchone()
-
-            if not row:
-                continue
-
-            # 讀出使用者已經自訂好的風格，再用目前加密流程原樣寫回。
-            # 不使用 DEFAULT，也不從預設風格產生新資料。
-            current_reply_style = _decrypt_style(
-                bot_id,
-                chat_id,
-                current_style_type,
-                row[0]
-            )
-
-            encrypted_reply_style = _encrypt_style(
-                bot_id,
-                chat_id,
-                current_style_type,
-                current_reply_style
-            )
-
-            cursor.execute("""
-                UPDATE reply_style_settings
-                SET reply_style = %s,
-                    updated_at = CURRENT_TIMESTAMP
-                WHERE bot_id = %s
-                  AND chat_id = %s
-                  AND style_type = %s
-            """, (
-                encrypted_reply_style,
-                bot_id,
-                chat_id,
-                current_style_type
-            ))
-
-            updated_count += cursor.rowcount or 0
-
-        conn.commit()
-
-        print(
-            "DEBUG existing reply style resaved:",
-            bot_id,
-            chat_id,
-            style_types,
-            "updated=",
-            updated_count,
-            flush=True
-        )
-
-        return updated_count
-
-    except Exception as e:
-        conn.rollback()
-        print("DB ERROR resave_existing_reply_style_settings:", e)
-        return 0
 
     finally:
         conn.close()
