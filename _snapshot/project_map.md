@@ -17,7 +17,9 @@ C:\Projects\telemini
 - `check_db.py`
 - `config.py`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
+- `docs\CUSTOM_STYLE_PREFIX_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
+- `docs\HIDDEN_PASSIVE_SUMMARY_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
 - `docs\REPLY_NONBLOCKING_BUTTONS_README.md`
@@ -53,6 +55,7 @@ C:\Projects\telemini
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\reply_style.py`
+- `services\runtime_cache.py`
 - `services\setting_auth.py`
 - `services\setting_sessions.py`
 - `services\style.py`
@@ -208,6 +211,9 @@ C:\Projects\telemini
 - `_generate_reply()`
 - `regenerate_ai_message()`
 - `continue_ai_message()`
+- `_resave_current_custom_reply_style()`
+- `passive_summarize_memory()`
+- `run_passive_summarize_memory_in_thread()`
 - `reply_ai_message()`
 - `run_reply_ai_message_in_thread()`
 - `run_regenerate_in_thread()`
@@ -234,6 +240,8 @@ C:\Projects\telemini
 ### `services\character.py`
 - `_text_id()`
 - `_clean_text()`
+- `_cache_key()`
+- `clear_character_settings_cache()`
 - `_decrypt_field()`
 - `_encrypt_field()`
 - `build_script_hash()`
@@ -247,6 +255,8 @@ C:\Projects\telemini
 
 ### `services\chat_persona.py`
 - `_text_id()`
+- `_cache_key()`
+- `clear_chat_persona_settings_cache()`
 - `_decrypt_field()`
 - `_encrypt_field()`
 - `has_chat_persona_settings()`
@@ -329,6 +339,8 @@ C:\Projects\telemini
 ### `services\memory.py`
 - `_text_id()`
 - `_get_scope()`
+- `_facts_cache_prefix()`
+- `clear_facts_cache()`
 - `_decrypt_safe()`
 - `delete_current_memory()`
 - `delete_character_memory()`
@@ -360,6 +372,8 @@ C:\Projects\telemini
 - `_is_summary_blocked()`
 - `_text_id()`
 - `_get_scope()`
+- `_memory_context_cache_prefix()`
+- `clear_memory_context_cache()`
 - `_decrypt_safe()`
 - `_fetch_unsummarized_rows()`
 - `_rows_to_plain_text()`
@@ -369,6 +383,7 @@ C:\Projects\telemini
 - `_save_memory_state()`
 - `_refresh_memory_state()`
 - `_prune_short_memory()`
+- `count_pending_summary_messages()`
 - `summarize_pending_memory()`
 - `_fetch_active_summaries()`
 - `cleanup_long_term_memory()`
@@ -424,6 +439,8 @@ C:\Projects\telemini
 
 ### `services\reply_style.py`
 - `_text_id()`
+- `_cache_key()`
+- `clear_reply_style_settings_cache()`
 - `_decrypt_style()`
 - `_encrypt_style()`
 - `_decrypt_legacy_style()`
@@ -432,6 +449,15 @@ C:\Projects\telemini
 - `get_reply_style_settings()`
 - `update_reply_style_settings()`
 - `delete_reply_style_settings()`
+- `resave_existing_reply_style_settings()`
+
+### `services\runtime_cache.py`
+- `_now()`
+- `get_cache()`
+- `set_cache()`
+- `delete_cache()`
+- `clear_cache()`
+- `get_cache_stats()`
 
 ### `services\setting_auth.py`
 - `_text_id()`
@@ -447,13 +473,16 @@ C:\Projects\telemini
 
 ### `services\setting_sessions.py`
 - `_text_id()`
+- `save_setting_menu_session_async()`
 - `save_setting_menu_session()`
 - `pop_setting_menu_session()`
+- `_job()`
 
 ### `services\style.py`
 - `_has_chat_persona()`
 - `_build_chat_persona_text()`
 - `_build_character_text()`
+- `_build_custom_reply_style_text()`
 - `_build_reply_style_text()`
 - `_build_facts_text()`
 - `_build_memory_context_text()`
@@ -478,6 +507,7 @@ C:\Projects\telemini
 ### `services\user_router.py`
 - `_text_id()`
 - `get_gemini_key()`
+- `clear_gemini_key_cache()`
 - `user_has_key()`
 
 ### `telemini\services\call_ai.py`

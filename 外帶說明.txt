@@ -1,21 +1,33 @@
-Telemini runtime cache hotfix 02
+Telemini 指令失效 hotfix 01
 
 覆蓋檔案：
-- services/reply_style.py
+- handlers/message_handler.py
 
 修正問題：
-上一包 reply_style.py 沒有保留線上 ai_actions.py 需要匯入的：
-- resave_existing_reply_style_settings
+上一版「指令加速」包在 message_handler.py 留了「明確指令優先處理」註解，
+但實際上把 /setting、/memory、/reply、/hidden 的判斷分支漏掉了。
 
-造成 Render / Gunicorn 啟動時 ImportError：
-ImportError: cannot import name 'resave_existing_reply_style_settings' from 'services.reply_style'
+結果：
+- /setting 不會開設定選單
+- /memory 不會開記憶選單
+- /hidden 不會開開發者鍵盤
+- /reply 不會走救援流程
+- 這些指令會被當成一般聊天丟進 run_ai()
 
 本版修正：
-- 補回 resave_existing_reply_style_settings(bot_id, chat_id, style_type=None, user_id=None)
-- 不改使用者自訂風格內容
-- 有自訂內容時讀出後重新走 update_reply_style_settings()
-- 沒有自訂內容時只清快取，不硬寫空資料
-- 保留上一版 reply_style 快取
+1. 補回 /setting、/設定
+2. 補回 /memory、/記憶
+3. 補回 /reply、/回覆
+4. 補回 /hidden
+5. 保留指令優先處理，避免先跑 hidden / pending edit 檢查拖慢指令
+6. 一般聊天才會進 run_ai()
 
-已檢查：
-python -m py_compile services/reply_style.py
+部署後測試：
+1. 輸入 /setting：應打開設定中心
+2. 輸入 /memory：應打開記憶查看
+3. 輸入 /hidden：應打開開發者功能鍵盤
+4. 輸入 /reply：應觸發救援回覆
+5. 輸入一般文字：才會進 AI 回覆
+
+檢查：
+python -m py_compile handlers/message_handler.py

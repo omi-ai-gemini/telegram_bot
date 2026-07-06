@@ -5,7 +5,9 @@
 📄 config.py
 📁 docs/
   📄 AI_MESSAGE_ACTIONS_README.md
+  📄 CUSTOM_STYLE_PREFIX_README.md
   📄 ENV_ENCRYPTION_README.md
+  📄 HIDDEN_PASSIVE_SUMMARY_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
   📄 REPLY_NONBLOCKING_BUTTONS_README.md
@@ -44,6 +46,7 @@
   📄 privacy_migration.py
   📄 privacy_session.py
   📄 reply_style.py
+  📄 runtime_cache.py
   📄 setting_auth.py
   📄 setting_sessions.py
   📄 style.py
