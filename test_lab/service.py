@@ -4,7 +4,6 @@ import os
 import time
 from urllib.parse import urlencode
 
-from services.crypto_env import aad_for, decrypt_text, encrypt_text
 from services.database import get_conn
 
 from test_lab.gemini import TEST_GEMINI_BLOCKED, ask_test_gemini
@@ -32,6 +31,8 @@ TEST_COMMANDS = {
     "/test_summary",
     "/test_generate",
     "/test_prompt",
+    "/test_key",
+    "/test_save_prompt",
 }
 
 
@@ -47,22 +48,13 @@ def make_test_user_id(user_id):
     return f"test_{raw}"
 
 
-def _api_key_aad(bot_id, real_user_id):
-    return aad_for("test_profiles", "gemini_api_key", bot_id, real_user_id, "test_lab")
+def _plain_api_key(value):
+    """Test Lab 專用 API Key 明文保存。
 
-
-def _encrypt_api_key(bot_id, real_user_id, api_key):
-    return encrypt_text(api_key, aad=_api_key_aad(bot_id, real_user_id))
-
-
-def _decrypt_api_key(bot_id, real_user_id, value):
-    if not value:
-        return ""
-    try:
-        return decrypt_text(value, aad=_api_key_aad(bot_id, real_user_id))
-    except Exception as exc:
-        print("TEST LAB API KEY DECRYPT ERROR:", exc, flush=True)
-        return ""
+    調教模組是開發者測試工具，需求是方便在 Supabase 直接查看、修改與換 key，
+    所以這裡不走主遊戲的 crypto_env 加密流程。
+    """
+    return str(value or "").strip()
 
 
 def ensure_profile(bot_id, real_user_id):
@@ -144,7 +136,7 @@ def get_profile(bot_id, real_user_id, include_api_key=False):
         }
 
         if include_api_key:
-            profile["gemini_api_key"] = _decrypt_api_key(bot_id, real_user_id, row[3])
+            profile["gemini_api_key"] = _plain_api_key(row[3])
 
         return profile
     finally:
@@ -209,7 +201,7 @@ def save_api_key(bot_id, real_user_id, api_key):
     bot_id = _text_id(bot_id)
     real_user_id = _text_id(real_user_id)
     test_user_id = ensure_profile(bot_id, real_user_id)
-    encrypted = _encrypt_api_key(bot_id, real_user_id, api_key)
+    plain_api_key = _plain_api_key(api_key)
 
     conn = get_conn()
     try:
@@ -222,12 +214,13 @@ def save_api_key(bot_id, real_user_id, api_key):
                 updated_at = CURRENT_TIMESTAMP
             WHERE bot_id = %s AND real_user_id = %s
             """,
-            (encrypted, test_user_id, bot_id, real_user_id),
+            (plain_api_key, test_user_id, bot_id, real_user_id),
         )
         cursor.execute(
             """
             UPDATE test_sessions
             SET awaiting_api_key = FALSE,
+                awaiting_prompt_input = FALSE,
                 is_active = TRUE,
                 updated_at = CURRENT_TIMESTAMP
             WHERE bot_id = %s AND real_user_id = %s
@@ -243,7 +236,14 @@ def save_api_key(bot_id, real_user_id, api_key):
         conn.close()
 
 
-def set_session(bot_id, chat_id, real_user_id, is_active=True, awaiting_api_key=False):
+def set_session(
+    bot_id,
+    chat_id,
+    real_user_id,
+    is_active=True,
+    awaiting_api_key=False,
+    awaiting_prompt_input=False,
+):
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     real_user_id = _text_id(real_user_id)
@@ -256,17 +256,26 @@ def set_session(bot_id, chat_id, real_user_id, is_active=True, awaiting_api_key=
             """
             INSERT INTO test_sessions (
                 bot_id, chat_id, real_user_id, test_user_id,
-                is_active, awaiting_api_key, updated_at
+                is_active, awaiting_api_key, awaiting_prompt_input, updated_at
             )
-            VALUES (%s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, CURRENT_TIMESTAMP)
             ON CONFLICT (bot_id, chat_id, real_user_id)
             DO UPDATE SET
                 test_user_id = EXCLUDED.test_user_id,
                 is_active = EXCLUDED.is_active,
                 awaiting_api_key = EXCLUDED.awaiting_api_key,
+                awaiting_prompt_input = EXCLUDED.awaiting_prompt_input,
                 updated_at = CURRENT_TIMESTAMP
             """,
-            (bot_id, chat_id, real_user_id, test_user_id, bool(is_active), bool(awaiting_api_key)),
+            (
+                bot_id,
+                chat_id,
+                real_user_id,
+                test_user_id,
+                bool(is_active),
+                bool(awaiting_api_key),
+                bool(awaiting_prompt_input),
+            ),
         )
         conn.commit()
         return test_user_id
@@ -283,7 +292,7 @@ def get_session(bot_id, chat_id, real_user_id):
         cursor = conn.cursor()
         cursor.execute(
             """
-            SELECT test_user_id, is_active, awaiting_api_key
+            SELECT test_user_id, is_active, awaiting_api_key, awaiting_prompt_input
             FROM test_sessions
             WHERE bot_id = %s AND chat_id = %s AND real_user_id = %s
             """,
@@ -296,6 +305,7 @@ def get_session(bot_id, chat_id, real_user_id):
             "test_user_id": row[0],
             "is_active": bool(row[1]),
             "awaiting_api_key": bool(row[2]),
+            "awaiting_prompt_input": bool(row[3]),
         }
     finally:
         conn.close()
@@ -311,12 +321,24 @@ def is_test_awaiting_api_key(bot_id, chat_id, real_user_id):
     return bool(session and session.get("awaiting_api_key"))
 
 
+def is_test_awaiting_prompt_input(bot_id, chat_id, real_user_id):
+    session = get_session(bot_id, chat_id, real_user_id)
+    return bool(session and session.get("awaiting_prompt_input"))
+
+
 def should_skip_main_user_config(bot_id, chat_id, real_user_id, user_text):
     text = _text_id(user_text)
-    if text in TEST_COMMANDS:
+    if text in TEST_COMMANDS or text.startswith("/test_save_prompt "):
         return True
     session = get_session(bot_id, chat_id, real_user_id)
-    return bool(session and (session.get("is_active") or session.get("awaiting_api_key")))
+    return bool(
+        session
+        and (
+            session.get("is_active")
+            or session.get("awaiting_api_key")
+            or session.get("awaiting_prompt_input")
+        )
+    )
 
 
 def add_memory(bot_id, chat_id, real_user_id, role, text):
@@ -543,6 +565,84 @@ def summarize_test_memory(bot_id, chat_id, real_user_id):
     return "已完成測試記憶摘要。"
 
 
+def save_prompt_version(
+    bot_id,
+    chat_id,
+    real_user_id,
+    prompt_text,
+    source_reason="手動保存 prompt 版本",
+    update_current=True,
+):
+    """保存一版實驗 prompt。
+
+    - update_current=True：同時更新 test_profiles.current_prompt，之後測試聊天會直接吃這版。
+    - 一律寫入 test_prompt_versions，保留歷史版本紀錄。
+    - 內容明文保存，方便直接在 Supabase 查看。
+    """
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    real_user_id = _text_id(real_user_id)
+    prompt_text = str(prompt_text or "").strip()
+
+    if not prompt_text:
+        return False
+
+    profile = get_profile(bot_id, real_user_id)
+    if not profile:
+        return False
+
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+
+        if update_current:
+            cursor.execute(
+                """
+                UPDATE test_profiles
+                SET current_prompt = %s,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE bot_id = %s AND real_user_id = %s
+                """,
+                (prompt_text, bot_id, real_user_id),
+            )
+
+        cursor.execute(
+            """
+            INSERT INTO test_prompt_versions (
+                bot_id, chat_id, real_user_id, test_user_id, prompt_text, source_reason
+            )
+            VALUES (%s, %s, %s, %s, %s, %s)
+            """,
+            (
+                bot_id,
+                chat_id,
+                real_user_id,
+                profile["test_user_id"],
+                prompt_text,
+                source_reason,
+            ),
+        )
+
+        conn.commit()
+        return True
+
+    except Exception:
+        conn.rollback()
+        raise
+
+    finally:
+        conn.close()
+
+
+def _prompt_saved_message(prompt_text, source_label):
+    return (
+        f"{source_label}\n"
+        "已保存到 current_prompt，並寫入 test_prompt_versions 備份。\n\n"
+        "【目前版本 prompt】\n"
+        f"{str(prompt_text or '').strip()}"
+    )
+
+
 def generate_prompt(bot_id, chat_id, real_user_id):
     profile = get_profile(bot_id, real_user_id, include_api_key=True)
     if not profile or not profile.get("gemini_api_key"):
@@ -600,33 +700,16 @@ def generate_prompt(bot_id, chat_id, real_user_id):
     if not new_prompt:
         return "自動產生 prompt 失敗，請檢查 Gemini API Key 或 model。"
 
-    conn = get_conn()
-    try:
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE test_profiles
-            SET current_prompt = %s,
-                updated_at = CURRENT_TIMESTAMP
-            WHERE bot_id = %s AND real_user_id = %s
-            """,
-            (new_prompt, bot_id, real_user_id),
-        )
-        cursor.execute(
-            """
-            INSERT INTO test_prompt_versions (bot_id, chat_id, real_user_id, test_user_id, prompt_text, source_reason)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """,
-            (bot_id, chat_id, real_user_id, profile["test_user_id"], new_prompt, "AI 自主根據測試記憶與風格摘要改寫"),
-        )
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
+    save_prompt_version(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        real_user_id=real_user_id,
+        prompt_text=new_prompt,
+        source_reason="AI 自主根據測試記憶與風格摘要改寫",
+        update_current=True,
+    )
 
-    return "已產生新版實驗 prompt，並保存到 current_prompt。"
+    return _prompt_saved_message(new_prompt, "已產生 AI 自主改寫新版 prompt。")
 
 
 def _token_secret():
@@ -669,29 +752,173 @@ def build_setting_url(bot_id, chat_id, real_user_id):
     return f"{base_url}/test_lab?{query}"
 
 
+def send_long_test_message(bot_id, chat_id, text, chunk_size=3800):
+    """Telegram 單則訊息約 4096 字，長 prompt 需要拆段送出。"""
+    text = str(text or "")
+    if not text:
+        return
+
+    chunk_size = int(chunk_size or 3800)
+    chunks = []
+    remaining = text
+
+    while remaining:
+        if len(remaining) <= chunk_size:
+            chunks.append(remaining)
+            break
+
+        cut = remaining.rfind("\n", 0, chunk_size)
+        if cut < 500:
+            cut = chunk_size
+
+        chunks.append(remaining[:cut].rstrip())
+        remaining = remaining[cut:].lstrip()
+
+    total = len(chunks)
+    for index, chunk in enumerate(chunks, start=1):
+        if total > 1:
+            send_test_message(bot_id, chat_id, f"【{index}/{total}】\n{chunk}")
+        else:
+            send_test_message(bot_id, chat_id, chunk)
+
+
 def handle_test_lab_message(user_id, bot_id, chat_id, user_text, message_id=None):
     text = _text_id(user_text)
     real_user_id = _text_id(user_id)
 
+    # 任何等待狀態下都允許退出，避免下一句被誤存成 API key 或 prompt。
+    if text == "/test_exit":
+        set_session(
+            bot_id,
+            chat_id,
+            real_user_id,
+            is_active=False,
+            awaiting_api_key=False,
+            awaiting_prompt_input=False,
+        )
+        send_test_message(bot_id, chat_id, "已離開 Prompt Test 調教模式。")
+        return True
+
+    # 第一次進入或 /test_key 後，下一則訊息會被當成調教專用 Gemini API Key。
     if is_test_awaiting_api_key(bot_id, chat_id, real_user_id):
         save_api_key(bot_id, real_user_id, text)
         send_test_message(bot_id, chat_id, "已保存調教功能專用 Gemini API Key，現在進入調教模式。")
         return True
 
+    # /test_save_prompt 後，下一則訊息會被當成手動 prompt 版本。
+    if is_test_awaiting_prompt_input(bot_id, chat_id, real_user_id):
+        if save_prompt_version(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            real_user_id=real_user_id,
+            prompt_text=user_text,
+            source_reason="使用者手動輸入 prompt 版本",
+            update_current=True,
+        ):
+            set_session(
+                bot_id,
+                chat_id,
+                real_user_id,
+                is_active=True,
+                awaiting_api_key=False,
+                awaiting_prompt_input=False,
+            )
+            send_long_test_message(
+                bot_id,
+                chat_id,
+                _prompt_saved_message(user_text, "已保存你手動輸入的 prompt 版本。"),
+            )
+        else:
+            send_test_message(bot_id, chat_id, "你貼上的 prompt 是空的，沒有保存。")
+        return True
+
     if text == "/test":
         profile = get_profile(bot_id, real_user_id)
         if not profile or not profile.get("gemini_api_key_saved"):
-            set_session(bot_id, chat_id, real_user_id, is_active=True, awaiting_api_key=True)
-            send_test_message(bot_id, chat_id, "請輸入調教功能專用 Gemini API Key。\n這組 key 只會存到 test_profiles，不會使用主遊戲 user_config。")
+            set_session(
+                bot_id,
+                chat_id,
+                real_user_id,
+                is_active=True,
+                awaiting_api_key=True,
+                awaiting_prompt_input=False,
+            )
+            send_test_message(
+                bot_id,
+                chat_id,
+                "請輸入調教功能專用 Gemini API Key。\n"
+                "這組 key 會以明文存到 test_profiles，不會使用主遊戲 user_config。",
+            )
             return True
 
-        set_session(bot_id, chat_id, real_user_id, is_active=True, awaiting_api_key=False)
-        send_test_message(bot_id, chat_id, "已進入 Prompt Test 調教模式。\n輸入 /test_setting 可開網頁調整 prompt，輸入 /test_exit 可離開。")
+        set_session(
+            bot_id,
+            chat_id,
+            real_user_id,
+            is_active=True,
+            awaiting_api_key=False,
+            awaiting_prompt_input=False,
+        )
+        send_test_message(
+            bot_id,
+            chat_id,
+            "已進入 Prompt Test 調教模式。\n"
+            "看到這句就可以開始調教；一般文字會走 test_lab。\n"
+            "輸入 /test_setting 可開網頁調整 prompt，輸入 /test_generate 可讓 AI 產新版 prompt，輸入 /test_exit 可離開。",
+        )
         return True
 
-    if text == "/test_exit":
-        set_session(bot_id, chat_id, real_user_id, is_active=False, awaiting_api_key=False)
-        send_test_message(bot_id, chat_id, "已離開 Prompt Test 調教模式。")
+    if text == "/test_key":
+        set_session(
+            bot_id,
+            chat_id,
+            real_user_id,
+            is_active=True,
+            awaiting_api_key=True,
+            awaiting_prompt_input=False,
+        )
+        send_test_message(
+            bot_id,
+            chat_id,
+            "請輸入新的調教功能專用 Gemini API Key。\n"
+            "這組 key 會以明文存到 test_profiles。",
+        )
+        return True
+
+    if text == "/test_save_prompt":
+        set_session(
+            bot_id,
+            chat_id,
+            real_user_id,
+            is_active=True,
+            awaiting_api_key=False,
+            awaiting_prompt_input=True,
+        )
+        send_test_message(
+            bot_id,
+            chat_id,
+            "請直接貼上你要保存的 prompt。\n"
+            "下一則訊息會保存到 current_prompt，並寫入 test_prompt_versions 備份。",
+        )
+        return True
+
+    if text.startswith("/test_save_prompt "):
+        manual_prompt = str(user_text or "")[len("/test_save_prompt "):].strip()
+        if save_prompt_version(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            real_user_id=real_user_id,
+            prompt_text=manual_prompt,
+            source_reason="使用者手動輸入 prompt 版本",
+            update_current=True,
+        ):
+            send_long_test_message(
+                bot_id,
+                chat_id,
+                _prompt_saved_message(manual_prompt, "已保存你手動輸入的 prompt 版本。"),
+            )
+        else:
+            send_test_message(bot_id, chat_id, "你輸入的 prompt 是空的，沒有保存。")
         return True
 
     if text == "/test_setting":
@@ -710,13 +937,13 @@ def handle_test_lab_message(user_id, bot_id, chat_id, user_text, message_id=None
 
     if text == "/test_generate":
         result = generate_prompt(bot_id, chat_id, real_user_id)
-        send_test_message(bot_id, chat_id, result)
+        send_long_test_message(bot_id, chat_id, result)
         return True
 
     if text == "/test_prompt":
         profile = get_profile(bot_id, real_user_id)
         prompt_text = (profile or {}).get("current_prompt", "").strip()
-        send_test_message(bot_id, chat_id, prompt_text or "目前 current_prompt 是空的。")
+        send_long_test_message(bot_id, chat_id, prompt_text or "目前 current_prompt 是空的。")
         return True
 
     if is_test_active(bot_id, chat_id, real_user_id):

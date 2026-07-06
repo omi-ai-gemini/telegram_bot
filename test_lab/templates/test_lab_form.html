@@ -69,7 +69,8 @@
     <div class="card">
       <h1>Prompt Test Lab</h1>
       <div class="desc">
-        這裡只修改 test_ 資料表中的調教設定，不會修改主遊戲風格、主遊戲記憶或主遊戲 Gemini API Key。
+        這裡只修改 test_ 資料表中的調教設定，不會修改主遊戲風格、主遊戲記憶或主遊戲 Gemini API Key。<br>
+        調教資料與調教專用 Gemini API Key 都是明文保存，方便你直接在 Supabase 查看與修改。
       </div>
 
       <div class="note">
@@ -121,7 +122,7 @@
         </div>
 
         <div class="field">
-          <label>目前實驗 prompt（/test_generate 會改寫這裡）</label>
+          <label>目前實驗 prompt（/test_generate 或 /test_save_prompt 會改寫這裡）</label>
           <textarea name="current_prompt" class="large">{{ profile.current_prompt }}</textarea>
         </div>
 

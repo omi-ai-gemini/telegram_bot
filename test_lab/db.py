@@ -45,6 +45,7 @@ def init_test_lab_db():
             test_user_id TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT FALSE,
             awaiting_api_key BOOLEAN NOT NULL DEFAULT FALSE,
+            awaiting_prompt_input BOOLEAN NOT NULL DEFAULT FALSE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (bot_id, chat_id, real_user_id)
@@ -55,6 +56,12 @@ def init_test_lab_db():
         CREATE INDEX IF NOT EXISTS idx_test_sessions_active
         ON test_sessions (bot_id, chat_id, real_user_id, is_active)
         """)
+
+        cursor.execute("""
+        ALTER TABLE test_sessions
+        ADD COLUMN IF NOT EXISTS awaiting_prompt_input BOOLEAN NOT NULL DEFAULT FALSE
+        """)
+
 
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS test_memory (

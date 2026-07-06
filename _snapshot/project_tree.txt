@@ -15,6 +15,7 @@
   📄 REPLY_RECOVERY_SECRET_FIX_README.md
   📄 SETTING_LINK_AUTH_README.md
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
+  📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
 📁 handlers/
   📄 __init__.py
@@ -74,6 +75,16 @@
   📄 reply_style_form.html
   📄 thought_view.html
 📄 test_db.py
+📁 test_lab/
+  📄 __init__.py
+  📄 db.py
+  📄 gemini.py
+  📄 README.md
+  📄 routes.py
+  📄 service.py
+  📄 telegram.py
+  📁 templates/
+    📄 test_lab_form.html
 📁 tools/
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py

@@ -27,6 +27,7 @@ C:\Projects\telemini
 - `docs\REPLY_RECOVERY_SECRET_FIX_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
+- `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
@@ -78,6 +79,14 @@ C:\Projects\telemini
 - `templates\reply_style_form.html`
 - `templates\thought_view.html`
 - `test_db.py`
+- `test_lab\__init__.py`
+- `test_lab\db.py`
+- `test_lab\gemini.py`
+- `test_lab\README.md`
+- `test_lab\routes.py`
+- `test_lab\service.py`
+- `test_lab\telegram.py`
+- `test_lab\templates\test_lab_form.html`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
@@ -121,6 +130,10 @@ C:\Projects\telemini
 
 ### `routes\thought.py`
 - `/thought/<token>` → `thought_page`
+
+### `test_lab\routes.py`
+- `/test_lab` → `test_lab_page`
+- `/test_lab/save` → `save_test_lab_page`
 
 ## Python 函式總覽
 
@@ -567,6 +580,50 @@ C:\Projects\telemini
 - `_build_facts_text()`
 - `_build_memory_context_text()`
 - `build_prompt()`
+
+### `test_lab\db.py`
+- `init_test_lab_db()`
+
+### `test_lab\gemini.py`
+- `_safe_response_text()`
+- `ask_test_gemini()`
+
+### `test_lab\routes.py`
+- `test_lab_page()`
+- `save_test_lab_page()`
+
+### `test_lab\service.py`
+- `_text_id()`
+- `make_test_user_id()`
+- `_api_key_aad()`
+- `_encrypt_api_key()`
+- `_decrypt_api_key()`
+- `ensure_profile()`
+- `get_profile()`
+- `save_profile_settings()`
+- `save_api_key()`
+- `set_session()`
+- `get_session()`
+- `is_test_active()`
+- `is_test_awaiting_api_key()`
+- `should_skip_main_user_config()`
+- `add_memory()`
+- `list_memory()`
+- `list_summaries()`
+- `_history_text()`
+- `_summary_text()`
+- `build_chat_prompt()`
+- `generate_test_reply()`
+- `summarize_test_memory()`
+- `generate_prompt()`
+- `_token_secret()`
+- `create_page_token()`
+- `verify_page_token()`
+- `build_setting_url()`
+- `handle_test_lab_message()`
+
+### `test_lab\telegram.py`
+- `send_test_message()`
 
 ### `tools\encrypt_existing_plaintext.py`
 - `_has_value()`
