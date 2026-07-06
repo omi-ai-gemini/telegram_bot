@@ -3,6 +3,7 @@ from services.ai_actions import (
     cache_ai_thought_summary,
     create_ai_message_action,
     update_action_telegram_message_id,
+    send_blocked_reply_message,
 )
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
 from services.user_router import get_gemini_key
@@ -28,7 +29,7 @@ from services.memory import (
 
 
 
-BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
+BLOCKED_REPLY_TEXT = "內容被安全阻擋"
 
 # =========================
 # 共用工具
@@ -267,7 +268,7 @@ def _send_generated_reply(
 
     if reply == GEMINI_BLOCKED:
         print(f"{label} BLOCKED SEND: Gemini blocked chat reply", flush=True)
-        _send_ai_message_with_retry(bot_id, chat_id, BLOCKED_REPLY_TEXT, label=label)
+        send_blocked_reply_message(bot_id, chat_id)
         return False
 
     if not reply:

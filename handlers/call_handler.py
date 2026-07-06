@@ -1,8 +1,10 @@
+import threading
 from services.ai_actions import (
     get_ai_thought_url,
     run_continue_in_thread,
     run_regenerate_in_thread,
     run_reply_ai_message_in_thread,
+    run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
 from services.memory_view import handle_memory_view_callback
@@ -261,6 +263,79 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         )
 
         run_continue_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    # =========================
+    # 安全阻擋提示按鈕
+    # - 使用者點完後先刪除阻擋提示
+    # - 再依來源執行重跑 / 接續 / /reply 救援
+    # =========================
+    if user_text == "blocked_reply_debug":
+        delete_message(bot_id, chat_id, message_id)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在嘗試重跑回覆"
+        )
+
+        from services.call_ai import run_reply_recovery
+
+        threading.Thread(
+            target=run_reply_recovery,
+            args=(user_id, bot_id, chat_id),
+            daemon=True,
+        ).start()
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("blocked_ai_regen:"):
+        action_id = user_text.split(":", 1)[1]
+        delete_message(bot_id, chat_id, message_id)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在重新產生回覆"
+        )
+
+        run_regenerate_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("blocked_ai_continue:"):
+        action_id = user_text.split(":", 1)[1]
+        if action_id == "none":
+            action_id = None
+
+        delete_message(bot_id, chat_id, message_id)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在接續下一句"
+        )
+
+        run_continue_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    # =========================
+    # 長期摘要阻擋提示按鈕
+    # - 點擊後刪除提示
+    # - 清理這次可能半完成的摘要資料
+    # - 重新跑手動摘要
+    # =========================
+    if isinstance(user_text, str) and user_text.startswith("summary_repair_confirm"):
+        parts = user_text.split(":", 1)
+        stage = parts[1] if len(parts) > 1 else "unknown"
+
+        delete_message(bot_id, chat_id, message_id)
+
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="正在清理並重新摘要"
+        )
+
+        run_repair_blocked_summary_in_thread(user_id, bot_id, chat_id, stage=stage)
         return
 
     # =========================

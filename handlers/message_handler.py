@@ -8,57 +8,49 @@ from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 
 
-# =========================
-# 文字訊息入口
-# =========================
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 
-    user_text = str(user_text or "").strip()
+    text = str(user_text or "").strip()
 
     # =========================
     # 明確指令優先處理
-    # - 這裡是上一版漏掉的核心分支。
-    # - /setting、/memory、/reply、/hidden 不應該進 Gemini。
-    # - 先攔截可避免 hidden / pending edit 狀態檢查拖慢指令開啟速度。
+    # - 指令不需要先檢查 hidden keyboard / pending edit
+    # - 避免指令被前置狀態檢查拖慢
     # =========================
-    if user_text in ["/setting", "/設定"]:
+    if text in ["/setting", "/設定"]:
         send_setting_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id,
             source_message_id=message_id,
+            user_id=user_id,
         )
         return
 
-    if user_text in ["/memory", "/記憶"]:
+    if text in ["/memory", "/記憶"]:
         send_memory_view_menu(
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id,
             source_message_id=message_id,
-        )
-        return
-
-    if user_text in ["/reply", "/回覆"]:
-        run_reply_recovery(
             user_id=user_id,
-            bot_id=bot_id,
-            chat_id=chat_id,
         )
         return
 
-    if user_text == "/hidden":
+    if text in ["/reply", "/回覆"]:
+        run_reply_recovery(user_id, bot_id, chat_id)
+        return
+
+    if text == "/hidden":
         send_hidden_ai_action_menu(
+            user_id=user_id,
             bot_id=bot_id,
             chat_id=chat_id,
-            user_id=user_id,
             source_message_id=message_id,
         )
         return
 
     # =========================
     # /hidden Reply Keyboard 按鍵
-    # 這些按鍵會以「使用者文字訊息」形式進來，必須攔截：
+    # 這些按鍵會以「使用者文字訊息」形式進來，必須先攔截：
     # - 刪掉按鍵文字訊息
     # - 不寫入記憶
     # - 不送 Gemini
@@ -87,19 +79,10 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         bot_id=bot_id,
         chat_id=chat_id,
         user_text=user_text,
-        user_message_id=message_id,
+        user_message_id=message_id
     )
 
     if handled:
         return
 
-    # =========================
-    # 一般聊天才進 AI
-    # =========================
-    run_ai(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        user_text=user_text,
-        user_message_id=message_id,
-    )
+    run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)

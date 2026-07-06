@@ -1,33 +1,40 @@
-Telemini 指令失效 hotfix 01
+Telemini blocked-button + summary-repair patch
 
 覆蓋檔案：
 - handlers/message_handler.py
+- handlers/call_handler.py
+- services/ai_actions.py
+- services/call_ai.py
+- services/memory_summary.py
 
-修正問題：
-上一版「指令加速」包在 message_handler.py 留了「明確指令優先處理」註解，
-但實際上把 /setting、/memory、/reply、/hidden 的判斷分支漏掉了。
+更新內容：
+1. 一般安全阻擋提示改成按鈕：
+   - 訊息只顯示「內容被安全阻擋」
+   - 下方出現「🗣️ 嘗試重跑回覆」
+   - 點擊後會刪除阻擋提示訊息
+   - 然後執行 /reply 救援式重跑
 
-結果：
-- /setting 不會開設定選單
-- /memory 不會開記憶選單
-- /hidden 不會開開發者鍵盤
-- /reply 不會走救援流程
-- 這些指令會被當成一般聊天丟進 run_ai()
+2. AI 操作流程被阻擋也改成按鈕：
+   - 重跑被擋：顯示「🗣️ 重新產生」
+   - 接續被擋：顯示「🗣️ 重新接續」
+   - 點擊後會刪除阻擋提示訊息
 
-本版修正：
-1. 補回 /setting、/設定
-2. 補回 /memory、/記憶
-3. 補回 /reply、/回覆
-4. 補回 /hidden
-5. 保留指令優先處理，避免先跑 hidden / pending edit 檢查拖慢指令
-6. 一般聊天才會進 run_ai()
+3. 長期摘要阻擋提示改成按鈕：
+   - 訊息顯示「摘要長期記憶時被阻擋」
+   - 下方出現「清理後重跑摘要」
+   - 點擊後會刪除提示訊息
+   - 依阻擋階段清理可能半完成資料，再跑手動摘要
 
-部署後測試：
-1. 輸入 /setting：應打開設定中心
-2. 輸入 /memory：應打開記憶查看
-3. 輸入 /hidden：應打開開發者功能鍵盤
-4. 輸入 /reply：應觸發救援回覆
-5. 輸入一般文字：才會進 AI 回覆
+4. 摘要修復會依階段處理：
+   - segment：分段摘要阻擋，重算摘要進度
+   - state：目前狀態摘要阻擋，刪除最新分段摘要與目前狀態後重跑
+   - archive：封存摘要阻擋，刪除最新封存並解除來源摘要封存
+   - archive_merge：封存合併阻擋，清理快取與摘要進度後重跑
 
-檢查：
-python -m py_compile handlers/message_handler.py
+5. 順手修復目前最新 zip 裡的殘留問題：
+   - handlers/message_handler.py 補回 /setting /memory /hidden /reply 指令分支
+   - handlers/call_handler.py 移除多餘右括號
+   - services/ai_actions.py 移除多餘右括號
+
+已檢查：
+python -m py_compile handlers/message_handler.py handlers/call_handler.py services/ai_actions.py services/call_ai.py services/memory_summary.py

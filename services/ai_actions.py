@@ -26,6 +26,7 @@ from services.memory_summary import (
     summarize_pending_memory,
     cleanup_long_term_memory,
     count_pending_summary_messages,
+    repair_blocked_summary_attempt,
     SUMMARY_CHUNK_SIZE_MESSAGES,
 )
 from services.reply_style import (
@@ -41,7 +42,7 @@ from services.setting_sessions import save_setting_menu_session
 
 EDIT_PENDING_MINUTES = 5
 THOUGHT_CACHE_TTL_SECONDS = 60 * 60
-BLOCKED_REPLY_TEXT = "內容被安全阻擋\n使用🗣️嘗試重跑回覆"
+BLOCKED_REPLY_TEXT = "內容被安全阻擋"
 CONTINUE_USER_TEXT = """
 【接續劇情指令】
 這不是新的使用者對話，也不是重新回答上一句。
@@ -169,6 +170,42 @@ def _remove_keyboard_markup():
         "remove_keyboard": True,
         "selective": True,
     }
+
+
+def build_blocked_reply_keyboard(action_type="reply", action_id=None):
+    """建立安全阻擋提示用的 Inline Keyboard。"""
+    action_type = str(action_type or "reply").strip()
+
+    if action_type == "regen" and action_id:
+        callback_data = f"blocked_ai_regen:{action_id}"
+        text = "🗣️ 重新產生"
+    elif action_type == "continue":
+        callback_data = f"blocked_ai_continue:{action_id or 'none'}"
+        text = "🗣️ 重新接續"
+    else:
+        callback_data = "blocked_reply_debug"
+        text = "🗣️ 嘗試重跑回覆"
+
+    return {
+        "inline_keyboard": [
+            [
+                {
+                    "text": text,
+                    "callback_data": callback_data,
+                }
+            ]
+        ]
+    }
+
+
+def send_blocked_reply_message(bot_id, chat_id, action_type="reply", action_id=None):
+    """送出安全阻擋提示，並附上可直接操作的除錯按鈕。"""
+    return send_message(
+        bot_id,
+        chat_id,
+        BLOCKED_REPLY_TEXT,
+        reply_markup=build_blocked_reply_keyboard(action_type=action_type, action_id=action_id),
+    )
 
 
 def _delete_message_later(bot_id, chat_id, message_id, delay_seconds=1.5):
@@ -1225,7 +1262,8 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
     reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
-        reply = BLOCKED_REPLY_TEXT
+        send_blocked_reply_message(bot_id, chat_id, action_type="regen", action_id=action.get("id"))
+        return
 
     if not reply:
         print("AI ACTION REGEN SKIP: empty reply")
@@ -1309,7 +1347,7 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     reply, thought_summary, thought_source = _split_gemini_result(gemini_result)
 
     if reply == GEMINI_BLOCKED:
-        send_message(bot_id, chat_id, BLOCKED_REPLY_TEXT)
+        send_blocked_reply_message(bot_id, chat_id, action_type="continue", action_id=source_action_id or "none")
         return
 
     if not reply:
@@ -1381,8 +1419,8 @@ def _resave_current_custom_reply_style(user_id, bot_id, chat_id):
         return 0
 
 
-def passive_summarize_memory(user_id, bot_id, chat_id):
-    """/hidden 💾 被動摘要：由使用者手動觸發一次長期記憶整理。"""
+def _run_manual_summary_after_cleanup(user_id, bot_id, chat_id, cleanup_stats=None):
+    """共用手動摘要流程：/hidden 💾 與阻擋修復按鈕都走這裡。"""
     if _is_group_chat(chat_id):
         send_message(bot_id, chat_id, "群組暫不開放這個功能")
         return
@@ -1396,10 +1434,11 @@ def passive_summarize_memory(user_id, bot_id, chat_id):
     pending_count = count_pending_summary_messages(bot_id, chat_id)
 
     if pending_count < SUMMARY_CHUNK_SIZE_MESSAGES:
+        prefix = "已清理未完成的摘要狀態。\n" if cleanup_stats else ""
         send_message(
             bot_id,
             chat_id,
-            f"目前尚未滿 {SUMMARY_CHUNK_SIZE_MESSAGES} 筆可整理的短期記憶。\n"
+            f"{prefix}目前尚未滿 {SUMMARY_CHUNK_SIZE_MESSAGES} 筆可整理的短期記憶。\n"
             f"目前未摘要筆數：{pending_count}",
         )
         return
@@ -1419,7 +1458,8 @@ def passive_summarize_memory(user_id, bot_id, chat_id):
             chat_id=chat_id,
             user_id=user_id,
         )
-        send_message(bot_id, chat_id, f"已整理 {chunks} 段摘要記憶")
+        prefix = "已清理未完成的摘要狀態，" if cleanup_stats else ""
+        send_message(bot_id, chat_id, f"{prefix}已整理 {chunks} 段摘要記憶")
         return
 
     send_message(
@@ -1429,10 +1469,44 @@ def passive_summarize_memory(user_id, bot_id, chat_id):
     )
 
 
+def passive_summarize_memory(user_id, bot_id, chat_id):
+    """/hidden 💾 被動摘要：由使用者手動觸發一次長期記憶整理。"""
+    _run_manual_summary_after_cleanup(user_id, bot_id, chat_id)
+
+
+def repair_blocked_summary_and_resummarize(user_id, bot_id, chat_id, stage="unknown"):
+    """摘要阻擋提示按鈕：先清理半完成資料，再重跑手動摘要。"""
+    if _is_group_chat(chat_id):
+        send_message(bot_id, chat_id, "群組暫不開放這個功能")
+        return
+
+    cleanup_stats = repair_blocked_summary_attempt(
+        bot_id=bot_id,
+        chat_id=chat_id,
+        stage=stage,
+        user_id=user_id,
+    )
+
+    _run_manual_summary_after_cleanup(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        cleanup_stats=cleanup_stats,
+    )
+
+
 def run_passive_summarize_memory_in_thread(user_id, bot_id, chat_id):
     threading.Thread(
         target=passive_summarize_memory,
         args=(user_id, bot_id, chat_id),
+        daemon=True,
+    ).start()
+
+
+def run_repair_blocked_summary_in_thread(user_id, bot_id, chat_id, stage="unknown"):
+    threading.Thread(
+        target=repair_blocked_summary_and_resummarize,
+        args=(user_id, bot_id, chat_id, stage),
         daemon=True,
     ).start()
 

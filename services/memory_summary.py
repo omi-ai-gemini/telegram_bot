@@ -15,10 +15,28 @@ ARCHIVE_BATCH_SIZE = 6
 ARCHIVE_KEEP = 5
 
 
-def _notify_summary_blocked(bot_id, chat_id):
-    """摘要任務被 Gemini 安全層擋下時，直接回聊天室提示。"""
+def _notify_summary_blocked(bot_id, chat_id, stage="unknown"):
+    """摘要任務被 Gemini 安全層擋下時，送出可一鍵修復的提示。"""
+    stage = str(stage or "unknown").strip() or "unknown"
+
+    reply_markup = {
+        "inline_keyboard": [
+            [
+                {
+                    "text": "清理後重跑摘要",
+                    "callback_data": f"summary_repair_confirm:{stage}",
+                }
+            ]
+        ]
+    }
+
     try:
-        send_message(bot_id, chat_id, "摘要長期記憶時被阻擋")
+        send_message(
+            bot_id,
+            chat_id,
+            "摘要長期記憶時被阻擋",
+            reply_markup=reply_markup,
+        )
     except Exception as exc:
         print("TELEGRAM notify summary blocked error:", exc)
 
@@ -205,7 +223,7 @@ def _refresh_memory_state(gemini_key, bot_id, chat_id, scope, new_summary):
         )
 
         if _is_summary_blocked(state_text):
-            _notify_summary_blocked(bot_id, chat_id)
+            _notify_summary_blocked(bot_id, chat_id, stage="state")
             print("DEBUG memory state blocked by Gemini safety")
             return
 
@@ -365,7 +383,7 @@ def summarize_pending_memory(gemini_key, bot_id, chat_id, user_id=None, max_chun
         )
 
         if _is_summary_blocked(summary_text):
-            _notify_summary_blocked(bot_id, chat_id)
+            _notify_summary_blocked(bot_id, chat_id, stage="segment")
             print("DEBUG memory summary blocked by Gemini safety")
             return completed
 
@@ -473,7 +491,7 @@ def cleanup_long_term_memory(gemini_key, bot_id, chat_id, user_id=None):
     )
 
     if _is_summary_blocked(archive_text):
-        _notify_summary_blocked(bot_id, chat_id)
+        _notify_summary_blocked(bot_id, chat_id, stage="archive")
         print("DEBUG archive summary blocked by Gemini safety")
         return False
 
@@ -570,7 +588,7 @@ def _merge_old_archives_if_needed(gemini_key, bot_id, chat_id, scope):
     )
 
     if _is_summary_blocked(merged_text):
-        _notify_summary_blocked(bot_id, chat_id)
+        _notify_summary_blocked(bot_id, chat_id, stage="archive_merge")
         print("DEBUG archive merge blocked by Gemini safety")
         return False
 
@@ -615,6 +633,161 @@ def _merge_old_archives_if_needed(gemini_key, bot_id, chat_id, scope):
         conn.rollback()
         print("DB ERROR merge archives save:", exc)
         return False
+
+    finally:
+        conn.close()
+
+
+def repair_blocked_summary_attempt(bot_id, chat_id, stage="unknown", user_id=None):
+    """
+    清理「長期摘要被阻擋」時可能留下的半完成狀態。
+
+    stage：
+    - segment：分段摘要在寫入前被阻擋，主要重算 state 指標。
+    - state：分段摘要已寫入、目前狀態摘要被阻擋，刪掉最新分段與目前狀態。
+    - archive：封存摘要流程被阻擋，刪掉最新封存並解除來源摘要封存狀態。
+    - archive_merge：封存合併被阻擋，通常沒有新資料寫入，只清快取與檢查 state。
+    - unknown：舊按鈕或無法判斷時採保守清理。
+    """
+    bot_id = _text_id(bot_id)
+    chat_id = _text_id(chat_id)
+    scope = _get_scope(chat_id)
+    stage = str(stage or "unknown").strip() or "unknown"
+
+    stats = {
+        "stage": stage,
+        "deleted_latest_summary": 0,
+        "deleted_memory_state": 0,
+        "deleted_archive": 0,
+        "unarchived_summaries": 0,
+        "summary_state_reset_to": 0,
+    }
+
+    conn = get_conn()
+
+    try:
+        cursor = conn.cursor()
+
+        cursor.execute("""
+            SELECT last_summarized_chat_id
+            FROM memory_summary_state
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+        row = cursor.fetchone()
+        last_state_id = int(row[0]) if row and row[0] is not None else 0
+
+        cursor.execute("""
+            SELECT id, start_chat_id, end_chat_id
+            FROM memory_summaries
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+            ORDER BY end_chat_id DESC, id DESC
+            LIMIT 1
+        """, (bot_id, chat_id, scope))
+        latest_summary = cursor.fetchone()
+
+        # 目前狀態摘要被擋時，最常見狀態是：
+        # 分段摘要已存入、summary_state 已推進，但 memory_state 沒更新。
+        # 這時刪掉最新分段，讓下一輪從同一批 chat_memory 重新摘要。
+        if latest_summary and stage in ["state", "unknown"]:
+            latest_summary_id = int(latest_summary[0])
+            latest_end_id = int(latest_summary[2])
+
+            if last_state_id <= 0 or latest_end_id == last_state_id:
+                cursor.execute("""
+                    DELETE FROM memory_summaries
+                    WHERE id = %s
+                      AND bot_id = %s
+                      AND chat_id = %s
+                      AND scope = %s
+                """, (latest_summary_id, bot_id, chat_id, scope))
+                stats["deleted_latest_summary"] = cursor.rowcount or 0
+
+        # 目前狀態可能已經停在半完成前後，直接清掉，後續會用新分段摘要重建。
+        if stage in ["state", "unknown"]:
+            cursor.execute("""
+                DELETE FROM memory_state
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+            stats["deleted_memory_state"] = cursor.rowcount or 0
+
+        # 封存流程被擋或封存合併被擋時，清掉最新封存並解除來源摘要封存狀態。
+        # 解除封存比直接刪來源安全，原摘要內容會回到 active summaries。
+        if stage in ["archive", "archive_merge"]:
+            cursor.execute("""
+                SELECT id, start_summary_id, end_summary_id
+                FROM memory_archives
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+                ORDER BY id DESC
+                LIMIT 1
+            """, (bot_id, chat_id, scope))
+            archive = cursor.fetchone()
+
+            if archive:
+                archive_id = int(archive[0])
+                start_summary_id = int(archive[1] or 0)
+                end_summary_id = int(archive[2] or 0)
+
+                cursor.execute("""
+                    DELETE FROM memory_archives
+                    WHERE id = %s
+                      AND bot_id = %s
+                      AND chat_id = %s
+                      AND scope = %s
+                """, (archive_id, bot_id, chat_id, scope))
+                stats["deleted_archive"] = cursor.rowcount or 0
+
+                if start_summary_id and end_summary_id:
+                    cursor.execute("""
+                        UPDATE memory_summaries
+                        SET is_archived = FALSE,
+                            updated_at = CURRENT_TIMESTAMP
+                        WHERE bot_id = %s
+                          AND chat_id = %s
+                          AND scope = %s
+                          AND id BETWEEN %s AND %s
+                    """, (bot_id, chat_id, scope, start_summary_id, end_summary_id))
+                    stats["unarchived_summaries"] = cursor.rowcount or 0
+
+        # 以目前還存在的摘要最大 end_chat_id 重建摘要進度。
+        cursor.execute("""
+            SELECT MAX(end_chat_id)
+            FROM memory_summaries
+            WHERE bot_id = %s
+              AND chat_id = %s
+              AND scope = %s
+        """, (bot_id, chat_id, scope))
+        row = cursor.fetchone()
+        max_end_id = int(row[0]) if row and row[0] is not None else 0
+
+        if max_end_id > 0:
+            _update_summary_state(cursor, bot_id, chat_id, scope, max_end_id)
+            stats["summary_state_reset_to"] = max_end_id
+        else:
+            cursor.execute("""
+                DELETE FROM memory_summary_state
+                WHERE bot_id = %s
+                  AND chat_id = %s
+                  AND scope = %s
+            """, (bot_id, chat_id, scope))
+            stats["summary_state_reset_to"] = 0
+
+        conn.commit()
+        clear_memory_context_cache(bot_id, chat_id, scope)
+        print("DEBUG repair blocked summary attempt:", stats, flush=True)
+        return stats
+
+    except Exception as exc:
+        conn.rollback()
+        print("DB ERROR repair_blocked_summary_attempt:", exc, flush=True)
+        return stats
 
     finally:
         conn.close()
