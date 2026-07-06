@@ -9,7 +9,7 @@ from services.memory import (
 from services.memory_summary import delete_memory_summary, list_memory_summaries
 from services.setting_auth import create_setting_token, is_group_chat
 from services.telegram_service import answer_callback_query, delete_message, edit_message_text, send_message
-from services.setting_sessions import save_setting_menu_session, pop_setting_menu_session
+from services.setting_sessions import save_setting_menu_session_async, pop_setting_menu_session
 
 
 def _text_id(value):
@@ -122,7 +122,7 @@ def send_memory_view_menu(bot_id, chat_id, user_id, message_id=None, source_mess
         menu_message_id = _extract_message_id(result)
 
         if menu_message_id:
-            save_setting_menu_session(
+            save_setting_menu_session_async(
                 bot_id=bot_id,
                 chat_id=chat_id,
                 user_id=user_id,

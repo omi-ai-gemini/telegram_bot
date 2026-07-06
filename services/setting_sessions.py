@@ -1,8 +1,31 @@
+import threading
+
 from services.database import get_conn
 
 
 def _text_id(value):
     return str(value or "").strip()
+
+
+def save_setting_menu_session_async(bot_id, chat_id, user_id, menu_message_id, command_message_id):
+    """背景記錄選單 session，避免 /setting /memory 等指令等 DB 寫入才完成。"""
+    if not menu_message_id or not command_message_id:
+        return False
+
+    def _job():
+        try:
+            save_setting_menu_session(
+                bot_id=bot_id,
+                chat_id=chat_id,
+                user_id=user_id,
+                menu_message_id=menu_message_id,
+                command_message_id=command_message_id,
+            )
+        except Exception as exc:
+            print("SETTING SESSION ASYNC ERROR:", exc, flush=True)
+
+    threading.Thread(target=_job, daemon=True).start()
+    return True
 
 
 def save_setting_menu_session(bot_id, chat_id, user_id, menu_message_id, command_message_id):

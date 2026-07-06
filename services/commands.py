@@ -1,10 +1,12 @@
 import os
 import requests
+
+_TELEGRAM_SESSION = requests.Session()
 from urllib.parse import urlencode
 from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
 from services.setting_auth import create_setting_token, is_group_chat
-from services.setting_sessions import save_setting_menu_session
+from services.setting_sessions import save_setting_menu_session_async
 
 # =========================
 # Telegram API POST
@@ -19,7 +21,7 @@ def _telegram_post(bot_id, method, payload):
 
     url = f"https://api.telegram.org/bot{bot_token}/{method}"
 
-    res = requests.post(url, json=payload, timeout=30)
+    res = _TELEGRAM_SESSION.post(url, json=payload, timeout=10)
 
     if not res.ok:
         print("TELEGRAM ERROR:", res.text)
@@ -214,7 +216,7 @@ def send_setting_menu(
         menu_message_id = _extract_message_id(result)
 
         if menu_message_id:
-            save_setting_menu_session(
+            save_setting_menu_session_async(
                 bot_id=bot_id,
                 chat_id=chat_id,
                 user_id=user_id,

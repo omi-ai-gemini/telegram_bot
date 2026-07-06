@@ -11,6 +11,12 @@ from services.memory_view import send_memory_view_menu
 def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 
     # =========================
+    # 明確指令優先處理
+    # - 指令不需要先檢查 hidden keyboard / pending edit
+    # - 避免指令被前置狀態檢查拖慢
+    # =========================
+
+    # =========================
     # /hidden Reply Keyboard 按鍵
     # 這些按鍵會以「使用者文字訊息」形式進來，必須先攔截：
     # - 刪掉按鍵文字訊息
@@ -47,39 +53,5 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
     if handled:
         return
 
-    if user_text in ["/setting", "/設定"]:
-        send_setting_menu(
-            bot_id,
-            chat_id,
-            user_id=user_id,
-            source_message_id=message_id
-        )
-        return
-
-    if user_text in ["/memory", "/記憶"]:
-        send_memory_view_menu(
-            bot_id=bot_id,
-            chat_id=chat_id,
-            user_id=user_id,
-            source_message_id=message_id
-        )
-        return
-
-    if user_text in ["/reply", "/回覆"]:
-        run_reply_recovery(
-            user_id=user_id,
-            bot_id=bot_id,
-            chat_id=chat_id
-        )
-        return
-
-    if user_text == "/hidden":
-        send_hidden_ai_action_menu(
-            bot_id=bot_id,
-            chat_id=chat_id,
-            user_id=user_id,
-            source_message_id=message_id
-        )
-        return
 
     run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
