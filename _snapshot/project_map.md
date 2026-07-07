@@ -17,9 +17,11 @@ C:\Projects\telemini
 - `check_db.py`
 - `config.py`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
+- `docs\BLOCKED_RETRY_BUTTON_README.md`
 - `docs\CUSTOM_STYLE_PREFIX_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\HIDDEN_PASSIVE_SUMMARY_README.md`
+- `docs\NORMAL_REPLY_UNIFIED_GENERATION_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
 - `docs\PROMPT_DEBUG_DB_HOTFIX_README.md`
@@ -91,6 +93,7 @@ C:\Projects\telemini
 - `test_lab\service.py`
 - `test_lab\telegram.py`
 - `test_lab\templates\test_lab_form.html`
+- `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
@@ -266,6 +269,7 @@ C:\Projects\telemini
 - `_attach_reply_buttons_in_background()`
 - `_send_generated_reply()`
 - `run_ai()`
+- `run_blocked_reply_retry()`
 - `run_reply_recovery()`
 - `worker()`
 
@@ -610,6 +614,11 @@ C:\Projects\telemini
 
 ### `test_lab\telegram.py`
 - `send_test_message()`
+
+### `tools\apply_blocked_retry_patch.py`
+- `patch_call_ai()`
+- `patch_call_handler()`
+- `main()`
 
 ### `tools\encrypt_existing_plaintext.py`
 - `_has_value()`

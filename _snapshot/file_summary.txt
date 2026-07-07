@@ -287,6 +287,52 @@ pending_ai_actions
 
 ================================================================================
 
+# docs\BLOCKED_RETRY_BUTTON_README.md
+
+- 類型：.md
+- 行數：34
+
+## preview
+```text
+# 內容被安全阻擋按鈕流程修正
+
+## 目的
+
+把「內容被安全阻擋」訊息下方的 🗣️ 按鈕改成專用重跑流程。
+
+## 新行為
+
+按下阻擋訊息下面的 🗣️：
+
+1. 不刪除阻擋提示訊息。
+2. 不走一般 🔁 重跑，所以不刪除任何 AI 訊息。
+3. 讀取短期記憶最後一筆。
+4. 最後一筆必須是 `user`。
+5. 不重複新增 user 記憶。
+6. 直接用最後一筆 user 記憶重新呼叫 Gemini，補送一則新的 assistant 回覆。
+
+## 修改檔案
+
+- `services/call_ai.py`
+  - 新增 `run_blocked_reply_retry()`。
+- `handlers/call_handler.py`
+  - `blocked_reply_debug` 改呼叫 `run_blocked_reply_retry()`。
+  - 移除原本點按鈕時刪除阻擋提示的動作。
+
+## 套用
+
+```powershell
+python tools\apply_blocked_retry_patch.py
+python -m py_compile services\call_ai.py handlers\call_handler.py
+git add services/call_ai.py handlers/call_handler.py docs/BLOCKED_RETRY_BUTTON_README.md tools/apply_blocked_retry_patch.py
+git commit -m "fix blocked reply retry button"
+git push
+```
+```
+
+
+================================================================================
+
 # docs\CUSTOM_STYLE_PREFIX_README.md
 
 - 類型：.md
@@ -493,6 +539,78 @@ Telegram 測試：
 4. 觸發安全阻擋時，確認訊息後面有「使用🗣️嘗試重跑回覆」。
 5. 按 🗣️ 時，Render log 應出現：
    DEBUG hidden reply resave custom style
+```
+```
+
+
+================================================================================
+
+# docs\NORMAL_REPLY_UNIFIED_GENERATION_README.md
+
+- 類型：.md
+- 行數：60
+
+## preview
+```text
+# Telemini 一般回覆與按鈕回覆 prompt 統一熱修
+
+## 修改目標
+
+把一般使用者輸入改成和按鈕重跑 / 接續更接近的生成方式：
+
+1. 一般輸入仍然先寫進 `chat_memory`。
+2. Gemini prompt 只從 `===近期對話紀錄===` 看到最新 user 訊息。
+3. 不再於 prompt 底部重複顯示：
+
+```text
+使用者：
+最新輸入
+```
+
+4. `get_chat_for_prompt()` 不再用 60 分鐘 / 180 分鐘時間窗，改成固定最近 100 則短期記憶。
+5. `get_chat_until()` 不再無限往前抓，改成指定 id 以前最近 100 則。
+6. 接續函式本體不動；只讓底層記憶快照規則變成固定 100 則。
+
+## 修改檔案
+
+- `services/memory.py`
+- `services/style.py`
+- `services/call_ai.py`
+- `services/ai_actions.py`
+
+## 重點行為
+
+### 一般回覆
+
+```text
+user message
+→ add_chat(user)
+→ get_chat_for_prompt() 取最近 100 則，其中最後一則就是最新 user
+→ build_prompt() 不再額外顯示 user_text
+→ Gemini 回覆
+→ add_chat(assistant)
+```
+
+### 重跑
+
+```text
+找到原本 source_user_chat_id
+→ get_chat_until(source_user_chat_id) 取該 id 前最近 100 則，其中最後一則就是原本 user
+→ build_prompt() 不再額外顯示 user_text
+→ Gemini 回覆
+→ 覆蓋原 assistant 記憶
+```
+
+### 接續
+
+接續功能仍使用原本 `CONTINUE_USER_TEXT`，沒有改 `continue_ai_message()` 函式本體。
+
+## 測試
+
+已執行：
+
+```bash
+python -m py_compile services/memory.py services/style.py services/call_ai.py services/ai_actions.py
 ```
 ```
 
@@ -1306,7 +1424,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：842
+- 行數：841
 
 ## imports
 - services.ai_actions.get_ai_thought_url
@@ -1315,6 +1433,7 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 - services.ai_actions.run_repair_blocked_summary_in_thread
 - services.ai_actions.run_reply_ai_message_in_thread
 - services.ai_actions.start_edit_ai_message
+- services.call_ai.run_blocked_reply_retry
 - services.call_ai.run_reply_recovery
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
@@ -1357,7 +1476,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
-from services.call_ai import run_reply_recovery
+from services.call_ai import run_reply_recovery, run_blocked_reply_retry
 from services.memory_view import handle_memory_view_callback
 from services.commands import (
     send_character_menu,
@@ -1429,7 +1548,7 @@ def _send_script_opening(bot_id, chat_id):
     mark_script_opening_sent(
         bot_id,
 ...
-... 已省略 762 行
+... 已省略 761 行
 ```
 
 
@@ -2202,7 +2321,7 @@ def thought_page(token):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1700
+- 行數：1702
 
 ## imports
 - datetime.datetime
@@ -2379,7 +2498,7 @@ CONTINUE_USER_TEXT = """
 
 請直接輸出接續內容。
 ...
-... 已省略 1620 行
+... 已省略 1622 行
 ```
 
 
@@ -2486,7 +2605,7 @@ def clear_bot_token_cache(bot_id: str):
 # services\call_ai.py
 
 - 類型：.py
-- 行數：509
+- 行數：601
 
 ## imports
 - services.ai_actions.build_ai_action_keyboard
@@ -2525,6 +2644,7 @@ def clear_bot_token_cache(bot_id: str):
 - _attach_reply_buttons_in_background
 - _send_generated_reply
 - run_ai
+- run_blocked_reply_retry
 - run_reply_recovery
 - worker
 
@@ -2611,7 +2731,7 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
 
     print(
 ...
-... 已省略 429 行
+... 已省略 521 行
 ```
 
 
@@ -3562,7 +3682,7 @@ def _with_structured_reply_instructions(prompt):
 # services\memory.py
 
 - 類型：.py
-- 行數：1286
+- 行數：1266
 
 ## imports
 - datetime.datetime
@@ -3697,7 +3817,7 @@ def _history_item(role, value, bot_id, chat_id, scope, created_at=None):
     text = _decrypt_safe(value, aad=aad)
 
 ...
-... 已省略 1206 行
+... 已省略 1186 行
 ```
 
 
@@ -4880,7 +5000,7 @@ def pop_setting_menu_session(bot_id, chat_id, menu_message_id, user_id=None):
 # services\style.py
 
 - 類型：.py
-- 行數：413
+- 行數：451
 
 ## imports
 - services.time_context.build_time_context_text
@@ -4978,7 +5098,7 @@ DEFAULT_THEATER_REPLY_STYLE = """
 """
 
 ...
-... 已省略 333 行
+... 已省略 371 行
 ```
 
 
@@ -7090,6 +7210,108 @@ def send_test_message(bot_id, chat_id, text, reply_markup=None):
         Gemini API Key：{% if profile.gemini_api_key_saved %}已保存{% else %}尚未保存，請回 Telegram 輸入 /test 設定{% endif %}
 ...
 ... 已省略 54 行
+```
+
+
+================================================================================
+
+# tools\apply_blocked_retry_patch.py
+
+- 類型：.py
+- 行數：183
+
+## imports
+- pathlib.Path
+
+## functions
+- patch_call_ai
+- patch_call_handler
+- main
+
+## preview
+```text
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+
+
+def patch_call_ai():
+    path = ROOT / "services" / "call_ai.py"
+    text = path.read_text(encoding="utf-8")
+
+    if "def run_blocked_reply_retry(" in text:
+        print("SKIP services/call_ai.py: run_blocked_reply_retry already exists")
+        return
+
+    marker = "# =========================\n# /reply 救援指令\n# =========================\n"
+    if marker not in text:
+        raise RuntimeError("services/call_ai.py: cannot find /reply marker")
+
+    func = r'''
+# =========================
+# 安全阻擋提示按鈕：直接用最後一筆 user 記憶補生回覆
+# =========================
+def run_blocked_reply_retry(user_id: int, bot_id: str, chat_id: int):
+    """
+    「內容被安全阻擋」下方 🗣️ 按鈕專用流程。
+
+    行為：
+    - 不刪除任何 Telegram 訊息，包括原本的阻擋提示。
+    - 不走一般 🔁 重跑，所以不會刪 AI 訊息。
+    - 不重複新增 user 記憶。
+    - 要求短期記憶最後一筆必須是 user。
+    - 直接用最後一筆 user 記憶作為 source_user_chat_id，重新呼叫 Gemini 補一則 assistant 回覆。
+    """
+    try:
+        gemini_key = get_gemini_key(user_id)
+        bot_token = get_bot_token(bot_id)
+
+        if not gemini_key or not bot_token:
+            send_message(
+                bot_id,
+                chat_id,
+                f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}"
+            )
+            return
+
+        recent_rows = list_recent_chat_memory(
+            bot_id=bot_id,
+            chat_id=chat_id,
+            limit=5,
+            user_id=user_id,
+        )
+
+        if not recent_rows:
+            _send_ai_message_with_retry(
+                bot_id,
+                chat_id,
+                "目前沒有短期記憶可重跑。",
+                label="BLOCKED RETRY",
+            )
+            return
+
+        last = recent_rows[0]
+        last_role = str(last.get("role") or "").strip()
+        last_text = str(last.get("text") or "").strip()
+        last_id = last.get("id")
+
+        print(
+            f"BLOCKED RETRY START last_id={last_id} last_role={last_role} len={len(last_text)}",
+            flush=True,
+        )
+
+        if last_role != "user":
+            _send_ai_message_with_retry(
+                bot_id,
+                chat_id,
+                "最後一筆短期記憶不是使用者訊息，無法用阻擋重跑。",
+                label="BLOCKED RETRY",
+            )
+            return
+
+        if not last_text:
+...
+... 已省略 103 行
 ```
 
 

@@ -5,9 +5,11 @@
 📄 config.py
 📁 docs/
   📄 AI_MESSAGE_ACTIONS_README.md
+  📄 BLOCKED_RETRY_BUTTON_README.md
   📄 CUSTOM_STYLE_PREFIX_README.md
   📄 ENV_ENCRYPTION_README.md
   📄 HIDDEN_PASSIVE_SUMMARY_README.md
+  📄 NORMAL_REPLY_UNIFIED_GENERATION_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
   📄 PROMPT_DEBUG_DB_HOTFIX_README.md
@@ -87,6 +89,7 @@
   📁 templates/
     📄 test_lab_form.html
 📁 tools/
+  📄 apply_blocked_retry_patch.py
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
