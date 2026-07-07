@@ -7,7 +7,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
-from services.call_ai import run_reply_recovery
+from services.call_ai import run_reply_recovery, run_blocked_reply_retry
 from services.memory_view import handle_memory_view_callback
 from services.commands import (
     send_character_menu,
@@ -277,20 +277,19 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 安全阻擋提示按鈕
-    # - 使用者點完後先刪除阻擋提示
-    # - 再依來源執行重跑 / 接續 / /reply 救援
+    # - 不刪除阻擋提示訊息
+    # - 不走一般 🔁 重跑，避免刪除 AI 訊息
+    # - 直接用短期記憶最後一筆 user 重新生成一則 assistant 回覆
     # =========================
     if user_text == "blocked_reply_debug":
-        delete_message(bot_id, chat_id, message_id)
-
         answer_callback_query(
             bot_id,
             callback_id,
-            text="正在嘗試重跑回覆"
+            text="正在用最後一筆使用者訊息重跑"
         )
 
         threading.Thread(
-            target=run_reply_recovery,
+            target=run_blocked_reply_retry,
             args=(user_id, bot_id, chat_id),
             daemon=True,
         ).start()
