@@ -7,6 +7,7 @@ from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 from services.telegram_service import send_message
+from services.prompt_debug import handle_prompt_debug_command
 from test_lab.service import handle_test_lab_message
 
 
@@ -67,6 +68,9 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 
     if text in ["/reply", "/回覆"]:
         run_reply_recovery(user_id, bot_id, chat_id)
+        return
+
+    if handle_prompt_debug_command(bot_id, chat_id, text):
         return
 
     if text == "/hidden":
