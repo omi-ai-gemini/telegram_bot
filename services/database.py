@@ -654,6 +654,87 @@ def init_db():
         )
         """)
 
+        # =========================
+        # 舊版 prompt_debug_logs 相容補欄位
+        # 注意：CREATE TABLE IF NOT EXISTS 不會幫既有資料表補新欄位。
+        # 若手機救火版已建立舊表，這裡必須先 ALTER，再建立索引，
+        # 否則會因 action_id / user_id 等欄位不存在造成整個 Flask before_request 500。
+        # =========================
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS user_id TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS source TEXT DEFAULT 'unknown'
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS generation_type TEXT DEFAULT 'unknown'
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS action_id INTEGER
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS source_user_chat_id INTEGER
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS model TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS prompt_text TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS prompt_chars INTEGER DEFAULT 0
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS prompt_hash TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'built'
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS finish_reason TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS block_reason TEXT
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS response_chars INTEGER
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS prompt_meta JSONB DEFAULT '{}'::jsonb
+        """)
+
+        cursor.execute("""
+        ALTER TABLE prompt_debug_logs
+        ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        """)
+
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_lookup
         ON prompt_debug_logs (bot_id, chat_id, user_id, id DESC)

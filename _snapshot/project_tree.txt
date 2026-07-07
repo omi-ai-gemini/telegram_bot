@@ -10,6 +10,7 @@
   📄 HIDDEN_PASSIVE_SUMMARY_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
+  📄 PROMPT_DEBUG_DB_HOTFIX_README.md
   📄 PROMPT_DEBUG_README.md
   📄 PROMPT_DEBUG_WEB_README.md
   📄 REPLY_NONBLOCKING_BUTTONS_README.md
@@ -61,14 +62,6 @@
   📄 user_notice.py
   📄 user_router.py
 📁 static/
-📁 telemini/
-  📁 services/
-    📄 call_ai.py
-    📄 database.py
-    📄 memory.py
-    📄 style.py
-  📁 templates/
-    📄 important_memory_form.html
 📁 templates/
   📄 character_form.html
   📄 chat_persona_form.html
