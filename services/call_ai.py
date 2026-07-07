@@ -237,6 +237,10 @@ def _send_generated_reply(
     用於：
     - 正常 run_ai：source_user_chat_id 是剛寫入的 user 記憶。
     - /reply 救援：source_user_chat_id 是短期記憶最後一筆 user。
+
+    注意：
+    - 新版一般輸入會先寫入 chat_memory。
+    - 最新 user 內容已經出現在 history 最後，不再另外塞進 prompt 底部，避免同一句重複放大。
     """
     scope = "group" if _is_group_chat(chat_id) else "private"
     emotion = get_emotion(chat_id)
@@ -368,7 +372,7 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
             bot_id=bot_id,
             chat_id=chat_id,
             user_id=user_id,
-            user_text=user_text,
+            user_text="",
             source_user_chat_id=user_chat_id,
             label="AI",
         )
@@ -488,7 +492,7 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
                 bot_id=bot_id,
                 chat_id=chat_id,
                 user_id=user_id,
-                user_text=last_text,
+                user_text="",
                 source_user_chat_id=last_id,
                 label="REPLY GENERATE",
             )

@@ -983,8 +983,14 @@ def get_chat_memory_item(memory_id, bot_id, chat_id):
         conn.close()
 
 
-def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None):
-    """取得指定 chat_memory id 以前的對話，用於重跑 / 接續。"""
+def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None, limit=100):
+    """取得指定 chat_memory id 以前的短期記憶快照，用於重跑 / 接續。
+
+    規則：
+    - 不再無限制往前抓，避免按鈕流程 prompt 越長越大。
+    - 固定抓 id <= max_chat_id 的最近 limit 則，預設 100 則。
+    - 回傳順序仍維持由舊到新，讓 Gemini 看到正常對話順序。
+    """
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _get_scope(chat_id)
@@ -994,27 +1000,41 @@ def get_chat_until(bot_id, chat_id, max_chat_id, user_id=None):
     except Exception:
         return []
 
+    try:
+        limit = int(limit or 100)
+    except Exception:
+        limit = 100
+
+    limit = max(1, min(limit, 100))
+
     conn = get_conn()
 
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT role, text, created_at
+            SELECT id, role, text, created_at
             FROM chat_memory
             WHERE bot_id = %s
               AND chat_id = %s
               AND scope = %s
               AND id <= %s
-            ORDER BY id ASC
-        """, (bot_id, chat_id, scope, max_chat_id))
+            ORDER BY id DESC
+            LIMIT %s
+        """, (bot_id, chat_id, scope, max_chat_id, limit))
 
-        rows = cursor.fetchall()
+        rows = list(reversed(cursor.fetchall()))
         history = []
 
-        for role, value, created_at in rows:
+        for row_id, role, value, created_at in rows:
             item = _history_item(role, value, bot_id, chat_id, scope, created_at=created_at)
             if item:
+                item["id"] = int(row_id)
                 history.append(item)
+
+        print(
+            f"[MEMORY SNAPSHOT] until_id={max_chat_id} rows={len(history)} limit={limit} scope={scope}",
+            flush=True,
+        )
 
         return history
 
@@ -1068,27 +1088,26 @@ def get_chat(bot_id, chat_id, user_id=None):
         conn.close()
 
 
-def get_chat_for_prompt(bot_id, chat_id, user_id=None, mode="聊天模式"):
-    """取得要送進 Gemini 的近期對話，並加上時間標籤。
+def get_chat_for_prompt(bot_id, chat_id, user_id=None, mode="聊天模式", limit=100):
+    """取得要送進 Gemini 的短期記憶快照。
 
-    設計：
-    - 聊天模式：保留 60 分鐘內最多 60 則，外加更早的 20 則補上下文。
-    - 劇場模式：保留 180 分鐘內最多 80 則，外加更早的 30 則補場景。
-    - 不改 DB，只使用 chat_memory.created_at。
+    規則：
+    - 不再用 60 分鐘 / 180 分鐘時間窗。
+    - 直接取目前聊天室最近 limit 則短期記憶，預設 100 則。
+    - 更早的內容交給摘要型長期記憶補足。
+    - 回傳順序維持由舊到新，讓最新 user 訊息自然出現在近期對話最後。
     """
     bot_id = _text_id(bot_id)
     chat_id = _text_id(chat_id)
     scope = _get_scope(chat_id)
     mode = str(mode or "聊天模式")
 
-    if mode == "劇場模式":
-        window_minutes = 180
-        max_window_rows = 80
-        fallback_rows = 30
-    else:
-        window_minutes = 60
-        max_window_rows = 60
-        fallback_rows = 20
+    try:
+        limit = int(limit or 100)
+    except Exception:
+        limit = 100
+
+    limit = max(1, min(limit, 100))
 
     conn = get_conn()
 
@@ -1100,60 +1119,21 @@ def get_chat_for_prompt(bot_id, chat_id, user_id=None, mode="聊天模式"):
             WHERE bot_id = %s
               AND chat_id = %s
               AND scope = %s
-            ORDER BY id ASC
-        """, (bot_id, chat_id, scope))
+            ORDER BY id DESC
+            LIMIT %s
+        """, (bot_id, chat_id, scope, limit))
 
-        rows = cursor.fetchall()
-        now = datetime.now(TAIPEI_TZ)
-        window_seconds = window_minutes * 60
+        rows = list(reversed(cursor.fetchall()))
+        result = []
 
-        parsed = []
         for row_id, role, value, created_at in rows:
             item = _history_item(role, value, bot_id, chat_id, scope, created_at=created_at)
-            if not item:
-                continue
-
-            dt = _to_taipei_datetime(created_at)
-            age_seconds = None
-            if dt:
-                age_seconds = int((now - dt).total_seconds())
-
-            item["id"] = int(row_id)
-            item["age_seconds"] = age_seconds
-            parsed.append(item)
-
-        if not parsed:
-            return []
-
-        in_window = [
-            item for item in parsed
-            if item.get("age_seconds") is not None
-            and item.get("age_seconds") >= 0
-            and item.get("age_seconds") <= window_seconds
-        ]
-
-        if not in_window:
-            selected = parsed[-max_window_rows:]
-        else:
-            in_window = in_window[-max_window_rows:]
-            first_window_id = in_window[0]["id"]
-            older = [item for item in parsed if item["id"] < first_window_id]
-            selected = older[-fallback_rows:] + in_window
-
-        # 去重並保留時間順序。
-        seen = set()
-        result = []
-        for item in selected:
-            item_id = item.get("id")
-            if item_id in seen:
-                continue
-            seen.add(item_id)
-            item.pop("age_seconds", None)
-            result.append(item)
+            if item:
+                item["id"] = int(row_id)
+                result.append(item)
 
         print(
-            f"[MEMORY TIME] mode={mode} window_minutes={window_minutes} "
-            f"rows={len(result)} total={len(parsed)} scope={scope}",
+            f"[MEMORY SNAPSHOT] mode={mode} rows={len(result)} limit={limit} scope={scope}",
             flush=True,
         )
 

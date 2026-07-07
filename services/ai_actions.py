@@ -1301,8 +1301,10 @@ def regenerate_ai_message(user_id, bot_id, chat_id, action_id):
             send_message(bot_id, chat_id, "找不到原本那句使用者訊息，無法重跑")
             return
 
+        # source_user 已經包含在 get_chat_until() 回傳的近期對話最後，
+        # 不再把同一句 user_text 重複塞到 prompt 底部。
         history = get_chat_until(bot_id, chat_id, source_user.get("id"), user_id=user_id)
-        user_text = source_user.get("text") or ""
+        user_text = ""
 
     gemini_result = _generate_reply(
         context,
