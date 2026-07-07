@@ -256,6 +256,12 @@ def _send_generated_reply(
         time_context=settings["time_context"],
         include_thoughts=True,
         return_meta=True,
+        debug_context={
+            "bot_id": bot_id,
+            "chat_id": chat_id,
+            "user_id": user_id,
+            "source": label,
+        },
     )
 
     if isinstance(gemini_result, dict):

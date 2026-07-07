@@ -606,6 +606,39 @@ def init_db():
         """)
 
         # =========================
+        # Gemini Prompt Debug 紀錄
+        # 開發者排查 prompt_block_reason / PROHIBITED_CONTENT 使用。
+        # 保存的是實際送進 Gemini contents 的完整 prompt。
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_debug_logs (
+            id SERIAL PRIMARY KEY,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            user_id TEXT,
+            source TEXT DEFAULT 'unknown',
+            model TEXT,
+            mode TEXT,
+            prompt_text TEXT NOT NULL,
+            prompt_length INTEGER DEFAULT 0,
+            user_text_preview TEXT,
+            include_thoughts BOOLEAN DEFAULT FALSE,
+            return_meta BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_lookup
+        ON prompt_debug_logs (bot_id, chat_id, id DESC)
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_user_lookup
+        ON prompt_debug_logs (bot_id, chat_id, user_id, id DESC)
+        """)
+
+        # =========================
         # 一次性使用者公告紀錄
         # 每個 user + bot + notice_id 只發一次
         # =========================
