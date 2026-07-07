@@ -9,6 +9,7 @@ from config import SECRET_KEY
 from routes.admin import admin_bp
 from routes.setting import setting_bp
 from routes.thought import thought_bp
+from routes.prompt_debug import prompt_debug_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
@@ -21,6 +22,7 @@ app.secret_key = SECRET_KEY
 app.register_blueprint(admin_bp)
 app.register_blueprint(setting_bp)
 app.register_blueprint(thought_bp)
+app.register_blueprint(prompt_debug_bp)
 app.register_blueprint(test_lab_bp)
 
 db_initialized = False

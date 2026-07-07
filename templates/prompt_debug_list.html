@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Debug</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    .page { max-width: 1180px; margin: 0 auto; }
+    .card {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 18px 42px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .desc { color: rgba(229,231,235,.72); line-height: 1.65; font-size: 14px; margin-bottom: 16px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 18px; }
+    a.btn {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(96,165,250,.18);
+      border: 1px solid rgba(96,165,250,.32);
+      color: #bfdbfe;
+      text-decoration: none;
+      font-size: 14px;
+    }
+    table { width: 100%; border-collapse: collapse; overflow: hidden; border-radius: 14px; }
+    th, td { padding: 10px 9px; border-bottom: 1px solid rgba(255,255,255,.1); text-align: left; vertical-align: top; font-size: 13px; }
+    th { color: #bfdbfe; background: rgba(96,165,250,.10); position: sticky; top: 0; }
+    tr:hover td { background: rgba(255,255,255,.04); }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    .status-blocked { color: #fca5a5; font-weight: 700; }
+    .status-ok { color: #86efac; font-weight: 700; }
+    .pill { display:inline-block; padding: 3px 7px; border-radius: 999px; background: rgba(255,255,255,.1); }
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .card { padding: 12px; }
+      table { display: block; overflow-x: auto; white-space: nowrap; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>Prompt Debug</h1>
+      <div class="desc">
+        這裡顯示目前聊天室最近 30 筆 Gemini 呼叫前的完整 prompt 紀錄。Telegram 聊天室只送連結，不直接塞長 prompt，避免手機 App 閃退。<br>
+        bot_id：<span class="mono">{{ auth.bot_id }}</span>　chat_id：<span class="mono">{{ auth.chat_id }}</span>　user_id：<span class="mono">{{ auth.user_id }}</span>
+      </div>
+
+      <div class="actions">
+        <a class="btn" href="/prompt_debug/compare?token={{ token }}">比對最新兩筆</a>
+      </div>
+
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>時間</th>
+            <th>來源</th>
+            <th>類型</th>
+            <th>狀態</th>
+            <th>finish</th>
+            <th>block</th>
+            <th>長度</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in items %}
+          <tr>
+            <td class="mono">#{{ item.id }}</td>
+            <td>{{ item.created_at }}</td>
+            <td><span class="pill">{{ item.source }}</span></td>
+            <td>{{ item.generation_type }}</td>
+            <td class="{% if item.status == 'blocked' %}status-blocked{% elif item.status == 'ok' %}status-ok{% endif %}">{{ item.status }}</td>
+            <td>{{ item.finish_reason or '' }}</td>
+            <td>{{ item.block_reason or '' }}</td>
+            <td>{{ item.prompt_chars }}</td>
+            <td>
+              <a class="btn" href="/prompt_debug/{{ item.id }}?token={{ token }}">查看</a>
+              <a class="btn" href="/prompt_debug/compare?token={{ token }}&right_id={{ item.id }}">拿這筆比最新</a>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="9">目前沒有 prompt debug 紀錄。先讓 bot 產生一次回覆，再回來看。</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</body>
+</html>

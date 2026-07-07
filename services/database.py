@@ -606,39 +606,6 @@ def init_db():
         """)
 
         # =========================
-        # Gemini Prompt Debug 紀錄
-        # 開發者排查 prompt_block_reason / PROHIBITED_CONTENT 使用。
-        # 保存的是實際送進 Gemini contents 的完整 prompt。
-        # =========================
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS prompt_debug_logs (
-            id SERIAL PRIMARY KEY,
-            bot_id TEXT NOT NULL,
-            chat_id TEXT NOT NULL,
-            user_id TEXT,
-            source TEXT DEFAULT 'unknown',
-            model TEXT,
-            mode TEXT,
-            prompt_text TEXT NOT NULL,
-            prompt_length INTEGER DEFAULT 0,
-            user_text_preview TEXT,
-            include_thoughts BOOLEAN DEFAULT FALSE,
-            return_meta BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_lookup
-        ON prompt_debug_logs (bot_id, chat_id, id DESC)
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_user_lookup
-        ON prompt_debug_logs (bot_id, chat_id, user_id, id DESC)
-        """)
-
-        # =========================
         # 一次性使用者公告紀錄
         # 每個 user + bot + notice_id 只發一次
         # =========================
@@ -657,6 +624,44 @@ def init_db():
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_user_notice_log_lookup
         ON user_notice_log (bot_id, notice_id, user_id)
+        """)
+
+        # =========================
+        # Prompt Debug 紀錄
+        # 開發者用：保存每次主遊戲送進 Gemini 的完整 prompt，改由網頁查看。
+        # =========================
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS prompt_debug_logs (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT,
+            bot_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL,
+            source TEXT DEFAULT 'unknown',
+            generation_type TEXT DEFAULT 'unknown',
+            action_id INTEGER,
+            source_user_chat_id INTEGER,
+            model TEXT,
+            prompt_text TEXT NOT NULL,
+            prompt_chars INTEGER DEFAULT 0,
+            prompt_hash TEXT,
+            status TEXT DEFAULT 'built',
+            finish_reason TEXT,
+            block_reason TEXT,
+            response_chars INTEGER,
+            prompt_meta JSONB DEFAULT '{}'::jsonb,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_lookup
+        ON prompt_debug_logs (bot_id, chat_id, user_id, id DESC)
+        """)
+
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_prompt_debug_logs_action
+        ON prompt_debug_logs (bot_id, chat_id, action_id)
         """)
 
         conn.commit()

@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Debug #{{ item.id }}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    .page { max-width: 1180px; margin: 0 auto; }
+    .card {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 18px 42px rgba(0,0,0,.35);
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .meta { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0; }
+    .box { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px; font-size: 13px; }
+    .label { color: #93c5fd; font-weight: 700; margin-bottom: 4px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px; }
+    a.btn, button.btn {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(96,165,250,.18);
+      border: 1px solid rgba(96,165,250,.32);
+      color: #bfdbfe;
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    pre {
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: rgba(0,0,0,.32);
+      border: 1px solid rgba(255,255,255,.1);
+      border-radius: 16px;
+      padding: 16px;
+      line-height: 1.55;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, "Noto Sans Mono", monospace;
+      font-size: 13px;
+    }
+    .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .card { padding: 12px; }
+      .meta { grid-template-columns: 1fr; }
+      pre { font-size: 12px; padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>Prompt Debug <span class="mono">#{{ item.id }}</span></h1>
+      <div class="actions">
+        <a class="btn" href="/prompt_debug?token={{ token }}">回列表</a>
+        <a class="btn" href="/prompt_debug/compare?token={{ token }}&right_id={{ item.id }}">拿這筆比最新</a>
+        <button class="btn" onclick="navigator.clipboard.writeText(document.getElementById('prompt').innerText)">複製 prompt</button>
+      </div>
+      <div class="meta">
+        <div class="box"><div class="label">來源</div>{{ item.source }} / {{ item.generation_type }}</div>
+        <div class="box"><div class="label">狀態</div>{{ item.status }} / {{ item.finish_reason or '' }}</div>
+        <div class="box"><div class="label">阻擋</div>{{ item.block_reason or '無' }}</div>
+        <div class="box"><div class="label">長度</div>{{ item.prompt_chars }} chars</div>
+        <div class="box"><div class="label">時間</div>{{ item.created_at }}</div>
+        <div class="box"><div class="label">模型</div>{{ item.model or '' }}</div>
+        <div class="box"><div class="label">action_id</div>{{ item.action_id or '' }}</div>
+        <div class="box"><div class="label">source_user_chat_id</div>{{ item.source_user_chat_id or '' }}</div>
+      </div>
+      <pre id="prompt">{{ item.prompt_text }}</pre>
+    </div>
+  </div>
+</body>
+</html>

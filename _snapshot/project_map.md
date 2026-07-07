@@ -22,6 +22,8 @@ C:\Projects\telemini
 - `docs\HIDDEN_PASSIVE_SUMMARY_README.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
+- `docs\PROMPT_DEBUG_README.md`
+- `docs\PROMPT_DEBUG_WEB_README.md`
 - `docs\REPLY_NONBLOCKING_BUTTONS_README.md`
 - `docs\REPLY_RECOVERY_README.md`
 - `docs\REPLY_RECOVERY_SECRET_FIX_README.md`
@@ -33,8 +35,10 @@ C:\Projects\telemini
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
 - `main.py`
+- `prompt外帶說明.txt`
 - `requirements.txt`
 - `routes\admin.py`
+- `routes\prompt_debug.py`
 - `routes\setting.py`
 - `routes\thought.py`
 - `services\__init__.py`
@@ -55,6 +59,7 @@ C:\Projects\telemini
 - `services\privacy_access.py`
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
+- `services\prompt_debug.py`
 - `services\reply_style.py`
 - `services\runtime_cache.py`
 - `services\setting_auth.py`
@@ -76,6 +81,9 @@ C:\Projects\telemini
 - `templates\index.html`
 - `templates\login.html`
 - `templates\manual.html`
+- `templates\prompt_debug_compare.html`
+- `templates\prompt_debug_detail.html`
+- `templates\prompt_debug_list.html`
 - `templates\reply_style_form.html`
 - `templates\thought_view.html`
 - `test_db.py`
@@ -90,7 +98,6 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
-- `外帶說明.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
 
@@ -114,6 +121,11 @@ C:\Projects\telemini
 - `/admin/manual/add_bot` → `add_bot_route`
 - `/admin/manual/add_key` → `add_key_route`
 - `/admin/login/developer` → `admin_login_developer`
+
+### `routes\prompt_debug.py`
+- `/prompt_debug` → `prompt_debug_list_page`
+- `/prompt_debug/<int:log_id>` → `prompt_debug_detail_page`
+- `/prompt_debug/compare` → `prompt_debug_compare_page`
 
 ### `routes\setting.py`
 - `/setting/important_memory` → `important_memory_setting_page`
@@ -165,6 +177,12 @@ C:\Projects\telemini
 - `add_bot_route()`
 - `add_key_route()`
 - `admin_login_developer()`
+
+### `routes\prompt_debug.py`
+- `_auth_from_request()`
+- `prompt_debug_list_page()`
+- `prompt_debug_detail_page()`
+- `prompt_debug_compare_page()`
 
 ### `routes\setting.py`
 - `_auth_or_page_error()`
@@ -460,6 +478,24 @@ C:\Projects\telemini
 - `clear_unlock_code()`
 - `is_unlocked()`
 
+### `services\prompt_debug.py`
+- `_text_id()`
+- `_token_secret()`
+- `_sign()`
+- `create_prompt_debug_token()`
+- `verify_prompt_debug_token()`
+- `_base_url()`
+- `build_prompt_debug_url()`
+- `build_prompt_debug_compare_url()`
+- `save_prompt_debug_log()`
+- `update_prompt_debug_log()`
+- `list_prompt_debug_logs()`
+- `get_prompt_debug_log()`
+- `_format_dt()`
+- `_row_to_summary()`
+- `_row_to_detail()`
+- `send_prompt_debug_link()`
+
 ### `services\reply_style.py`
 - `_text_id()`
 - `_cache_key()`
@@ -595,9 +631,7 @@ C:\Projects\telemini
 ### `test_lab\service.py`
 - `_text_id()`
 - `make_test_user_id()`
-- `_api_key_aad()`
-- `_encrypt_api_key()`
-- `_decrypt_api_key()`
+- `_plain_api_key()`
 - `ensure_profile()`
 - `get_profile()`
 - `save_profile_settings()`
@@ -606,6 +640,7 @@ C:\Projects\telemini
 - `get_session()`
 - `is_test_active()`
 - `is_test_awaiting_api_key()`
+- `is_test_awaiting_prompt_input()`
 - `should_skip_main_user_config()`
 - `add_memory()`
 - `list_memory()`
@@ -615,11 +650,14 @@ C:\Projects\telemini
 - `build_chat_prompt()`
 - `generate_test_reply()`
 - `summarize_test_memory()`
+- `save_prompt_version()`
+- `_prompt_saved_message()`
 - `generate_prompt()`
 - `_token_secret()`
 - `create_page_token()`
 - `verify_page_token()`
 - `build_setting_url()`
+- `send_long_test_message()`
 - `handle_test_lab_message()`
 
 ### `test_lab\telegram.py`

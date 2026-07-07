@@ -10,6 +10,8 @@
   📄 HIDDEN_PASSIVE_SUMMARY_README.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
+  📄 PROMPT_DEBUG_README.md
+  📄 PROMPT_DEBUG_WEB_README.md
   📄 REPLY_NONBLOCKING_BUTTONS_README.md
   📄 REPLY_RECOVERY_README.md
   📄 REPLY_RECOVERY_SECRET_FIX_README.md
@@ -22,9 +24,11 @@
   📄 call_handler.py
   📄 message_handler.py
 📄 main.py
+📄 prompt外帶說明.txt
 📄 requirements.txt
 📁 routes/
   📄 admin.py
+  📄 prompt_debug.py
   📄 setting.py
   📄 thought.py
 📁 services/
@@ -46,6 +50,7 @@
   📄 privacy_access.py
   📄 privacy_migration.py
   📄 privacy_session.py
+  📄 prompt_debug.py
   📄 reply_style.py
   📄 runtime_cache.py
   📄 setting_auth.py
@@ -72,6 +77,9 @@
   📄 index.html
   📄 login.html
   📄 manual.html
+  📄 prompt_debug_compare.html
+  📄 prompt_debug_detail.html
+  📄 prompt_debug_list.html
   📄 reply_style_form.html
   📄 thought_view.html
 📄 test_db.py
@@ -89,6 +97,5 @@
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
-📄 外帶說明.txt
 📄 模式-使用說明.txt
 📄 開場-更新說明.txt

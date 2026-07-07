@@ -7,7 +7,7 @@ from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
 from services.telegram_service import send_message
-from services.prompt_debug import handle_prompt_debug_command
+from services.prompt_debug import send_prompt_debug_link
 from test_lab.service import handle_test_lab_message
 
 
@@ -70,7 +70,12 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         run_reply_recovery(user_id, bot_id, chat_id)
         return
 
-    if handle_prompt_debug_command(bot_id, chat_id, text):
+    if text in ["/prompt_debug", "/prompt", "/提示除錯"]:
+        send_prompt_debug_link(bot_id, chat_id, user_id, compare=False)
+        return
+
+    if text in ["/prompt_debug_compare", "/prompt_compare", "/提示比對"]:
+        send_prompt_debug_link(bot_id, chat_id, user_id, compare=True)
         return
 
     if text == "/hidden":

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Prompt Debug 比對</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 18px;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans TC", sans-serif;
+      background: #0f172a;
+      color: #e5e7eb;
+    }
+    .page { max-width: 1280px; margin: 0 auto; }
+    .card {
+      background: rgba(255,255,255,.07);
+      border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px;
+      padding: 18px;
+      box-shadow: 0 18px 42px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+    h1 { margin: 0 0 8px; font-size: 24px; }
+    .actions { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 16px; align-items: center; }
+    a.btn, button.btn {
+      display: inline-block;
+      padding: 9px 12px;
+      border-radius: 12px;
+      background: rgba(96,165,250,.18);
+      border: 1px solid rgba(96,165,250,.32);
+      color: #bfdbfe;
+      text-decoration: none;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    select {
+      min-width: 240px;
+      padding: 9px 10px;
+      border-radius: 12px;
+      background: rgba(15,23,42,.96);
+      color: #e5e7eb;
+      border: 1px solid rgba(255,255,255,.18);
+    }
+    .summary { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 14px 0; }
+    .box { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.1); border-radius: 12px; padding: 10px; font-size: 13px; }
+    .label { color: #93c5fd; font-weight: 700; margin-bottom: 4px; }
+    .diff-wrap { overflow: auto; border-radius: 14px; border: 1px solid rgba(255,255,255,.12); background: rgba(0,0,0,.25); }
+    table.diff { width: 100%; border-collapse: collapse; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+    .diff_header { background: rgba(96,165,250,.18); color: #bfdbfe; padding: 6px; }
+    td { vertical-align: top; padding: 3px 6px; white-space: pre-wrap; word-break: break-word; }
+    .diff_next { background: rgba(255,255,255,.08); }
+    .diff_add { background: rgba(34,197,94,.20); }
+    .diff_chg { background: rgba(250,204,21,.22); }
+    .diff_sub { background: rgba(239,68,68,.22); }
+    .notice { color: rgba(229,231,235,.72); line-height: 1.65; }
+    @media (max-width: 760px) {
+      body { padding: 10px; }
+      .card { padding: 12px; }
+      .summary { grid-template-columns: 1fr; }
+      select { min-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <div class="card">
+      <h1>Prompt Debug 比對</h1>
+      <div class="actions">
+        <a class="btn" href="/prompt_debug?token={{ token }}">回列表</a>
+        <form method="GET" action="/prompt_debug/compare" class="actions" style="margin:0;">
+          <input type="hidden" name="token" value="{{ token }}">
+          <select name="left_id">
+            {% for item in items %}
+            <option value="{{ item.id }}" {% if left and item.id == left.id %}selected{% endif %}>#{{ item.id }} {{ item.created_at }} {{ item.source }} {{ item.status }}</option>
+            {% endfor %}
+          </select>
+          <select name="right_id">
+            {% for item in items %}
+            <option value="{{ item.id }}" {% if right and item.id == right.id %}selected{% endif %}>#{{ item.id }} {{ item.created_at }} {{ item.source }} {{ item.status }}</option>
+            {% endfor %}
+          </select>
+          <button class="btn" type="submit">比對</button>
+        </form>
+      </div>
+
+      {% if left and right %}
+      <div class="summary">
+        <div class="box"><div class="label">左邊</div>#{{ left.id }}｜{{ left.source }}｜{{ left.status }}｜{{ left.finish_reason or '' }}｜{{ left.block_reason or '無阻擋' }}｜{{ left.prompt_chars }} chars</div>
+        <div class="box"><div class="label">右邊</div>#{{ right.id }}｜{{ right.source }}｜{{ right.status }}｜{{ right.finish_reason or '' }}｜{{ right.block_reason or '無阻擋' }}｜{{ right.prompt_chars }} chars</div>
+      </div>
+      <div class="diff-wrap">{{ diff_table|safe }}</div>
+      {% else %}
+      <div class="notice">目前至少需要兩筆 prompt debug 紀錄才能比對。先讓「直接新輸入」與「刷新/重跑」各跑一次，再回來看。</div>
+      {% endif %}
+    </div>
+  </div>
+</body>
+</html>

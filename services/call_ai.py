@@ -257,10 +257,12 @@ def _send_generated_reply(
         include_thoughts=True,
         return_meta=True,
         debug_context={
+            "user_id": user_id,
             "bot_id": bot_id,
             "chat_id": chat_id,
-            "user_id": user_id,
             "source": label,
+            "generation_type": "reply",
+            "source_user_chat_id": source_user_chat_id,
         },
     )
 
