@@ -391,7 +391,7 @@ def run_blocked_reply_retry(user_id: int, bot_id: str, chat_id: int):
     「內容被安全阻擋」下方 🗣️ 按鈕專用流程。
 
     行為：
-    - 不刪除任何 Telegram 訊息，包括原本的阻擋提示。
+    - 只負責重跑回覆；阻擋提示訊息由 callback handler 先刪除。
     - 不走一般 🔁 重跑，所以不會刪 AI 訊息。
     - 不重複新增 user 記憶。
     - 要求短期記憶最後一筆必須是 user。

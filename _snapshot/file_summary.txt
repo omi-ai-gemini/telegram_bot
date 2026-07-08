@@ -153,7 +153,7 @@ conn.close()
 # config.py
 
 - 類型：.py
-- 行數：45
+- 行數：54
 
 ## imports
 - os
@@ -205,6 +205,15 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # Setting page signed URLs
 # =========================
 SETTING_LINK_SECRET = os.getenv("SETTING_LINK_SECRET")
+# =========================
+# Service Center Bot
+# =========================
+# 系統級服務中心 bot：token 只放環境變數，不進 DB。
+# webhook 建議固定設為：BASE_URL/webhook/service_center
+SERVICE_CENTER_BOT_ID = os.getenv("SERVICE_CENTER_BOT_ID", "service_center")
+SERVICE_CENTER_BOT_TOKEN = os.getenv("SERVICE_CENTER_BOT_TOKEN")
+SERVICE_CENTER_ADMIN_IDS = os.getenv("SERVICE_CENTER_ADMIN_IDS", "")
+
 ```
 
 
@@ -1143,6 +1152,154 @@ REPLY RESEND SEND RESULT ok=True ...
 
 ================================================================================
 
+# docs\SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md
+
+- 類型：.md
+- 行數：42
+
+## preview
+```text
+# Service Center 自動接 Webhook 熱修
+
+這包修正：服務中心 bot token 放環境變數後，程式會在第一次 request 時自動呼叫 Telegram `setWebhook`。
+
+## 不新增 table
+
+這版不會建立 `service_center_bots`，也不把服務中心 bot token 寫入 DB。
+
+## 必填 Render 環境變數
+
+```text
+BASE_URL=https://你的-render網址
+SERVICE_CENTER_BOT_ID=service_center
+SERVICE_CENTER_BOT_TOKEN=BotFather 給你的服務中心 bot token
+```
+
+可選：
+
+```text
+SERVICE_CENTER_ADMIN_IDS=你的 Telegram 數字 ID
+```
+
+## 成功 log
+
+部署後，只要 Render 被打到一次，例如健康檢查 `/` 或任一 webhook，Render Logs 應該出現：
+
+```text
+SERVICE CENTER WEBHOOK SET START url=https://.../webhook/service_center
+SERVICE CENTER WEBHOOK SET OK url=https://.../webhook/service_center
+```
+
+使用者私訊服務中心 bot `/start` 後，應該出現：
+
+```text
+SERVICE CENTER MESSAGE RECEIVED bot_id=service_center ...
+```
+
+## 編譯
+
+```bash
+python -m py_compile main.py service_center/telegram.py service_center/handler.py service_center/db.py config.py
+```
+```
+
+
+================================================================================
+
+# docs\SERVICE_CENTER_ENV_STAGE1_README.md
+
+- 類型：.md
+- 行數：115
+
+## preview
+```text
+# Telemini 服務中心 Bot：環境變數 Token 版 Stage 1
+
+這版只做服務中心 bot 的乾淨分流地基，不新增服務資料表。
+
+## 目標
+
+- 一隻固定服務中心 bot，所有使用者都可以使用。
+- bot token 只放 Render 環境變數，不寫入 `bot_config`，不新增 `service_center_bots`。
+- webhook 固定走 `/webhook/service_center`。
+- main.py 在 webhook 入口先攔截服務中心 bot。
+- 服務中心訊息不進主遊戲、不呼叫 Gemini、不寫聊天記憶、不寫 user_config。
+
+## 新增 / 覆蓋檔案
+
+新增：
+
+```text
+service_center/__init__.py
+service_center/handler.py
+service_center/telegram.py
+service_center/db.py
+```
+
+覆蓋：
+
+```text
+config.py
+main.py
+handlers/message_handler.py
+routes/admin.py
+```
+
+`service_center/db.py` 是刻意保留的 no-op 空殼，用來覆蓋舊 stage1 可能留下的建表版本；這版不會建立任何服務中心 bot table。
+
+## Render 環境變數
+
+```text
+SERVICE_CENTER_BOT_ID=service_center
+SERVICE_CENTER_BOT_TOKEN=BotFather 給你的服務中心 bot token
+SERVICE_CENTER_ADMIN_IDS=你的 Telegram 數字 user_id，多人用逗號分隔
+```
+
+`SERVICE_CENTER_BOT_ID` 可以不填，預設就是：
+
+```text
+service_center
+```
+
+## 設定 webhook
+
+部署後執行一次：
+
+```powershell
+$TOKEN="你的服務中心bot token"
+$URL="https://你的-render網址/webhook/service_center"
+
+Invoke-RestMethod "https://api.telegram.org/bot$TOKEN/setWebhook?url=$URL"
+```
+
+成功後，服務中心 bot 的所有更新都會進：
+
+```text
+/webhook/service_center
+```
+
+## 分流行為
+
+```text
+Telegram 服務中心 bot
+↓
+/webhook/service_center
+↓
+main.py 判斷 is_service_center_bot(bot_id)
+↓
+service_center.handler
+↓
+直接 return ok
+```
+
+不會再往下走：
+...
+... 已省略 35 行
+```
+
+
+================================================================================
+
 # docs\SETTING_LINK_AUTH_README.md
 
 - 類型：.md
@@ -1666,7 +1823,7 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 # main.py
 
 - 類型：.py
-- 行數：138
+- 行數：187
 
 ## imports
 - config.SECRET_KEY
@@ -1679,6 +1836,10 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 - routes.prompt_debug.prompt_debug_bp
 - routes.setting.setting_bp
 - routes.thought.thought_bp
+- service_center.handler.handle_service_center_callback
+- service_center.handler.handle_service_center_message
+- service_center.handler.is_service_center_bot
+- service_center.telegram.setup_service_center_webhook
 - services.database.get_conn
 - services.database.init_db
 - test_lab.db.init_test_lab_db
@@ -1712,6 +1873,12 @@ from routes.prompt_debug import prompt_debug_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
+from service_center.handler import (
+    handle_service_center_callback,
+    handle_service_center_message,
+    is_service_center_bot,
+)
+from service_center.telegram import setup_service_center_webhook
 
 #init_db()
 
@@ -1732,6 +1899,14 @@ def init_once():
     if not db_initialized:
         init_db()
         init_test_lab_db()
+
+        # 服務中心 bot 使用環境變數 token，不進 DB。
+        # 第一次 request 時自動把 webhook 接到 BASE_URL/webhook/<SERVICE_CENTER_BOT_ID>。
+        try:
+            setup_service_center_webhook()
+        except Exception as exc:
+            print("SERVICE CENTER WEBHOOK INIT ERROR:", exc, flush=True)
+
         db_initialized = True
 
 # =========================
@@ -1758,27 +1933,13 @@ def webhook(bot_id):
         message_id = callback["message"]["message_id"]
         user_text = callback["data"]
 
-        # 注意：
-        # 不在 main.py 先 answer_callback_query
-        # 交給 call_handler 控制提示文字
-        handle_ui(
-            user_id,
-            bot_id,
-            chat_id,
-            message_id,
-            user_text,
-            callback_id
-        )
-
-        return "ok"
-
-    # =========================
-    # 解析 message
-    # =========================
-    if not data or "message" not in data:
-        return "ok"
+        # =========================
+        # 服務中心 bot callback 分流
+        # - 不進主遊戲 call_handler
+        # - 不查 bot_config
+        # - 不呼叫 Gemini
 ...
-... 已省略 58 行
+... 已省略 107 行
 ```
 
 
@@ -2301,6 +2462,272 @@ def thought_page(token):
         created_at=_format_time(item.get("created_at")),
         expires_at=_format_time(item.get("expires_at")),
     )
+```
+
+
+================================================================================
+
+# service_center\__init__.py
+
+- 類型：.py
+- 行數：0
+
+## preview
+```text
+```
+
+
+================================================================================
+
+# service_center\db.py
+
+- 類型：.py
+- 行數：7
+
+## functions
+- init_service_center_db
+
+## preview
+```text
+# 服務中心 bot token 已改由環境變數 SERVICE_CENTER_BOT_TOKEN 管理。
+# 這個檔案刻意不建立任何資料表，保留空檔是為了覆蓋舊 stage1 補丁可能留下的 service_center/db.py。
+
+
+def init_service_center_db():
+    """相容舊匯入用的 no-op；不建立 table。"""
+    return None
+```
+
+
+================================================================================
+
+# service_center\handler.py
+
+- 類型：.py
+- 行數：238
+
+## imports
+- config.SERVICE_CENTER_ADMIN_IDS
+- config.SERVICE_CENTER_BOT_ID
+- service_center.telegram.answer_callback_query
+- service_center.telegram.edit_message_text
+- service_center.telegram.send_message
+
+## functions
+- _text_id
+- is_service_center_bot
+- _admin_ids
+- is_service_center_admin
+- _main_menu_markup
+- _back_menu_markup
+- _home_text
+- _notice_text
+- _create_bot_text
+- _gemini_text
+- _manual_text
+- _status_text
+- _admin_text
+- _text_by_action
+- handle_service_center_message
+- handle_service_center_callback
+
+## preview
+```text
+from config import SERVICE_CENTER_ADMIN_IDS, SERVICE_CENTER_BOT_ID
+from service_center.telegram import answer_callback_query, edit_message_text, send_message
+
+
+# =========================
+# 服務中心 Bot 專用 Handler
+# =========================
+# 這條路線是完全獨立環境：
+# - 不呼叫 Gemini
+# - 不寫 chat_memory
+# - 不寫 user_config
+# - 不查 bot_config
+# - 不走主遊戲 handlers.message_handler / handlers.call_handler
+
+
+def _text_id(value):
+    return str(value or "").strip()
+
+
+def is_service_center_bot(bot_id):
+    """判斷這次 webhook 是否屬於服務中心 bot。"""
+    return _text_id(bot_id) == _text_id(SERVICE_CENTER_BOT_ID or "service_center")
+
+
+def _admin_ids():
+    values = []
+
+    for raw in str(SERVICE_CENTER_ADMIN_IDS or "").replace("，", ",").split(","):
+        value = raw.strip()
+        if value:
+            values.append(value)
+
+    return set(values)
+
+
+def is_service_center_admin(user_id):
+    admins = _admin_ids()
+
+    if not admins:
+        return False
+
+    return _text_id(user_id) in admins
+
+
+def _main_menu_markup(user_id=None):
+    rows = [
+        [
+            {"text": "📢 公告事項", "callback_data": "svc:notice"},
+            {"text": "🤖 建立Bot", "callback_data": "svc:create_bot"},
+        ],
+        [
+            {"text": "🔑 Gemini API", "callback_data": "svc:gemini"},
+            {"text": "📘 操作說明", "callback_data": "svc:manual"},
+        ],
+        [
+            {"text": "📌 服務狀態", "callback_data": "svc:status"},
+        ],
+    ]
+
+    if is_service_center_admin(user_id):
+        rows.append([
+            {"text": "🛠 管理員", "callback_data": "svc:admin"},
+        ])
+
+    return {"inline_keyboard": rows}
+
+
+def _back_menu_markup():
+    return {
+        "inline_keyboard": [
+            [{"text": "⬅️ 回服務中心", "callback_data": "svc:home"}],
+        ]
+    }
+
+
+def _home_text():
+    return (
+        "Telemini 服務中心\n\n"
+        "遊戲上有任何變更會在這裡公告。\n"
+        "但前提是我要記得或是有空來更新公告\n\n"
+...
+... 已省略 158 行
+```
+
+
+================================================================================
+
+# service_center\telegram.py
+
+- 類型：.py
+- 行數：217
+
+## imports
+- config.SERVICE_CENTER_BOT_ID
+- config.SERVICE_CENTER_BOT_TOKEN
+- config.TELEGRAM_API_BASE
+- os
+- requests
+- time
+
+## functions
+- _telegram_post
+- send_message
+- edit_message_text
+- answer_callback_query
+- delete_message
+- _service_center_token
+- get_service_center_webhook_url
+- setup_service_center_webhook
+- get_service_center_webhook_info
+
+## preview
+```text
+import os
+import time
+import requests
+
+from config import SERVICE_CENTER_BOT_ID, SERVICE_CENTER_BOT_TOKEN, TELEGRAM_API_BASE
+
+
+_SERVICE_CENTER_SESSION = requests.Session()
+
+
+def _telegram_post(method, payload, timeout=30):
+    """
+    服務中心 bot 專用 Telegram API。
+
+    注意：
+    - 不查 bot_config。
+    - 不走 services.telegram_service。
+    - token 只讀 SERVICE_CENTER_BOT_TOKEN 環境變數。
+    """
+    token = str(SERVICE_CENTER_BOT_TOKEN or "").strip()
+
+    if not token:
+        print("SERVICE CENTER TOKEN NOT SET: SERVICE_CENTER_BOT_TOKEN", flush=True)
+        return None
+
+    url = f"{TELEGRAM_API_BASE}/bot{token}/{method}"
+
+    try:
+        res = _SERVICE_CENTER_SESSION.post(url, json=payload, timeout=timeout)
+    except Exception as exc:
+        print(f"SERVICE CENTER TELEGRAM {method} REQUEST ERROR:", exc, flush=True)
+        return None
+
+    if not res.ok:
+        print(f"SERVICE CENTER TELEGRAM {method} ERROR:", res.text, flush=True)
+        return None
+
+    try:
+        return res.json()
+    except Exception:
+        return {"ok": True}
+
+
+def send_message(chat_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": str(text or ""),
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    return _telegram_post("sendMessage", payload)
+
+
+def edit_message_text(chat_id, message_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "message_id": message_id,
+        "text": str(text or ""),
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    return _telegram_post("editMessageText", payload)
+
+
+def answer_callback_query(callback_query_id, text=None, show_alert=False):
+    payload = {
+        "callback_query_id": callback_query_id,
+    }
+
+    if text:
+        payload["text"] = str(text)
+
+    if show_alert:
+        payload["show_alert"] = True
+
+    return _telegram_post("answerCallbackQuery", payload, timeout=10)
+...
+... 已省略 137 行
 ```
 
 
@@ -5000,7 +5427,7 @@ def pop_setting_menu_session(bot_id, chat_id, menu_message_id, user_id=None):
 # services\style.py
 
 - 類型：.py
-- 行數：451
+- 行數：463
 
 ## imports
 - services.time_context.build_time_context_text
@@ -5098,7 +5525,7 @@ DEFAULT_THEATER_REPLY_STYLE = """
 """
 
 ...
-... 已省略 371 行
+... 已省略 383 行
 ```
 
 
