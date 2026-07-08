@@ -8,8 +8,8 @@
 
 按下阻擋訊息下面的 🗣️：
 
-1. 先刪除阻擋提示訊息。
-2. 不走一般 🔁 重跑，所以不刪除任何 AI 正文訊息。
+1. 不刪除阻擋提示訊息。
+2. 不走一般 🔁 重跑，所以不刪除任何 AI 訊息。
 3. 讀取短期記憶最後一筆。
 4. 最後一筆必須是 `user`。
 5. 不重複新增 user 記憶。
@@ -20,8 +20,8 @@
 - `services/call_ai.py`
   - 新增 `run_blocked_reply_retry()`。
 - `handlers/call_handler.py`
-  - `blocked_reply_debug` 先刪除阻擋提示訊息。
-  - 再呼叫 `run_blocked_reply_retry()` 補送新的 assistant 回覆。
+  - `blocked_reply_debug` 改呼叫 `run_blocked_reply_retry()`。
+  - 移除原本點按鈕時刪除阻擋提示的動作。
 
 ## 套用
 

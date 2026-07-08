@@ -5,7 +5,6 @@
 📄 config.py
 📁 docs/
   📄 AI_MESSAGE_ACTIONS_README.md
-  📄 BLOCKED_BUTTON_DELETE_ONLY_README.md
   📄 BLOCKED_RETRY_BUTTON_README.md
   📄 CUSTOM_STYLE_PREFIX_README.md
   📄 ENV_ENCRYPTION_README.md
@@ -19,9 +18,6 @@
   📄 REPLY_NONBLOCKING_BUTTONS_README.md
   📄 REPLY_RECOVERY_README.md
   📄 REPLY_RECOVERY_SECRET_FIX_README.md
-  📄 SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md
-  📄 SERVICE_CENTER_BUTTONS_README.md
-  📄 SERVICE_CENTER_ENV_STAGE1_README.md
   📄 SETTING_LINK_AUTH_README.md
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
@@ -38,11 +34,6 @@
   📄 prompt_debug.py
   📄 setting.py
   📄 thought.py
-📁 service_center/
-  📄 __init__.py
-  📄 db.py
-  📄 handler.py
-  📄 telegram.py
 📁 services/
   📄 __init__.py
   📄 ai_actions.py

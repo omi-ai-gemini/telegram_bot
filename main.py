@@ -19,7 +19,6 @@ from service_center.handler import (
     is_service_center_bot,
 )
 from service_center.telegram import setup_service_center_webhook
-from service_center.db import init_service_center_db
 
 #init_db()
 
@@ -40,7 +39,6 @@ def init_once():
     if not db_initialized:
         init_db()
         init_test_lab_db()
-        init_service_center_db()
 
         # 服務中心 bot 使用環境變數 token，不進 DB。
         # 第一次 request 時自動把 webhook 接到 BASE_URL/webhook/<SERVICE_CENTER_BOT_ID>。

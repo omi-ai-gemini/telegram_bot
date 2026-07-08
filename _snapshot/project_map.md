@@ -17,7 +17,6 @@ C:\Projects\telemini
 - `check_db.py`
 - `config.py`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
-- `docs\BLOCKED_BUTTON_DELETE_ONLY_README.md`
 - `docs\BLOCKED_RETRY_BUTTON_README.md`
 - `docs\CUSTOM_STYLE_PREFIX_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
@@ -31,9 +30,6 @@ C:\Projects\telemini
 - `docs\REPLY_NONBLOCKING_BUTTONS_README.md`
 - `docs\REPLY_RECOVERY_README.md`
 - `docs\REPLY_RECOVERY_SECRET_FIX_README.md`
-- `docs\SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md`
-- `docs\SERVICE_CENTER_BUTTONS_README.md`
-- `docs\SERVICE_CENTER_ENV_STAGE1_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
@@ -48,10 +44,6 @@ C:\Projects\telemini
 - `routes\prompt_debug.py`
 - `routes\setting.py`
 - `routes\thought.py`
-- `service_center\__init__.py`
-- `service_center\db.py`
-- `service_center\handler.py`
-- `service_center\telegram.py`
 - `services\__init__.py`
 - `services\ai_actions.py`
 - `services\bot_router.py`
@@ -211,39 +203,6 @@ C:\Projects\telemini
 ### `routes\thought.py`
 - `_format_time()`
 - `thought_page()`
-
-### `service_center\db.py`
-- `init_service_center_db()`
-
-### `service_center\handler.py`
-- `_text_id()`
-- `is_service_center_bot()`
-- `_admin_ids()`
-- `is_service_center_admin()`
-- `_main_menu_markup()`
-- `_back_menu_markup()`
-- `_home_text()`
-- `_notice_text()`
-- `_create_bot_text()`
-- `_wifi_text()`
-- `_gemini_text()`
-- `_manual_text()`
-- `_status_text()`
-- `_admin_text()`
-- `_text_by_action()`
-- `handle_service_center_message()`
-- `handle_service_center_callback()`
-
-### `service_center\telegram.py`
-- `_telegram_post()`
-- `send_message()`
-- `edit_message_text()`
-- `answer_callback_query()`
-- `delete_message()`
-- `_service_center_token()`
-- `get_service_center_webhook_url()`
-- `setup_service_center_webhook()`
-- `get_service_center_webhook_info()`
 
 ### `services\ai_actions.py`
 - `_text_id()`
