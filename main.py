@@ -18,6 +18,7 @@ from service_center.handler import (
     handle_service_center_message,
     is_service_center_bot,
 )
+from service_center.telegram import setup_service_center_webhook
 
 #init_db()
 
@@ -38,6 +39,14 @@ def init_once():
     if not db_initialized:
         init_db()
         init_test_lab_db()
+
+        # 服務中心 bot 使用環境變數 token，不進 DB。
+        # 第一次 request 時自動把 webhook 接到 BASE_URL/webhook/<SERVICE_CENTER_BOT_ID>。
+        try:
+            setup_service_center_webhook()
+        except Exception as exc:
+            print("SERVICE CENTER WEBHOOK INIT ERROR:", exc, flush=True)
+
         db_initialized = True
 
 # =========================
@@ -71,6 +80,7 @@ def webhook(bot_id):
         # - 不呼叫 Gemini
         # =========================
         if is_service_center_bot(bot_id):
+            print(f"SERVICE CENTER CALLBACK RECEIVED bot_id={bot_id} user_id={user_id} chat_id={chat_id} data={user_text}", flush=True)
             handle_service_center_callback(
                 user_id=user_id,
                 bot_id=bot_id,
@@ -118,6 +128,7 @@ def webhook(bot_id):
     # - 不進主遊戲、不寫 user_config、不寫 chat_memory、不呼叫 Gemini
     # =========================
     if is_service_center_bot(bot_id):
+        print(f"SERVICE CENTER MESSAGE RECEIVED bot_id={bot_id} user_id={user_id} chat_id={chat_id} text={user_text}", flush=True)
         handle_service_center_message(
             user_id=user_id,
             bot_id=bot_id,
