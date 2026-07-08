@@ -17,6 +17,7 @@ C:\Projects\telemini
 - `check_db.py`
 - `config.py`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
+- `docs\BLOCKED_BUTTON_DELETE_ONLY_README.md`
 - `docs\BLOCKED_RETRY_BUTTON_README.md`
 - `docs\CUSTOM_STYLE_PREFIX_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
@@ -31,6 +32,7 @@ C:\Projects\telemini
 - `docs\REPLY_RECOVERY_README.md`
 - `docs\REPLY_RECOVERY_SECRET_FIX_README.md`
 - `docs\SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md`
+- `docs\SERVICE_CENTER_BUTTONS_README.md`
 - `docs\SERVICE_CENTER_ENV_STAGE1_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
@@ -223,6 +225,7 @@ C:\Projects\telemini
 - `_home_text()`
 - `_notice_text()`
 - `_create_bot_text()`
+- `_wifi_text()`
 - `_gemini_text()`
 - `_manual_text()`
 - `_status_text()`
