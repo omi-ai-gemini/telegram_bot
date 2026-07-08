@@ -277,8 +277,9 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
     # =========================
     # 安全阻擋提示按鈕
-    # - 點擊後先刪除「內容被安全阻擋」提示訊息
-    # - 不走一般 🔁 重跑，避免刪除任何 AI 正文訊息
+    # - 只刪除這則「內容被安全阻擋」按鈕訊息
+    # - 不改 run_blocked_reply_retry 原本流程
+    # - 不走一般 🔁 重跑，避免刪除 AI 訊息
     # - 直接用短期記憶最後一筆 user 重新生成一則 assistant 回覆
     # =========================
     if user_text == "blocked_reply_debug":
