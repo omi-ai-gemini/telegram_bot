@@ -43,3 +43,12 @@ SECRET_KEY = os.getenv("SECRET_KEY")
 # Setting page signed URLs
 # =========================
 SETTING_LINK_SECRET = os.getenv("SETTING_LINK_SECRET")
+# =========================
+# Service Center Bot
+# =========================
+# 系統級服務中心 bot：token 只放環境變數，不進 DB。
+# webhook 建議固定設為：BASE_URL/webhook/service_center
+SERVICE_CENTER_BOT_ID = os.getenv("SERVICE_CENTER_BOT_ID", "service_center")
+SERVICE_CENTER_BOT_TOKEN = os.getenv("SERVICE_CENTER_BOT_TOKEN")
+SERVICE_CENTER_ADMIN_IDS = os.getenv("SERVICE_CENTER_ADMIN_IDS", "")
+

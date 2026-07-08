@@ -13,6 +13,11 @@ from routes.prompt_debug import prompt_debug_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
+from service_center.handler import (
+    handle_service_center_callback,
+    handle_service_center_message,
+    is_service_center_bot,
+)
 
 #init_db()
 
@@ -59,6 +64,23 @@ def webhook(bot_id):
         message_id = callback["message"]["message_id"]
         user_text = callback["data"]
 
+        # =========================
+        # 服務中心 bot callback 分流
+        # - 不進主遊戲 call_handler
+        # - 不查 bot_config
+        # - 不呼叫 Gemini
+        # =========================
+        if is_service_center_bot(bot_id):
+            handle_service_center_callback(
+                user_id=user_id,
+                bot_id=bot_id,
+                chat_id=chat_id,
+                message_id=message_id,
+                callback_data=user_text,
+                callback_id=callback_id,
+            )
+            return "ok"
+
         # 注意：
         # 不在 main.py 先 answer_callback_query
         # 交給 call_handler 控制提示文字
@@ -88,6 +110,22 @@ def webhook(bot_id):
     chat_id = str(message["chat"]["id"])
     user_text = message["text"]
     message_id = message.get("message_id")
+
+    # =========================
+    # 服務中心 bot 訊息分流
+    # - 這隻 bot 是系統服務入口
+    # - token 由 SERVICE_CENTER_BOT_TOKEN 環境變數提供
+    # - 不進主遊戲、不寫 user_config、不寫 chat_memory、不呼叫 Gemini
+    # =========================
+    if is_service_center_bot(bot_id):
+        handle_service_center_message(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            user_text=user_text,
+            message_id=message_id,
+        )
+        return "ok"
 
     # =========================
     # 自動保存 user_id
