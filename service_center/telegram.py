@@ -215,3 +215,83 @@ def get_service_center_webhook_info():
     except Exception:
         return None
 
+
+
+
+# =========================
+# 外部使用者 Bot 連線工具
+# =========================
+def get_bot_info_by_token(token):
+    """用 BotFather token 呼叫 getMe，取得 bot username。"""
+    token = str(token or "").strip()
+
+    if not token:
+        return {"ok": False, "message": "缺少 bot token。"}
+
+    api_url = f"{TELEGRAM_API_BASE}/bot{token}/getMe"
+
+    try:
+        res = _SERVICE_CENTER_SESSION.get(api_url, timeout=15)
+    except Exception as exc:
+        print("SERVICE CENTER GET BOT INFO REQUEST ERROR:", exc, flush=True)
+        return {"ok": False, "message": "Telegram getMe 請求失敗，請看 Render log。"}
+
+    try:
+        data = res.json()
+    except Exception:
+        data = {"ok": False, "description": res.text}
+
+    if not res.ok or not data.get("ok"):
+        print("SERVICE CENTER GET BOT INFO ERROR:", data, flush=True)
+        return {"ok": False, "message": "Bot token 驗證失敗，請確認 token 是否完整。"}
+
+    result = data.get("result") or {}
+    username = str(result.get("username") or "").strip()
+
+    return {
+        "ok": True,
+        "id": result.get("id"),
+        "username": username,
+        "first_name": result.get("first_name"),
+        "raw": result,
+    }
+
+
+def set_external_bot_webhook(token, bot_id):
+    """把使用者的新 bot webhook 接到主遊戲 /webhook/<bot_id>。"""
+    token = str(token or "").strip()
+    bot_id = str(bot_id or "").strip()
+    base_url = str(os.getenv("BASE_URL") or "").strip().rstrip("/")
+
+    if not token:
+        return {"ok": False, "message": "缺少 bot token。"}
+
+    if not bot_id:
+        return {"ok": False, "message": "缺少 bot_id。"}
+
+    if not base_url:
+        return {"ok": False, "message": "Render 尚未設定 BASE_URL，無法建立 webhook。"}
+
+    webhook_url = f"{base_url}/webhook/{bot_id}"
+    api_url = f"{TELEGRAM_API_BASE}/bot{token}/setWebhook"
+
+    try:
+        res = _SERVICE_CENTER_SESSION.post(
+            api_url,
+            json={"url": webhook_url, "drop_pending_updates": False},
+            timeout=15,
+        )
+    except Exception as exc:
+        print("SERVICE CENTER SET EXTERNAL WEBHOOK REQUEST ERROR:", exc, flush=True)
+        return {"ok": False, "message": "Telegram setWebhook 請求失敗，請看 Render log。"}
+
+    try:
+        data = res.json()
+    except Exception:
+        data = {"ok": False, "description": res.text}
+
+    if not res.ok or not data.get("ok"):
+        print("SERVICE CENTER SET EXTERNAL WEBHOOK ERROR:", data, flush=True)
+        return {"ok": False, "message": "Webhook 設定失敗，請確認 token 或 BASE_URL。"}
+
+    return {"ok": True, "url": webhook_url, "raw": data}
