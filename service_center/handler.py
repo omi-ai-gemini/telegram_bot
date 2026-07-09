@@ -49,11 +49,11 @@ def _main_menu_markup(user_id=None):
             {"text": "🤖 建立Bot", "callback_data": "svc:create_bot"},
         ],
         [
+            {"text": "📶 Telemini Wifi", "callback_data": "svc:wifi"},
             {"text": "🔑 Gemini API", "callback_data": "svc:gemini"},
-            {"text": "📘 操作說明", "callback_data": "svc:manual"},
         ],
         [
-            {"text": "📌 服務狀態", "callback_data": "svc:status"},
+            {"text": "📘 操作說明", "callback_data": "svc:manual"},
         ],
     ]
 
@@ -76,38 +76,48 @@ def _back_menu_markup():
 def _home_text():
     return (
         "Telemini 服務中心\n\n"
-        "這裡是系統服務入口。\n"
-        "服務中心 bot 不會進入主遊戲、不會呼叫 Gemini、不會寫入聊天記憶。\n\n"
-        "目前這一步只先完成：\n"
-        "1. 使用環境變數 token 的固定服務中心 bot\n"
-        "2. webhook 專用分流\n"
-        "3. 服務中心獨立 handler\n"
-        "4. 最小選單骨架\n\n"
-        "後續公告、建立遊戲 bot、Gemini API、操作說明都會接在這條路線底下。"
+        "遊戲上有任何變更會在這裡公告。\n"
+        "但前提是我要記得或是有空來更新公告\n\n"
+        "按鈕說明\n"
+        "1. 公告事項：所有歷史公告\n"
+        "2. 建立Bot：我盡量簡單的告訴你怎麼創建新的機器人\n"
+        "3. Telemini Wifi：新的機器人連線到遊戲程式\n"
+        "4. Gemini API：新增或更改AI連線\n"
+        "5. 操作說明：遊戲內可用的操作和使用方法\n"
     )
 
 
 def _notice_text():
     return (
         "📢 公告事項\n\n"
-        "後續會接在這裡：\n"
-        "- 公告訂閱\n"
-        "- 管理員發布公告\n"
-        "- 公告發送狀態\n\n"
-        "目前還沒新增公告資料表，先保持 DB 最乾淨。"
+        "最新公告會放在最上面\n"
     )
 
 
 def _create_bot_text():
     return (
-        "🤖 建立 Bot\n\n"
-        "後續會接在這裡：\n"
-        "- 使用者提交 BotFather token\n"
-        "- 系統驗證 bot 身分\n"
-        "- 自動設定到遊戲 webhook\n"
-        "- 寫入必要的遊戲 bot 設定\n\n"
-        "注意：Telegram 不允許程式直接替使用者向 BotFather 憑空建立 bot，"
-        "所以流程會是使用者先拿 token，服務中心負責接線。"
+        "🤖 建立Bot\n\n"
+        "我會盡量用最簡單的方式告訴你怎麼創建新的機器人。\n\n"
+        "基本流程：\n"
+        "1. 到 Telegram 找 @BotFather。\n"
+        "2. 輸入 /newbot。\n"
+        "3. 幫機器人取名稱。\n"
+        "4. 幫機器人設定 username，通常要以 bot 結尾。\n"
+        "5. BotFather 會給你一組 token。\n\n"
+        "拿到 token 後，再回到 Telemini Wifi 把新的機器人連線到遊戲程式。"
+    )
+
+
+def _wifi_text():
+    return (
+        "📶 Telemini Wifi\n\n"
+        "新的機器人連線到遊戲程式。\n\n"
+        "這裡之後會負責：\n"
+        "- 接收 BotFather 給你的 bot token。\n"
+        "- 驗證這隻 bot 是否能正常使用。\n"
+        "- 把新 bot 的 webhook 接到 Telemini 遊戲程式。\n"
+        "- 讓新 bot 可以進入主遊戲流程。\n\n"
+        "目前先完成服務中心按鈕入口，下一步再接 token 輸入與自動連線流程。"
     )
 
 
@@ -169,6 +179,9 @@ def _text_by_action(action, user_id=None):
 
     if action == "svc:create_bot":
         return _create_bot_text()
+
+    if action == "svc:wifi":
+        return _wifi_text()
 
     if action == "svc:gemini":
         return _gemini_text()
