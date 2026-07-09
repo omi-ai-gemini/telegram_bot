@@ -3,6 +3,7 @@ import psycopg2
 import threading
 import time
 from services.runtime_cache import delete_cache
+from services.crypto_env import encrypt_text, aad_for
 
 DATABASE_URL = os.environ["DATABASE_URL"]
 
@@ -99,10 +100,26 @@ def get_db_connection_stats():
         }
 
 
+
+
+def _encrypt_db_secret_safe(value, aad=""):
+    """敏感金鑰入 DB 前加密；若環境密鑰異常則保底不讓流程中斷。"""
+    try:
+        return encrypt_text(value, aad=aad)
+    except Exception as exc:
+        print("DB SECRET ENCRYPT SKIPPED:", exc, flush=True)
+        return value
+
 # =========================
 # 更新 bot token
 # =========================
 def save_bot(bot_id, token):
+
+    bot_id = str(bot_id)
+    encrypted_token = _encrypt_db_secret_safe(
+        token,
+        aad=aad_for("bot_config", "token", bot_id),
+    )
 
     conn = get_conn()
 
@@ -116,7 +133,7 @@ def save_bot(bot_id, token):
         DO UPDATE SET token = EXCLUDED.token
         """, (
             bot_id,
-            token
+            encrypted_token
         ))
 
         conn.commit()
@@ -134,6 +151,12 @@ def save_bot(bot_id, token):
 # =========================
 def update_gemini_key(user_id, gemini_key):
 
+    user_id = str(user_id)
+    encrypted_key = _encrypt_db_secret_safe(
+        gemini_key,
+        aad=aad_for("user_config", "gemini_key", user_id),
+    )
+
     conn = get_conn()
 
     try:
@@ -146,7 +169,7 @@ def update_gemini_key(user_id, gemini_key):
         DO UPDATE SET gemini_key = EXCLUDED.gemini_key
         """, (
             user_id,
-            gemini_key
+            encrypted_key
         ))
 
         conn.commit()

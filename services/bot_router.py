@@ -1,4 +1,17 @@
 from services.database import get_conn
+from services.crypto_env import decrypt_text, is_encrypted, aad_for
+
+
+
+def _decrypt_bot_token_safe(bot_id, value):
+    if not is_encrypted(value):
+        return value
+
+    try:
+        return decrypt_text(value, aad=aad_for("bot_config", "token", bot_id))
+    except Exception as exc:
+        print("BOT TOKEN DECRYPT ERROR:", exc, flush=True)
+        return None
 
 # =========================
 # bot token 快取
@@ -37,8 +50,10 @@ def get_bot_token(bot_id: str):
     conn.close()
 
     if row:
-        _TOKEN_CACHE[bot_id] = row[0]
-        return row[0]
+        token = _decrypt_bot_token_safe(bot_id, row[0])
+        if token:
+            _TOKEN_CACHE[bot_id] = token
+        return token
 
     return None
 

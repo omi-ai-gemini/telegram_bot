@@ -3,6 +3,9 @@ from config import TELEGRAM_API_BASE
 from services.bot_router import get_bot_token
 
 
+_TELEGRAM_SESSION = requests.Session()
+
+
 # =========================
 # Telegram 共用 POST
 # =========================
@@ -16,7 +19,7 @@ def _telegram_post(bot_id, method, payload, timeout=30):
     url = f"{TELEGRAM_API_BASE}/bot{token}/{method}"
 
     try:
-        res = requests.post(url, json=payload, timeout=timeout)
+        res = _TELEGRAM_SESSION.post(url, json=payload, timeout=timeout)
     except Exception as e:
         print(f"TELEGRAM {method} REQUEST ERROR:", e)
         return None
@@ -95,3 +98,87 @@ def delete_message(bot_id, chat_id, message_id):
 
     result = _telegram_post(bot_id, "deleteMessage", payload, timeout=10)
     return bool(result)
+
+
+# =========================
+# Telegram 取得檔案資訊
+# - 給照片 / 貼圖 / 後續語音影片使用
+# =========================
+def get_file(bot_id, file_id):
+    payload = {
+        "file_id": file_id,
+    }
+
+    return _telegram_post(bot_id, "getFile", payload, timeout=20)
+
+
+def _extract_file_path(file_result):
+    if not isinstance(file_result, dict):
+        return None
+
+    result = file_result.get("result") or {}
+    return result.get("file_path")
+
+
+def download_file_bytes(bot_id, file_id, timeout=60):
+    """
+    下載 Telegram 檔案為 bytes。
+
+    注意：
+    - 不長期保存檔案，不佔 Render 磁碟。
+    - 失敗時回傳 None。
+    """
+    token = get_bot_token(bot_id)
+
+    if not token:
+        print("X token not found")
+        return None
+
+    file_info = get_file(bot_id, file_id)
+    file_path = _extract_file_path(file_info)
+
+    if not file_path:
+        print("TELEGRAM getFile missing file_path", flush=True)
+        return None
+
+    url = f"{TELEGRAM_API_BASE}/file/bot{token}/{file_path}"
+
+    try:
+        res = _TELEGRAM_SESSION.get(url, timeout=timeout)
+    except Exception as exc:
+        print("TELEGRAM downloadFile REQUEST ERROR:", exc, flush=True)
+        return None
+
+    if not res.ok:
+        print("TELEGRAM downloadFile ERROR:", res.text[:500], flush=True)
+        return None
+
+    return {
+        "bytes": res.content,
+        "file_path": file_path,
+        "mime_type": guess_mime_type_from_file_path(file_path),
+    }
+
+
+def guess_mime_type_from_file_path(file_path):
+    path = str(file_path or "").lower()
+
+    if path.endswith(".jpg") or path.endswith(".jpeg"):
+        return "image/jpeg"
+
+    if path.endswith(".png"):
+        return "image/png"
+
+    if path.endswith(".webp"):
+        return "image/webp"
+
+    if path.endswith(".gif"):
+        return "image/gif"
+
+    if path.endswith(".webm"):
+        return "video/webm"
+
+    if path.endswith(".mp4"):
+        return "video/mp4"
+
+    return "application/octet-stream"

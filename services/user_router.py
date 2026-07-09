@@ -1,9 +1,21 @@
 from services.database import get_conn
 from services.runtime_cache import get_cache, set_cache, delete_cache
+from services.crypto_env import decrypt_text, is_encrypted, aad_for
 
 
 def _text_id(value):
     return str(value)
+
+
+def _decrypt_gemini_key_safe(user_id, value):
+    if not is_encrypted(value):
+        return value
+
+    try:
+        return decrypt_text(value, aad=aad_for("user_config", "gemini_key", user_id))
+    except Exception as exc:
+        print("GEMINI KEY DECRYPT ERROR:", exc, flush=True)
+        return None
 
 # =========================
 # 取得 Gemini API key
@@ -36,7 +48,10 @@ def get_gemini_key(user_id: int):
     conn.close()
 
     if row and row[0]:
-        return set_cache(cache_key, row[0], ttl=600)
+        gemini_key = _decrypt_gemini_key_safe(user_id, row[0])
+        if gemini_key:
+            return set_cache(cache_key, gemini_key, ttl=600)
+        return None
 
     return None
 

@@ -461,6 +461,105 @@ def _meta_result(text, thoughts="", thought_source="empty", structured=False):
 
 
 # =========================
+# 圖片 / 靜態貼圖轉文字描述
+# =========================
+def ask_gemini_image_to_text(
+    gemini_key,
+    image_bytes,
+    mime_type,
+    prompt,
+    model=None,
+    temperature=0.2,
+    max_output_tokens=512,
+):
+    """
+    讓指定 Gemini 模型讀取圖片，回傳純文字描述。
+
+    用途：
+    - 照片：gemini-2.5-flash 先解析圖片，再交給 3.1 Flash Lite 走原聊天流程。
+    - 靜態貼圖：gemini-3.1-flash-lite 直接解析貼圖，再交給原聊天流程回覆。
+
+    注意：
+    - 不寫入 prompt debug，避免圖片 bytes 或中繼解析污染除錯頁。
+    - 不印出圖片內容或解析結果，避免 Render log 留明文。
+    """
+    if not gemini_key:
+        return None
+
+    if not image_bytes:
+        return None
+
+    mime_type = str(mime_type or "image/jpeg").strip() or "image/jpeg"
+    prompt = str(prompt or "請描述這張圖片。").strip()
+    model = str(model or GEMINI_MODEL).strip()
+
+    config = types.GenerateContentConfig(
+        safety_settings=GEMINI_SAFETY_SETTINGS,
+        temperature=float(temperature),
+        max_output_tokens=int(max_output_tokens),
+    )
+
+    try:
+        image_part = types.Part.from_bytes(
+            data=image_bytes,
+            mime_type=mime_type,
+        )
+    except Exception:
+        # 兼容較舊 google-genai：Part.from_bytes 不可用時用 inline_data 結構。
+        image_part = types.Part(
+            inline_data=types.Blob(
+                data=image_bytes,
+                mime_type=mime_type,
+            )
+        )
+
+    try:
+        with genai.Client(api_key=gemini_key) as client:
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=prompt),
+                            image_part,
+                        ],
+                    )
+                ],
+                config=config,
+            )
+    except Exception as exc:
+        print(
+            f"GEMINI IMAGE TO TEXT ERROR model={model} mime={mime_type}: {exc}",
+            flush=True,
+        )
+        return None
+
+    debug_gemini_response(response, label="GEMINI IMAGE")
+
+    text = _safe_response_text(response)
+
+    if text:
+        print(
+            f"GEMINI IMAGE TO TEXT OK model={model} len={len(text)}",
+            flush=True,
+        )
+        return text.strip()
+
+    block_reason = get_gemini_block_reason(response)
+
+    if block_reason:
+        print(
+            f"GEMINI IMAGE TO TEXT BLOCKED model={model} reason={block_reason}",
+            flush=True,
+        )
+        return GEMINI_BLOCKED
+
+    print(f"GEMINI IMAGE TO TEXT EMPTY model={model}", flush=True)
+    return None
+
+
+# =========================
 # 取得 Gemini 回覆
 # =========================
 def ask_gemini(
