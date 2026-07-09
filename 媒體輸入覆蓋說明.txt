@@ -1,0 +1,20 @@
+Telemini 媒體輸入更新外帶包
+
+這不是 git diff 補丁。
+這是一包「覆蓋用檔案」：把 telemini 資料夾內同路徑檔案覆蓋到你的專案。
+
+覆蓋 / 新增檔案：
+- config.py
+- main.py
+- services/telegram_service.py
+- services/gemini_service.py
+- services/media_ai.py
+- docs/媒體輸入更新說明.md
+
+功能：
+1. 靜態貼圖讀圖回覆
+2. 圖片交由 Gemini 2.5 Flash 解析，再交回 3.1 Flash Lite 文字回覆
+3. 語音、動態貼圖、影片、GIF、文件等未支援輸入會回覆防呆訊息
+
+部署前測試：
+python -m py_compile config.py main.py services/telegram_service.py services/gemini_service.py services/media_ai.py

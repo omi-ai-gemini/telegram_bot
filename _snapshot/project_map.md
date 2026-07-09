@@ -30,20 +30,30 @@ C:\Projects\telemini
 - `docs\REPLY_NONBLOCKING_BUTTONS_README.md`
 - `docs\REPLY_RECOVERY_README.md`
 - `docs\REPLY_RECOVERY_SECRET_FIX_README.md`
+- `docs\SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md`
+- `docs\SERVICE_CENTER_BUTTONS_README.md`
+- `docs\SERVICE_CENTER_ENV_STAGE1_README.md`
 - `docs\SETTING_LINK_AUTH_README.md`
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\媒體輸入更新說明.md`
+- `docs\服務中心更新說明.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
 - `main.py`
 - `prompt外帶說明.txt`
+- `README_覆蓋說明.txt`
 - `requirements.txt`
 - `routes\admin.py`
 - `routes\prompt_debug.py`
 - `routes\setting.py`
 - `routes\thought.py`
+- `service_center\__init__.py`
+- `service_center\db.py`
+- `service_center\handler.py`
+- `service_center\telegram.py`
 - `services\__init__.py`
 - `services\ai_actions.py`
 - `services\bot_router.py`
@@ -56,6 +66,7 @@ C:\Projects\telemini
 - `services\database.py`
 - `services\encrypted_store.py`
 - `services\gemini_service.py`
+- `services\media_ai.py`
 - `services\memory.py`
 - `services\memory_summary.py`
 - `services\memory_view.py`
@@ -97,6 +108,7 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
+- `媒體輸入覆蓋說明.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
 
@@ -204,6 +216,59 @@ C:\Projects\telemini
 - `_format_time()`
 - `thought_page()`
 
+### `service_center\db.py`
+- `_text_id()`
+- `init_service_center_db()`
+- `list_announcements()`
+- `get_latest_announcement()`
+- `create_announcement()`
+
+### `service_center\handler.py`
+- `_text_id()`
+- `_pending_key()`
+- `_set_pending()`
+- `_pop_pending()`
+- `_clear_pending()`
+- `is_service_center_bot()`
+- `_admin_ids()`
+- `is_service_center_admin()`
+- `_main_menu_markup()`
+- `_back_menu_markup()`
+- `_cancel_input_markup()`
+- `_home_text()`
+- `_format_announcement()`
+- `_latest_notice_text()`
+- `_notice_text()`
+- `_create_bot_text()`
+- `_wifi_text()`
+- `_gemini_text()`
+- `_manual_text()`
+- `_status_text()`
+- `_admin_text()`
+- `_text_by_action()`
+- `_looks_like_bot_token()`
+- `_looks_like_gemini_key()`
+- `_mask_secret()`
+- `_delete_sensitive_user_message()`
+- `_handle_bot_token_input()`
+- `_handle_gemini_key_input()`
+- `_handle_announce_command()`
+- `handle_service_center_message()`
+- `handle_service_center_callback()`
+
+### `service_center\telegram.py`
+- `_telegram_post()`
+- `send_message()`
+- `edit_message_text()`
+- `answer_callback_query()`
+- `delete_message()`
+- `get_bot_info_by_token()`
+- `setup_game_bot_webhook()`
+- `_service_center_token()`
+- `get_service_center_webhook_url()`
+- `setup_service_center_webhook()`
+- `get_service_center_webhook_info()`
+
 ### `services\ai_actions.py`
 - `_text_id()`
 - `_is_group_chat()`
@@ -256,6 +321,7 @@ C:\Projects\telemini
 - `_worker()`
 
 ### `services\bot_router.py`
+- `_decrypt_bot_token_safe()`
 - `_text_id()`
 - `get_bot_token()`
 - `bot_exists()`
@@ -339,6 +405,7 @@ C:\Projects\telemini
 ### `services\database.py`
 - `get_conn()`
 - `get_db_connection_stats()`
+- `_encrypt_db_secret_safe()`
 - `save_bot()`
 - `update_gemini_key()`
 - `init_db()`
@@ -369,8 +436,20 @@ C:\Projects\telemini
 - `_safe_response_text()`
 - `_extract_answer_and_thoughts()`
 - `_meta_result()`
+- `ask_gemini_image_to_text()`
 - `ask_gemini()`
 - `summarize_memory()`
+
+### `services\media_ai.py`
+- `_text()`
+- `_missing_config()`
+- `send_unsupported_media_message()`
+- `_download_image()`
+- `handle_photo_message()`
+- `handle_sticker_message()`
+- `run_photo_message_in_thread()`
+- `run_sticker_message_in_thread()`
+- `run_unsupported_media_in_thread()`
 
 ### `services\memory.py`
 - `_text_id()`
@@ -553,6 +632,10 @@ C:\Projects\telemini
 - `edit_message_text()`
 - `answer_callback_query()`
 - `delete_message()`
+- `get_file()`
+- `_extract_file_path()`
+- `download_file_bytes()`
+- `guess_mime_type_from_file_path()`
 
 ### `services\time_context.py`
 - `_period_name()`
@@ -565,6 +648,7 @@ C:\Projects\telemini
 
 ### `services\user_router.py`
 - `_text_id()`
+- `_decrypt_gemini_key_safe()`
 - `get_gemini_key()`
 - `clear_gemini_key_cache()`
 - `user_has_key()`

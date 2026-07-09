@@ -1,0 +1,25 @@
+# 服務中心硬檢查覆蓋說明
+
+這包不是再改外觀，是用硬版本標記確認 Render 到底有沒有跑新版。
+
+部署後請先打開 Render 網址根目錄：
+https://你的-render網址/
+
+正確必須看到：
+OK Telemini build=svc-ann-20260710-hardcheck
+
+再私訊服務中心 bot：
+/start
+/status
+
+/start 必須先送：
+📢 [功能更新] 服務中心與媒體輸入更新
+
+主頁文字必須包含：
+版本標記：svc-ann-20260710-hardcheck
+
+/status 會顯示公告 DB 狀態。
+
+如果根目錄沒有 build 標記，代表 Render 沒跑這包。
+如果根目錄有 build 標記，但服務中心沒有，代表服務中心 bot webhook 打到別的網址或別的 webhook path。
+如果 /status 顯示 DB error，才是資料庫權限或 DATABASE_URL 問題。

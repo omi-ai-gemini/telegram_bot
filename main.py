@@ -19,6 +19,13 @@ from service_center.handler import (
     is_service_center_bot,
 )
 from service_center.telegram import setup_service_center_webhook
+from service_center.db import init_service_center_db
+from services.media_ai import (
+    run_photo_message_in_thread,
+    run_sticker_message_in_thread,
+    run_unsupported_media_in_thread,
+)
+from service_center.telegram import send_message as send_service_center_message
 
 #init_db()
 
@@ -39,6 +46,7 @@ def init_once():
     if not db_initialized:
         init_db()
         init_test_lab_db()
+        init_service_center_db()
 
         # 服務中心 bot 使用環境變數 token，不進 DB。
         # 第一次 request 時自動把 webhook 接到 BASE_URL/webhook/<SERVICE_CENTER_BOT_ID>。
@@ -113,21 +121,24 @@ def webhook(bot_id):
 
     message = data["message"]
 
-    if "text" not in message:
-        return "ok"
-    
     user_id = message["from"]["id"]
     chat_id = str(message["chat"]["id"])
-    user_text = message["text"]
+    user_text = message.get("text", "")
     message_id = message.get("message_id")
 
     # =========================
     # 服務中心 bot 訊息分流
-    # - 這隻 bot 是系統服務入口
-    # - token 由 SERVICE_CENTER_BOT_TOKEN 環境變數提供
-    # - 不進主遊戲、不寫 user_config、不寫 chat_memory、不呼叫 Gemini
+    # - 服務中心只處理文字 / callback
+    # - 非文字至少要回覆，避免使用者傳了沒有反應
     # =========================
     if is_service_center_bot(bot_id):
+        if "text" not in message:
+            send_service_center_message(
+                chat_id,
+                "服務中心目前只能處理文字與按鈕操作。"
+            )
+            return "ok"
+
         print(f"SERVICE CENTER MESSAGE RECEIVED bot_id={bot_id} user_id={user_id} chat_id={chat_id} text={user_text}", flush=True)
         handle_service_center_message(
             user_id=user_id,
@@ -162,11 +173,42 @@ def webhook(bot_id):
     print("DEBUG bot_id:", bot_id)
 
     # =========================
-    # 執行 AI
+    # 非文字訊息分流
+    # - photo：Gemini 2.5 Flash 讀圖，再交回 3.1 Flash Lite 聊天流程回覆
+    # - static sticker：3.1 Flash Lite 讀貼圖，再交回聊天流程回覆
+    # - 其他目前不處理，但一定回覆防呆訊息
+    # =========================
+    if "photo" in message:
+        run_photo_message_in_thread(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            message=message,
+            message_id=message_id,
+        )
+        return "ok"
+
+    if "sticker" in message:
+        run_sticker_message_in_thread(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            message=message,
+            message_id=message_id,
+        )
+        return "ok"
+
+    if "text" not in message:
+        run_unsupported_media_in_thread(bot_id, chat_id)
+        return "ok"
+
+    # =========================
+    # 執行文字 AI
     # =========================
     threading.Thread(
         target=handle_message,
-        args=(user_id, bot_id, chat_id, user_text, message_id)
+        args=(user_id, bot_id, chat_id, user_text, message_id),
+        daemon=True,
     ).start()
 
     return "ok"

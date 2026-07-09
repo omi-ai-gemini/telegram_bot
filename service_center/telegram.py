@@ -16,6 +16,7 @@ def _telegram_post(method, payload, timeout=30):
     - 不查 bot_config。
     - 不走 services.telegram_service。
     - token 只讀 SERVICE_CENTER_BOT_TOKEN 環境變數。
+    - 不列印任何使用者提交的 bot token / API key。
     """
     token = str(SERVICE_CENTER_BOT_TOKEN or "").strip()
 
@@ -87,6 +88,79 @@ def delete_message(chat_id, message_id):
     }
 
     return _telegram_post("deleteMessage", payload, timeout=10)
+
+
+# =========================
+# 使用者提交的遊戲 Bot token 處理
+# =========================
+def get_bot_info_by_token(bot_token):
+    """用使用者提交的 bot token 呼叫 getMe，驗證 token 並取得 bot username。"""
+    token = str(bot_token or "").strip()
+
+    if not token:
+        return None
+
+    api_url = f"{TELEGRAM_API_BASE}/bot{token}/getMe"
+
+    try:
+        res = _SERVICE_CENTER_SESSION.get(api_url, timeout=15)
+    except Exception as exc:
+        print("SERVICE CENTER GAME BOT getMe REQUEST ERROR:", exc, flush=True)
+        return None
+
+    if not res.ok:
+        # 不印 res.text，避免 Telegram 回傳內容中包含敏感資訊或造成 log 汙染。
+        print("SERVICE CENTER GAME BOT getMe FAILED", flush=True)
+        return None
+
+    try:
+        data = res.json()
+    except Exception:
+        return None
+
+    if not data.get("ok"):
+        return None
+
+    return data.get("result") or {}
+
+
+def setup_game_bot_webhook(bot_token, bot_id):
+    """把新 bot webhook 接到主遊戲 /webhook/<bot_id>。"""
+    token = str(bot_token or "").strip()
+    bot_id = str(bot_id or "").strip()
+    base_url = str(os.getenv("BASE_URL") or "").strip().rstrip("/")
+
+    if not token or not bot_id or not base_url:
+        return False, "missing_config"
+
+    webhook_url = f"{base_url}/webhook/{bot_id}"
+    api_url = f"{TELEGRAM_API_BASE}/bot{token}/setWebhook"
+    payload = {
+        "url": webhook_url,
+        "drop_pending_updates": False,
+    }
+
+    try:
+        res = _SERVICE_CENTER_SESSION.post(api_url, json=payload, timeout=15)
+    except Exception as exc:
+        print("SERVICE CENTER GAME BOT WEBHOOK REQUEST ERROR:", exc, flush=True)
+        return False, "request_error"
+
+    if not res.ok:
+        print("SERVICE CENTER GAME BOT WEBHOOK FAILED", flush=True)
+        return False, "telegram_error"
+
+    try:
+        data = res.json()
+    except Exception:
+        data = {"ok": True}
+
+    if not data.get("ok"):
+        print("SERVICE CENTER GAME BOT WEBHOOK NOT OK", flush=True)
+        return False, "not_ok"
+
+    return True, webhook_url
+
 
 # =========================
 # 服務中心 Bot 自動接 webhook
@@ -214,4 +288,3 @@ def get_service_center_webhook_info():
         return res.json()
     except Exception:
         return None
-

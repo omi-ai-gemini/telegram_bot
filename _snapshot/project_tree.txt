@@ -18,22 +18,33 @@
   📄 REPLY_NONBLOCKING_BUTTONS_README.md
   📄 REPLY_RECOVERY_README.md
   📄 REPLY_RECOVERY_SECRET_FIX_README.md
+  📄 SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md
+  📄 SERVICE_CENTER_BUTTONS_README.md
+  📄 SERVICE_CENTER_ENV_STAGE1_README.md
   📄 SETTING_LINK_AUTH_README.md
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
+  📄 媒體輸入更新說明.md
+  📄 服務中心更新說明.md
 📁 handlers/
   📄 __init__.py
   📄 call_handler.py
   📄 message_handler.py
 📄 main.py
 📄 prompt外帶說明.txt
+📄 README_覆蓋說明.txt
 📄 requirements.txt
 📁 routes/
   📄 admin.py
   📄 prompt_debug.py
   📄 setting.py
   📄 thought.py
+📁 service_center/
+  📄 __init__.py
+  📄 db.py
+  📄 handler.py
+  📄 telegram.py
 📁 services/
   📄 __init__.py
   📄 ai_actions.py
@@ -47,6 +58,7 @@
   📄 database.py
   📄 encrypted_store.py
   📄 gemini_service.py
+  📄 media_ai.py
   📄 memory.py
   📄 memory_summary.py
   📄 memory_view.py
@@ -93,5 +105,6 @@
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
+📄 媒體輸入覆蓋說明.txt
 📄 模式-使用說明.txt
 📄 開場-更新說明.txt
