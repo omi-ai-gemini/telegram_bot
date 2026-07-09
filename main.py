@@ -20,6 +20,7 @@ from service_center.handler import (
 )
 from service_center.telegram import setup_service_center_webhook
 from service_center.db import init_service_center_db
+from service_center.scheduler import start_service_center_announcement_scheduler
 from services.media_ai import (
     run_photo_message_in_thread,
     run_sticker_message_in_thread,
@@ -54,6 +55,11 @@ def init_once():
             setup_service_center_webhook()
         except Exception as exc:
             print("SERVICE CENTER WEBHOOK INIT ERROR:", exc, flush=True)
+
+        try:
+            start_service_center_announcement_scheduler()
+        except Exception as exc:
+            print("SERVICE CENTER ANNOUNCEMENT SCHEDULER INIT ERROR:", exc, flush=True)
 
         db_initialized = True
 

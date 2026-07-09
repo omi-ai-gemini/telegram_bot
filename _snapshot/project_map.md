@@ -109,6 +109,7 @@ C:\Projects\telemini
 - `tools\project_snapshot.py`
 - `tools\python.txt`
 - `媒體輸入覆蓋說明.txt`
+- `服務中心硬檢查覆蓋說明.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
 

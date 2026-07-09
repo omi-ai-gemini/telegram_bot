@@ -5,8 +5,8 @@ import time
 from config import SERVICE_CENTER_ADMIN_IDS, SERVICE_CENTER_BOT_ID
 from service_center.db import (
     create_announcement,
-    get_latest_announcement,
     list_announcements,
+    upsert_service_center_subscriber,
 )
 from service_center.telegram import (
     answer_callback_query,
@@ -163,13 +163,6 @@ def _format_announcement(item):
     return f"📢 [{label}] {title}\n\n{body}"
 
 
-def _latest_notice_text():
-    item = get_latest_announcement()
-    if not item:
-        return "📢 目前沒有公告。"
-    return _format_announcement(item)
-
-
 def _notice_text():
     items = list_announcements(limit=10)
 
@@ -258,6 +251,7 @@ def _admin_text(user_id):
         "🛠 管理員\n\n"
         "目前可用：\n"
         "/announce 標籤｜標題｜內容\n\n"
+        "新增後會先出現在公告事項裡，下一次台灣時間下午五點會主動推播一次。\n\n"
         "範例：\n"
         "/announce 功能更新｜小改版｜今天更新了服務中心。"
     )
@@ -463,12 +457,13 @@ def _handle_announce_command(user_id, chat_id, text):
         send_message(chat_id, "公告新增失敗。")
         return True
 
-    send_message(chat_id, f"公告已新增：#{ann_id}", reply_markup=_main_menu_markup(user_id))
+    send_message(chat_id, f"公告已新增：#{ann_id}\n會在下一次台灣時間下午五點主動推播一次。", reply_markup=_main_menu_markup(user_id))
     return True
 
 
 def handle_service_center_message(user_id, bot_id, chat_id, user_text, message_id=None):
     """處理服務中心 bot 的文字訊息。"""
+    upsert_service_center_subscriber(user_id, chat_id)
     text = _text_id(user_text)
 
     if text in ["/cancel", "/取消", "取消"]:
@@ -484,10 +479,6 @@ def handle_service_center_message(user_id, bot_id, chat_id, user_text, message_i
         return _handle_announce_command(user_id, chat_id, text)
 
     if text == "/start":
-        send_message(
-            chat_id=chat_id,
-            text=_latest_notice_text(),
-        )
         send_message(
             chat_id=chat_id,
             text=_home_text(),
@@ -530,6 +521,7 @@ def handle_service_center_message(user_id, bot_id, chat_id, user_text, message_i
 
 def handle_service_center_callback(user_id, bot_id, chat_id, message_id, callback_data, callback_id=None):
     """處理服務中心 bot 的 inline button。"""
+    upsert_service_center_subscriber(user_id, chat_id)
     action = _text_id(callback_data)
 
     if callback_id:
