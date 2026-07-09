@@ -7,8 +7,9 @@ import os
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # 圖片解析專用模型：只把圖片轉成文字描述，再交回主模型回覆。
-# 直接傳貼圖仍使用 GEMINI_MODEL（3.1 Flash Lite）讀靜態貼圖。
-GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+# 先用 3.5 Flash；若遇到 quota / rate limit / service unavailable，會在 gemini_service.py 自動切到 3 Flash Preview。
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
+GEMINI_VISION_FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK_MODEL", "gemini-3-flash-preview")
 
 # 如果你未來想保留預設備用KEY才留著
 #DEFAULT_GEMINI_KEY = os.getenv("DEFAULT_GEMINI_KEY")

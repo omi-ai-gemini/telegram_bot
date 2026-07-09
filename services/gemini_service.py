@@ -4,7 +4,7 @@ import json
 import re
 from services.style import build_prompt
 from services.prompt_debug import save_prompt_debug_log, update_prompt_debug_log
-from config import GEMINI_MODEL
+from config import GEMINI_MODEL, GEMINI_VISION_FALLBACK_MODEL
 
 
 # =========================
@@ -460,6 +460,93 @@ def _meta_result(text, thoughts="", thought_source="empty", structured=False):
     }
 
 
+
+
+# =========================
+# 圖片解析模型 fallback 狀態
+# =========================
+# 若 3.5 Flash 當天額度 / 速率達上限，先切到 fallback 模型，避免每張圖都先撞一次 429。
+# 注意：這是 Render process 記憶體狀態；Render 重啟後會重新嘗試主模型。
+_IMAGE_MODEL_FALLBACK_UNTIL = {}
+
+
+def _image_model_key(model):
+    return str(model or "").strip()
+
+
+def _now_ts():
+    import time
+    return time.time()
+
+
+def _seconds_until_next_pacific_midnight():
+    # Gemini RPD quota 以 Pacific time 午夜重置。
+    try:
+        from datetime import datetime, timedelta
+        from zoneinfo import ZoneInfo
+
+        tz = ZoneInfo("America/Los_Angeles")
+        now = datetime.now(tz)
+        tomorrow = now.date() + timedelta(days=1)
+        next_midnight = datetime.combine(tomorrow, datetime.min.time(), tzinfo=tz)
+        return max(60, int((next_midnight - now).total_seconds()))
+    except Exception:
+        # fallback：最多記 12 小時，避免永久卡在備用模型。
+        return 60 * 60 * 12
+
+
+def _is_image_model_temporarily_disabled(model):
+    disabled_until = _IMAGE_MODEL_FALLBACK_UNTIL.get(_image_model_key(model), 0)
+    return disabled_until > _now_ts()
+
+
+def _disable_image_model_until_reset(model, reason="quota"):
+    model = _image_model_key(model)
+    if not model:
+        return
+
+    disabled_until = _now_ts() + _seconds_until_next_pacific_midnight()
+    _IMAGE_MODEL_FALLBACK_UNTIL[model] = disabled_until
+    print(
+        f"GEMINI IMAGE MODEL DISABLED UNTIL RESET model={model} reason={reason} disabled_until={int(disabled_until)}",
+        flush=True,
+    )
+
+
+def _is_retryable_or_quota_error(exc):
+    text = str(exc or "")
+    markers = [
+        "429",
+        "RESOURCE_EXHAUSTED",
+        "quota",
+        "Quota",
+        "rate limit",
+        "Rate limit",
+        "exceeded",
+        "503",
+        "UNAVAILABLE",
+    ]
+    return any(marker in text for marker in markers)
+
+
+def _image_models_to_try(primary_model):
+    primary = _image_model_key(primary_model or GEMINI_MODEL)
+    fallback = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
+
+    models = []
+
+    if primary and not _is_image_model_temporarily_disabled(primary):
+        models.append(primary)
+
+    if fallback and fallback not in models:
+        models.append(fallback)
+
+    # 如果主模型被暫時停用，但 fallback 沒設，仍保底嘗試主模型，避免完全無模型可用。
+    if not models and primary:
+        models.append(primary)
+
+    return models
+
 # =========================
 # 圖片 / 靜態貼圖轉文字描述
 # =========================
@@ -473,11 +560,12 @@ def ask_gemini_image_to_text(
     max_output_tokens=512,
 ):
     """
-    讓指定 Gemini 模型讀取圖片，回傳純文字描述。
+    讓 Gemini 模型讀取圖片，回傳純文字描述。
 
-    用途：
-    - 照片：gemini-2.5-flash 先解析圖片，再交給 3.1 Flash Lite 走原聊天流程。
-    - 靜態貼圖：gemini-3.1-flash-lite 直接解析貼圖，再交給原聊天流程回覆。
+    流程：
+    - 先用 GEMINI_VISION_MODEL，例如 gemini-3.5-flash。
+    - 若遇到 429 / RESOURCE_EXHAUSTED / 503，改用 GEMINI_VISION_FALLBACK_MODEL，例如 gemini-3-flash-preview。
+    - 若主模型因當天額度達上限而失敗，會在目前 Render process 中暫停嘗試到 Pacific time 下一次午夜重置後。
 
     注意：
     - 不寫入 prompt debug，避免圖片 bytes 或中繼解析污染除錯頁。
@@ -491,7 +579,6 @@ def ask_gemini_image_to_text(
 
     mime_type = str(mime_type or "image/jpeg").strip() or "image/jpeg"
     prompt = str(prompt or "請描述這張圖片。").strip()
-    model = str(model or GEMINI_MODEL).strip()
 
     config = types.GenerateContentConfig(
         safety_settings=GEMINI_SAFETY_SETTINGS,
@@ -513,49 +600,71 @@ def ask_gemini_image_to_text(
             )
         )
 
-    try:
-        with genai.Client(api_key=gemini_key) as client:
-            response = client.models.generate_content(
-                model=model,
-                contents=[
-                    types.Content(
-                        role="user",
-                        parts=[
-                            types.Part.from_text(text=prompt),
-                            image_part,
-                        ],
-                    )
-                ],
-                config=config,
+    models_to_try = _image_models_to_try(model)
+    last_error = None
+
+    for index, current_model in enumerate(models_to_try):
+        try:
+            with genai.Client(api_key=gemini_key) as client:
+                response = client.models.generate_content(
+                    model=current_model,
+                    contents=[
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part.from_text(text=prompt),
+                                image_part,
+                            ],
+                        )
+                    ],
+                    config=config,
+                )
+        except Exception as exc:
+            last_error = exc
+            print(
+                f"GEMINI IMAGE TO TEXT ERROR model={current_model} mime={mime_type}: {exc}",
+                flush=True,
             )
-    except Exception as exc:
+
+            # 429 / quota / 503 才自動切備援；其他錯誤不要盲目換模型，避免掩蓋格式或 key 問題。
+            if _is_retryable_or_quota_error(exc):
+                _disable_image_model_until_reset(current_model, reason="quota_or_unavailable")
+                continue
+
+            continue
+
+        debug_gemini_response(response, label=f"GEMINI IMAGE {current_model}")
+
+        text = _safe_response_text(response)
+
+        if text:
+            print(
+                f"GEMINI IMAGE TO TEXT OK model={current_model} len={len(text)}",
+                flush=True,
+            )
+            return text.strip()
+
+        block_reason = get_gemini_block_reason(response)
+
+        if block_reason:
+            print(
+                f"GEMINI IMAGE TO TEXT BLOCKED model={current_model} reason={block_reason}",
+                flush=True,
+            )
+            return GEMINI_BLOCKED
+
+        print(f"GEMINI IMAGE TO TEXT EMPTY model={current_model}", flush=True)
+
+        # 空回應時嘗試下一個模型。
+        if index < len(models_to_try) - 1:
+            continue
+
+    if last_error:
         print(
-            f"GEMINI IMAGE TO TEXT ERROR model={model} mime={mime_type}: {exc}",
+            f"GEMINI IMAGE TO TEXT FAILED all_models={models_to_try} last_error={last_error}",
             flush=True,
         )
-        return None
 
-    debug_gemini_response(response, label="GEMINI IMAGE")
-
-    text = _safe_response_text(response)
-
-    if text:
-        print(
-            f"GEMINI IMAGE TO TEXT OK model={model} len={len(text)}",
-            flush=True,
-        )
-        return text.strip()
-
-    block_reason = get_gemini_block_reason(response)
-
-    if block_reason:
-        print(
-            f"GEMINI IMAGE TO TEXT BLOCKED model={model} reason={block_reason}",
-            flush=True,
-        )
-        return GEMINI_BLOCKED
-
-    print(f"GEMINI IMAGE TO TEXT EMPTY model={model}", flush=True)
     return None
 
 

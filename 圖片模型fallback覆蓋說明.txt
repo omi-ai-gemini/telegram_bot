@@ -1,0 +1,23 @@
+Telemini 圖片解析模型 fallback 補丁
+
+覆蓋檔案：
+- config.py
+- services/gemini_service.py
+
+功能：
+- 圖片解析優先使用 gemini-3.5-flash
+- quota / rate limit / 503 時自動切到 gemini-3-flash-preview
+- 主模型出現 429 / RESOURCE_EXHAUSTED / 503 後，暫停到 Pacific time 下次午夜重置後再嘗試
+
+部署：
+python -m py_compile config.py services/gemini_service.py
+
+git add config.py services/gemini_service.py docs/圖片解析模型fallback更新說明.md 圖片模型fallback覆蓋說明.txt
+git commit -m "add image model fallback"
+git push origin main
+
+Render 環境變數：
+GEMINI_VISION_MODEL=gemini-3.5-flash
+GEMINI_VISION_FALLBACK_MODEL=gemini-3-flash-preview
+
+如果 Render 還有 GEMINI_VISION_MODEL=gemini-2.5-flash，請刪掉或改掉。
