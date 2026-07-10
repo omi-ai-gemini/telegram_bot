@@ -37,6 +37,8 @@ C:\Projects\telemini
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\圖片等待與模型切換修正說明.md`
+- `docs\圖片解析上限與無回應提示更新說明.md`
 - `docs\圖片解析模型fallback更新說明.md`
 - `docs\媒體輸入更新說明.md`
 - `docs\服務中心公告推播更新說明.md`
@@ -112,10 +114,12 @@ C:\Projects\telemini
 - `tools\project_snapshot.py`
 - `tools\python.txt`
 - `圖片模型fallback覆蓋說明.txt`
+- `圖片等待與模型切換覆蓋說明.txt`
 - `媒體輸入覆蓋說明.txt`
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `模式-使用說明.txt`
+- `補丁覆蓋說明.txt`
 - `開場-更新說明.txt`
 
 ## Python 路由總覽
@@ -171,6 +175,9 @@ C:\Projects\telemini
 - `get_bots()`
 - `add_user()`
 - `get_users()`
+
+### `config.py`
+- `_env_int()`
 
 ### `handlers\call_handler.py`
 - `_setting_fallback_text()`
@@ -459,12 +466,13 @@ C:\Projects\telemini
 - `_safe_response_text()`
 - `_extract_answer_and_thoughts()`
 - `_meta_result()`
+- `_image_parse_result()`
 - `_image_model_key()`
 - `_now_ts()`
 - `_seconds_until_next_pacific_midnight()`
 - `_is_image_model_temporarily_disabled()`
 - `_disable_image_model_until_reset()`
-- `_is_retryable_or_quota_error()`
+- `_classify_image_error()`
 - `_image_models_to_try()`
 - `ask_gemini_image_to_text()`
 - `ask_gemini()`
@@ -475,6 +483,7 @@ C:\Projects\telemini
 - `_missing_config()`
 - `send_unsupported_media_message()`
 - `_download_image()`
+- `_handle_media_parse_failure()`
 - `handle_photo_message()`
 - `handle_sticker_message()`
 - `run_photo_message_in_thread()`

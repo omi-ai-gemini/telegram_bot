@@ -153,10 +153,13 @@ conn.close()
 # config.py
 
 - 類型：.py
-- 行數：59
+- 行數：70
 
 ## imports
 - os
+
+## functions
+- _env_int
 
 ## preview
 ```text
@@ -172,6 +175,17 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 # 先用 3.5 Flash；若遇到 quota / rate limit / service unavailable，會在 gemini_service.py 自動切到 3 Flash Preview。
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
 GEMINI_VISION_FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK_MODEL", "gemini-3-flash-preview")
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return int(default)
+
+# 圖片解析單次輸出上限：盡量拉高，避免過度保守截斷。
+GEMINI_VISION_MAX_OUTPUT_TOKENS = _env_int("GEMINI_VISION_MAX_OUTPUT_TOKENS", 65536)
+# 靜態貼圖維持較小上限，避免不必要的額度消耗。
+GEMINI_STICKER_MAX_OUTPUT_TOKENS = _env_int("GEMINI_STICKER_MAX_OUTPUT_TOKENS", 500)
 
 # 如果你未來想保留預設備用KEY才留著
 #DEFAULT_GEMINI_KEY = os.getenv("DEFAULT_GEMINI_KEY")
@@ -1613,6 +1627,158 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 
 ================================================================================
 
+# docs\圖片等待與模型切換修正說明.md
+
+- 類型：.md
+- 行數：84
+
+## preview
+```text
+# 圖片等待 10 秒與圖片模型切換修正
+
+## 修改檔案
+
+- `handlers/message_handler.py`
+- `services/media_ai.py`
+- `services/gemini_service.py`
+
+## 圖片等待流程
+
+```text
+收到圖片
+→ 立即建立等待狀態
+→ 圖片模型解析
+→ 解析完成後等待 10 秒
+```
+
+- 解析期間收到文字：先暫存；圖片解析完成後立即合併送進文字模型。
+- 解析完成後 10 秒內收到文字：取消等待，圖片解析＋文字合併送進文字模型。
+- 10 秒內沒有文字：只把圖片解析結果送進文字模型。
+- 圖片附註 caption 會一起放進同一次輸入。
+- 圖片解析失敗時，如果期間有暫存文字，文字會恢復成一般聊天，不會被吞掉。
+
+## 3.5 Flash 切換修正
+
+原本問題：
+
+- `503 UNAVAILABLE / high demand` 被當成額度用完。
+- 因此 3.5 Flash 被停用到隔天，後續圖片直接走 3 Flash Preview。
+- 停用狀態原本只按模型記錄，不同使用者可能互相影響。
+
+修正後：
+
+```text
+503 / high demand
+→ 只重試 3.5 Flash
+→ 不停用、不切 3 Flash
+
+一般 RPM / TPM 429
+→ 只重試 3.5 Flash
+→ 不停用到隔天
+
+明確每日 RPD / per-day 額度用完
+→ 只停用該 API Key 的 3.5 Flash
+→ 切到 3 Flash Preview
+
+404 / 模型已下架
+→ 本次切到 3 Flash Preview
+→ 不記成每日額度用完
+```
+
+API Key 只使用 SHA-256 短雜湊識別，不會把原始 Key 寫進 log。
+
+## 重要 Log
+
+```text
+GEMINI IMAGE ROUTE
+GEMINI IMAGE ATTEMPT
+GEMINI IMAGE RETRY WAIT
+GEMINI IMAGE TO TEXT ERROR ... kind=high_demand
+GEMINI IMAGE PRIMARY FAILED NO FALLBACK ... reason=high_demand
+GEMINI IMAGE MODEL DISABLED UNTIL RESET ... reason=daily_quota
+GEMINI IMAGE FALLBACK SWITCH ... reason=daily_quota
+GEMINI IMAGE TO TEXT OK
+```
+
+圖片等待：
+
+```text
+MEDIA PHOTO PENDING CREATED
+MEDIA PHOTO PARSE START
+MEDIA PHOTO PARSE OK
+MEDIA PHOTO WAIT START
+MEDIA PHOTO TEXT BUFFERED
+MEDIA PHOTO WAIT CANCEL reason=text_received
+MEDIA PHOTO WAIT TIMEOUT
+MEDIA PHOTO DISPATCH
+```
+
+## 編譯測試
+...
+... 已省略 4 行
+```
+
+
+================================================================================
+
+# docs\圖片解析上限與無回應提示更新說明.md
+
+- 類型：.md
+- 行數：46
+
+## preview
+```text
+# 圖片解析上限與無回應提示更新說明
+
+## 覆蓋檔案
+
+- `config.py`
+- `services/gemini_service.py`
+- `services/media_ai.py`
+
+## 更新內容
+
+1. 圖片解析單次輸出上限
+- 新增 `GEMINI_VISION_MAX_OUTPUT_TOKENS`，預設 `65536`。
+- 靜態貼圖解析上限維持 `500`。
+
+2. 圖片解析失敗時不再沉默
+- 如果 Gemini 圖片解析沒有輸出文字，聊天室會明確提示：
+  - 圖片：`不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止`
+  - 貼圖：`不小心超過單次最大限制，消耗貼圖次數1次，文字回應一併停止`
+- 這種情況下不再繼續送進文字模型。
+
+3. 當日額度耗盡也會回提示
+- 若圖片解析模型額度耗盡，使用者傳圖時會直接收到提示，不會沒反應。
+
+4. 503 / 高負載不再整天誤判成額度用完
+- 只有 quota / 429 / RESOURCE_EXHAUSTED 會停用到下次 Pacific 午夜。
+- 503 / high demand 只會本次改試下一個模型。
+
+5. 新增 log
+- 會額外印出：
+  - 路由選擇
+  - 嘗試模型
+  - `MAX_TOKENS` 命中 log
+  - 全部模型失敗原因
+
+## 可選環境變數
+
+```text
+GEMINI_VISION_MAX_OUTPUT_TOKENS=65536
+GEMINI_STICKER_MAX_OUTPUT_TOKENS=500
+```
+
+## 測試
+
+```bash
+python -m py_compile config.py services/gemini_service.py services/media_ai.py
+```
+```
+
+
+================================================================================
+
 # docs\圖片解析模型fallback更新說明.md
 
 - 類型：.md
@@ -2052,7 +2218,7 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：127
+- 行數：142
 
 ## imports
 - services.ai_actions.handle_hidden_keyboard_message
@@ -2061,6 +2227,7 @@ def _send_script_opening(bot_id, chat_id):
 - services.call_ai.run_ai
 - services.call_ai.run_reply_recovery
 - services.commands.send_setting_menu
+- services.media_ai.queue_text_for_pending_photo
 - services.memory_view.send_memory_view_menu
 - services.prompt_debug.send_prompt_debug_link
 - services.telegram_service.send_message
@@ -2079,6 +2246,7 @@ from services.ai_actions import (
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
+from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
 from test_lab.service import handle_test_lab_message
@@ -2150,9 +2318,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
     if text in ["/prompt_debug_compare", "/prompt_compare", "/提示比對"]:
         send_prompt_debug_link(bot_id, chat_id, user_id, compare=True)
         return
-
 ...
-... 已省略 47 行
+... 已省略 62 行
 ```
 
 
@@ -4624,7 +4791,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：992
+- 行數：1138
 
 ## imports
 - config.GEMINI_MODEL
@@ -4655,12 +4822,13 @@ def save_encrypted_payload(
 - _safe_response_text
 - _extract_answer_and_thoughts
 - _meta_result
+- _image_parse_result
 - _image_model_key
 - _now_ts
 - _seconds_until_next_pacific_midnight
 - _is_image_model_temporarily_disabled
 - _disable_image_model_until_reset
-- _is_retryable_or_quota_error
+- _classify_image_error
 - _image_models_to_try
 - ask_gemini_image_to_text
 - ask_gemini
@@ -4749,7 +4917,7 @@ reasoning_note 規則：
 
 def _with_structured_reply_instructions(prompt):
 ...
-... 已省略 912 行
+... 已省略 1058 行
 ```
 
 
@@ -4758,14 +4926,15 @@ def _with_structured_reply_instructions(prompt):
 # services\media_ai.py
 
 - 類型：.py
-- 行數：227
+- 行數：279
 
 ## imports
 - config.GEMINI_MODEL
+- config.GEMINI_STICKER_MAX_OUTPUT_TOKENS
+- config.GEMINI_VISION_MAX_OUTPUT_TOKENS
 - config.GEMINI_VISION_MODEL
 - services.bot_router.get_bot_token
 - services.call_ai.run_ai
-- services.gemini_service.GEMINI_BLOCKED
 - services.gemini_service.ask_gemini_image_to_text
 - services.telegram_service.download_file_bytes
 - services.telegram_service.send_message
@@ -4777,6 +4946,7 @@ def _with_structured_reply_instructions(prompt):
 - _missing_config
 - send_unsupported_media_message
 - _download_image
+- _handle_media_parse_failure
 - handle_photo_message
 - handle_sticker_message
 - run_photo_message_in_thread
@@ -4787,15 +4957,26 @@ def _with_structured_reply_instructions(prompt):
 ```text
 import threading
 
-from config import GEMINI_MODEL, GEMINI_VISION_MODEL
+from config import (
+    GEMINI_MODEL,
+    GEMINI_VISION_MODEL,
+    GEMINI_VISION_MAX_OUTPUT_TOKENS,
+    GEMINI_STICKER_MAX_OUTPUT_TOKENS,
+)
 from services.bot_router import get_bot_token
 from services.call_ai import run_ai
-from services.gemini_service import GEMINI_BLOCKED, ask_gemini_image_to_text
+from services.gemini_service import ask_gemini_image_to_text
 from services.telegram_service import download_file_bytes, send_message
 from services.user_router import get_gemini_key
 
 
 UNSUPPORTED_MEDIA_TEXT = "程式尚不能對語音、動態貼圖、影片產生回覆"
+IMAGE_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止"
+IMAGE_PARSE_QUOTA_EXHAUSTED_TEXT = "今日圖片解析次數已用完，文字回應一併停止，請明天再試。"
+IMAGE_PARSE_UNAVAILABLE_TEXT = "圖片解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
+STICKER_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗貼圖次數1次，文字回應一併停止"
+STICKER_PARSE_QUOTA_EXHAUSTED_TEXT = "今日貼圖解析次數已用完，文字回應一併停止，請明天再試。"
+STICKER_PARSE_UNAVAILABLE_TEXT = "貼圖解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
 
 
 # =========================
@@ -4835,38 +5016,27 @@ def _download_image(bot_id, file_id):
     return item
 
 
-# =========================
-# 圖片分流：photo → 2.5 Flash 讀圖 → 3.1 Flash Lite 回覆
-# =========================
-def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None):
-    gemini_key = get_gemini_key(user_id)
-    bot_token = get_bot_token(bot_id)
+def _handle_media_parse_failure(bot_id, chat_id, result, *, media_type="photo"):
+    status = _text((result or {}).get("status")) or "error"
 
-    if not gemini_key or not bot_token:
-        _missing_config(bot_id, chat_id, user_id)
+    print(
+        f"MEDIA PARSE FAILURE media_type={media_type} status={status} "
+        f"model={_text((result or {}).get('model')) or '-'} "
+        f"finish_reason={_text((result or {}).get('finish_reason')) or '-'}",
+        flush=True,
+    )
+
+    if status == "blocked":
+        send_message(bot_id, chat_id, "圖片內容被安全阻擋，無法解析。" if media_type == "photo" else "貼圖內容被安全阻擋，無法解析。")
         return
 
-    photos = message.get("photo") or []
-
-    if not photos:
-        send_unsupported_media_message(bot_id, chat_id)
-        return
-
-    # Telegram photo 由小到大排序，最後一張通常最大。
-    photo = photos[-1] or {}
-    file_id = photo.get("file_id")
-    caption = _text(message.get("caption"))
-
-    media = _download_image(bot_id, file_id)
-
-    if not media:
-        send_message(bot_id, chat_id, "圖片讀取失敗，請再傳一次。")
-        return
-
-    prompt = f"""
-你是圖片解析器，只負責把使用者傳來的圖片轉成可供聊天模型理解的繁體中文描述。
+    if status == "quota_exhausted":
+        send_message(
+            bot_id,
+            chat_id,
+            IMAGE_PARSE_QUOTA_EXHAUSTED_TEXT if media_type == "photo" else STICKER_PARSE_QUOTA_EXHAUSTED_TEXT,
 ...
-... 已省略 147 行
+... 已省略 199 行
 ```
 
 
@@ -8803,6 +8973,38 @@ GEMINI_VISION_FALLBACK_MODEL=gemini-3-flash-preview
 
 ================================================================================
 
+# 圖片等待與模型切換覆蓋說明.txt
+
+- 類型：.txt
+- 行數：20
+
+## preview
+```text
+Telemini 圖片等待與模型切換修正補丁
+
+只覆蓋以下三個程式檔：
+- handlers/message_handler.py
+- services/media_ai.py
+- services/gemini_service.py
+
+附帶說明：
+- docs/圖片等待與模型切換修正說明.md
+
+更新內容：
+1. 圖片解析完成後等待 10 秒。
+2. 等待期間收到文字，與圖片解析結果合併後只回覆一次。
+3. 503 高流量只重試 3.5 Flash，不再誤切 3 Flash。
+4. 只有明確每日額度用完才切 3 Flash Preview。
+5. 每個人的 API Key 狀態分開，log 不顯示原始 Key。
+6. 新增圖片等待與模型路由 debug log。
+
+套用後執行：
+python -m py_compile handlers/message_handler.py services/media_ai.py services/gemini_service.py
+```
+
+
+================================================================================
+
 # 媒體輸入覆蓋說明.txt
 
 - 類型：.txt
@@ -8941,6 +9143,34 @@ Telemini 人物 / 劇本模式更新包
 - Render 需要有 BASE_URL 環境變數。
 - 第一次部署後，init_db() 會自動建立 chat_persona_settings 表。
 - Telegram 舊按鈕可能還是舊 callback，請重新輸入 /設定 產生新的按鈕。
+```
+
+
+================================================================================
+
+# 補丁覆蓋說明.txt
+
+- 類型：.txt
+- 行數：16
+
+## preview
+```text
+圖片解析上限與無回應提示補丁
+
+請覆蓋以下檔案：
+- config.py
+- services/gemini_service.py
+- services/media_ai.py
+
+附帶說明：
+- docs/圖片解析上限與無回應提示更新說明.md
+
+重點：
+1. 圖片解析單次輸出上限預設拉到 65536
+2. 靜態貼圖解析上限維持 500
+3. 沒有圖片解析文字輸出時，聊天室會主動提示，不再沉默
+4. 當日額度耗盡時，使用者傳圖也會收到提示
+5. 503 高負載不再直接停用到隔天
 ```
 
 
