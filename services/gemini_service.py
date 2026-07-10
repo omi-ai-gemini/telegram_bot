@@ -1,9 +1,7 @@
 from google import genai
 from google.genai import types
-import hashlib
 import json
 import re
-import time
 from services.style import build_prompt
 from services.prompt_debug import save_prompt_debug_log, update_prompt_debug_log
 from config import GEMINI_MODEL, GEMINI_VISION_FALLBACK_MODEL
@@ -464,33 +462,42 @@ def _meta_result(text, thoughts="", thought_source="empty", structured=False):
 
 
 
+def _image_parse_result(
+    ok=False,
+    status="error",
+    text="",
+    model="",
+    finish_reason="",
+    block_reason="",
+    error="",
+    tried_models=None,
+):
+    return {
+        "ok": bool(ok),
+        "status": str(status or "error"),
+        "text": str(text or "").strip(),
+        "model": str(model or "").strip(),
+        "finish_reason": str(finish_reason or "").strip(),
+        "block_reason": str(block_reason or "").strip(),
+        "error": str(error or "").strip(),
+        "tried_models": list(tried_models or []),
+    }
+
+
 # =========================
 # 圖片解析模型 fallback 狀態
 # =========================
-# 規則：
-# 1. 只有「明確的每日 RPD / per-day 額度耗盡」才把該使用者的主模型停到重置並切 fallback。
-# 2. 503 / high demand 只重試同一個主模型，不切 fallback、不記成每日額度耗盡。
-# 3. 一般 RPM / TPM 429 只短暫重試同一個主模型，不停用到隔天。
-# 4. 狀態用 API Key 的 SHA-256 短雜湊隔離；不保存、不列印原始 API Key。
+# 若 3.5 Flash 當天額度 / 速率達上限，先切到 fallback 模型，避免每張圖都先撞一次 429。
+# 注意：這是 Render process 記憶體狀態；Render 重啟後會重新嘗試主模型。
 _IMAGE_MODEL_FALLBACK_UNTIL = {}
-_IMAGE_PRIMARY_RETRY_DELAYS = (0.0, 1.0, 2.0)
-_IMAGE_FALLBACK_RETRY_DELAYS = (0.0, 1.0)
 
 
 def _image_model_key(model):
     return str(model or "").strip()
 
 
-def _image_api_key_id(gemini_key):
-    value = str(gemini_key or "").encode("utf-8")
-    return hashlib.sha256(value).hexdigest()[:12] if value else "missing"
-
-
-def _image_model_state_key(model, gemini_key):
-    return (_image_model_key(model), _image_api_key_id(gemini_key))
-
-
 def _now_ts():
+    import time
     return time.time()
 
 
@@ -506,241 +513,71 @@ def _seconds_until_next_pacific_midnight():
         next_midnight = datetime.combine(tomorrow, datetime.min.time(), tzinfo=tz)
         return max(60, int((next_midnight - now).total_seconds()))
     except Exception:
+        # fallback：最多記 12 小時，避免永久卡在備用模型。
         return 60 * 60 * 12
 
 
-def _is_image_model_temporarily_disabled(model, gemini_key):
-    state_key = _image_model_state_key(model, gemini_key)
-    disabled_until = _IMAGE_MODEL_FALLBACK_UNTIL.get(state_key, 0)
-
-    if disabled_until <= _now_ts():
-        _IMAGE_MODEL_FALLBACK_UNTIL.pop(state_key, None)
-        return False
-
-    return True
+def _is_image_model_temporarily_disabled(model):
+    disabled_until = _IMAGE_MODEL_FALLBACK_UNTIL.get(_image_model_key(model), 0)
+    return disabled_until > _now_ts()
 
 
-def _disable_image_model_until_reset(model, gemini_key, reason="daily_quota"):
+def _disable_image_model_until_reset(model, reason="quota"):
     model = _image_model_key(model)
     if not model:
-        return 0
+        return
 
-    state_key = _image_model_state_key(model, gemini_key)
     disabled_until = _now_ts() + _seconds_until_next_pacific_midnight()
-    _IMAGE_MODEL_FALLBACK_UNTIL[state_key] = disabled_until
-
+    _IMAGE_MODEL_FALLBACK_UNTIL[model] = disabled_until
     print(
-        "GEMINI IMAGE MODEL DISABLED UNTIL RESET "
-        f"model={model} key_id={state_key[1]} reason={reason} "
-        f"disabled_until={int(disabled_until)}",
+        f"GEMINI IMAGE MODEL DISABLED UNTIL RESET model={model} reason={reason} disabled_until={int(disabled_until)}",
         flush=True,
     )
-    return disabled_until
-
-
-def _image_error_status(error_text):
-    match = re.search(r"(?:code['\"\s:]+|\b)(4\d\d|5\d\d)\b", error_text or "")
-    return match.group(1) if match else "unknown"
 
 
 def _classify_image_error(exc):
     text = str(exc or "")
-    lower = text.lower()
-    status = _image_error_status(text)
 
-    daily_markers = [
-        "per day",
-        "per-day",
-        "requests per day",
-        "request per day",
-        "daily quota",
-        "daily limit",
-        "rpd",
-        "perday",
-        "generate_requests_per_day",
-        "generaterequestsperday",
+    quota_markers = [
+        "429",
+        "RESOURCE_EXHAUSTED",
+        "quota",
+        "Quota",
+        "rate limit",
+        "Rate limit",
+        "exceeded",
     ]
 
-    if any(marker in lower for marker in daily_markers) and (
-        "429" in lower
-        or "resource_exhausted" in lower
-        or "quota" in lower
-        or "exceeded" in lower
-    ):
-        return "daily_quota", status
+    unavailable_markers = [
+        "503",
+        "UNAVAILABLE",
+        "high demand",
+        "High demand",
+        "temporarily unavailable",
+    ]
 
-    if (
-        "503" in lower
-        or "unavailable" in lower
-        or "high demand" in lower
-        or "temporarily unavailable" in lower
-        or "try again later" in lower
-    ):
-        return "high_demand", status
+    if any(marker in text for marker in quota_markers):
+        return "quota"
 
-    if (
-        "429" in lower
-        or "resource_exhausted" in lower
-        or "rate limit" in lower
-        or "too many requests" in lower
-    ):
-        return "rate_limit", status
+    if any(marker in text for marker in unavailable_markers):
+        return "unavailable"
 
-    if (
-        "404" in lower
-        or "not_found" in lower
-        or "not found" in lower
-        or "no longer available" in lower
-    ):
-        return "model_not_found", status
-
-    if (
-        "401" in lower
-        or "403" in lower
-        or "api key not valid" in lower
-        or "permission_denied" in lower
-        or "unauthenticated" in lower
-    ):
-        return "auth", status
-
-    return "unknown", status
+    return "other"
 
 
-def _generate_image_description_once(
-    gemini_key,
-    model,
-    prompt,
-    image_part,
-    config,
-):
-    with genai.Client(api_key=gemini_key) as client:
-        return client.models.generate_content(
-            model=model,
-            contents=[
-                types.Content(
-                    role="user",
-                    parts=[
-                        types.Part.from_text(text=prompt),
-                        image_part,
-                    ],
-                )
-            ],
-            config=config,
-        )
+def _image_models_to_try(primary_model):
+    primary = _image_model_key(primary_model or GEMINI_MODEL)
+    fallback = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
 
+    models = []
 
-def _run_image_model_attempts(
-    gemini_key,
-    model,
-    role,
-    prompt,
-    image_part,
-    config,
-    mime_type,
-    retry_delays,
-):
-    key_id = _image_api_key_id(gemini_key)
-    last_error = None
-    last_kind = ""
+    if primary and not _is_image_model_temporarily_disabled(primary):
+        models.append(primary)
 
-    for attempt_index, delay in enumerate(retry_delays, start=1):
-        if delay > 0:
-            print(
-                "GEMINI IMAGE RETRY WAIT "
-                f"model={model} role={role} attempt={attempt_index}/{len(retry_delays)} "
-                f"delay_seconds={delay} key_id={key_id}",
-                flush=True,
-            )
-            time.sleep(delay)
+    if fallback and fallback not in models and not _is_image_model_temporarily_disabled(fallback):
+        models.append(fallback)
 
-        print(
-            "GEMINI IMAGE ATTEMPT "
-            f"model={model} role={role} attempt={attempt_index}/{len(retry_delays)} "
-            f"mime={mime_type} key_id={key_id}",
-            flush=True,
-        )
-
-        try:
-            response = _generate_image_description_once(
-                gemini_key=gemini_key,
-                model=model,
-                prompt=prompt,
-                image_part=image_part,
-                config=config,
-            )
-        except Exception as exc:
-            last_error = exc
-            kind, status = _classify_image_error(exc)
-            last_kind = kind
-
-            print(
-                "GEMINI IMAGE TO TEXT ERROR "
-                f"model={model} role={role} attempt={attempt_index}/{len(retry_delays)} "
-                f"kind={kind} status={status} mime={mime_type} key_id={key_id}: {exc}",
-                flush=True,
-            )
-
-            # 503/high demand 與一般 RPM/TPM 429 才重試同一個模型。
-            if kind in {"high_demand", "rate_limit"} and attempt_index < len(retry_delays):
-                continue
-
-            return {
-                "ok": False,
-                "kind": kind,
-                "error": exc,
-                "response": None,
-            }
-
-        debug_gemini_response(response, label=f"GEMINI IMAGE {model}")
-        text = _safe_response_text(response)
-
-        if text:
-            print(
-                "GEMINI IMAGE TO TEXT OK "
-                f"model={model} role={role} attempt={attempt_index}/{len(retry_delays)} "
-                f"len={len(text)} key_id={key_id}",
-                flush=True,
-            )
-            return {
-                "ok": True,
-                "kind": "success",
-                "text": text.strip(),
-                "response": response,
-            }
-
-        block_reason = get_gemini_block_reason(response)
-        if block_reason:
-            print(
-                "GEMINI IMAGE TO TEXT BLOCKED "
-                f"model={model} role={role} reason={block_reason} key_id={key_id}",
-                flush=True,
-            )
-            return {
-                "ok": False,
-                "kind": "blocked",
-                "text": GEMINI_BLOCKED,
-                "response": response,
-            }
-
-        print(
-            "GEMINI IMAGE TO TEXT EMPTY "
-            f"model={model} role={role} attempt={attempt_index}/{len(retry_delays)} "
-            f"key_id={key_id}",
-            flush=True,
-        )
-        return {
-            "ok": False,
-            "kind": "empty",
-            "response": response,
-        }
-
-    return {
-        "ok": False,
-        "kind": last_kind or "unknown",
-        "error": last_error,
-        "response": None,
-    }
-
+    return models
 
 # =========================
 # 圖片 / 靜態貼圖轉文字描述
@@ -755,26 +592,31 @@ def ask_gemini_image_to_text(
     max_output_tokens=512,
 ):
     """
-    圖片模型路由：
-    - 主要模型正常時只用主要模型。
-    - 503 / high demand：同模型重試，不切換。
-    - 一般 RPM / TPM 429：同模型重試，不切換。
-    - 明確每日 RPD 額度用完：該 API Key 的主要模型停到 Pacific 午夜，切 fallback。
-    - 主要模型 404 / 已下架：本次請求切 fallback，但不記成每日額度耗盡。
+    讓 Gemini 模型讀取圖片，回傳結構化結果。
+
+    流程：
+    - 先用 GEMINI_VISION_MODEL，例如 gemini-3.5-flash。
+    - 若遇到 quota / rate limit，改用 GEMINI_VISION_FALLBACK_MODEL，並把該模型停用到 Pacific time 下一次午夜重置。
+    - 若遇到 503 / 高負載，僅本次改試下一個模型，不做整天停用。
+
+    注意：
+    - 不寫入 prompt debug，避免圖片 bytes 或中繼解析污染除錯頁。
+    - 不印出圖片內容或解析結果，避免 Render log 留明文。
     """
-    if not gemini_key or not image_bytes:
-        return None
+    if not gemini_key:
+        return _image_parse_result(status="missing_key")
+
+    if not image_bytes:
+        return _image_parse_result(status="missing_image")
 
     mime_type = str(mime_type or "image/jpeg").strip() or "image/jpeg"
     prompt = str(prompt or "請描述這張圖片。").strip()
-    primary_model = _image_model_key(model or GEMINI_MODEL)
-    fallback_model = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
-    key_id = _image_api_key_id(gemini_key)
+    max_output_tokens = int(max_output_tokens or 512)
 
     config = types.GenerateContentConfig(
         safety_settings=GEMINI_SAFETY_SETTINGS,
         temperature=float(temperature),
-        max_output_tokens=int(max_output_tokens),
+        max_output_tokens=max_output_tokens,
     )
 
     try:
@@ -790,131 +632,186 @@ def ask_gemini_image_to_text(
             )
         )
 
-    primary_disabled = _is_image_model_temporarily_disabled(primary_model, gemini_key)
+    primary_model = _image_model_key(model or GEMINI_MODEL)
+    fallback_model = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
+    primary_disabled = _is_image_model_temporarily_disabled(primary_model)
+    fallback_disabled = _is_image_model_temporarily_disabled(fallback_model) if fallback_model else False
+    models_to_try = _image_models_to_try(model)
 
     print(
-        "GEMINI IMAGE ROUTE "
-        f"primary={primary_model} fallback={fallback_model or 'none'} "
-        f"primary_disabled={primary_disabled} mime={mime_type} key_id={key_id}",
+        f"GEMINI IMAGE ROUTE primary={primary_model} fallback={fallback_model or '-'} "
+        f"primary_disabled={primary_disabled} fallback_disabled={fallback_disabled} "
+        f"mime={mime_type} max_output_tokens={max_output_tokens}",
         flush=True,
     )
 
-    # 先前已確認這個使用者的主要模型每日額度用完。
-    if primary_disabled:
-        if not fallback_model or fallback_model == primary_model:
+    if not models_to_try:
+        print(
+            f"GEMINI IMAGE TO TEXT NO AVAILABLE MODELS primary={primary_model} fallback={fallback_model or '-'}",
+            flush=True,
+        )
+        return _image_parse_result(
+            status="quota_exhausted",
+            error="all_models_disabled_until_reset",
+            tried_models=[],
+        )
+
+    last_error = None
+    saw_quota_error = False
+    saw_unavailable_error = False
+    saw_empty_response = False
+    saw_max_tokens_without_text = False
+
+    for index, current_model in enumerate(models_to_try, start=1):
+        role = "primary" if current_model == primary_model else "fallback"
+
+        print(
+            f"GEMINI IMAGE ATTEMPT model={current_model} role={role} attempt={index}/{len(models_to_try)} mime={mime_type}",
+            flush=True,
+        )
+
+        try:
+            with genai.Client(api_key=gemini_key) as client:
+                response = client.models.generate_content(
+                    model=current_model,
+                    contents=[
+                        types.Content(
+                            role="user",
+                            parts=[
+                                types.Part.from_text(text=prompt),
+                                image_part,
+                            ],
+                        )
+                    ],
+                    config=config,
+                )
+        except Exception as exc:
+            last_error = exc
+            error_kind = _classify_image_error(exc)
+
             print(
-                "GEMINI IMAGE ROUTE FAILED reason=primary_daily_quota_no_fallback "
-                f"model={primary_model} key_id={key_id}",
+                f"GEMINI IMAGE TO TEXT ERROR model={current_model} role={role} mime={mime_type}: {exc}",
                 flush=True,
             )
-            return None
+
+            if error_kind == "quota":
+                saw_quota_error = True
+                _disable_image_model_until_reset(current_model, reason="quota_exhausted")
+                continue
+
+            if error_kind == "unavailable":
+                saw_unavailable_error = True
+                continue
+
+            continue
+
+        debug_gemini_response(response, label=f"GEMINI IMAGE {current_model}")
+
+        finish_reason = _enum_name(_extract_finish_reason(response)) or "UNKNOWN"
+        text = _safe_response_text(response)
+        block_reason = get_gemini_block_reason(response)
+
+        if finish_reason == "MAX_TOKENS":
+            print(
+                f"GEMINI IMAGE TO TEXT MAX TOKENS model={current_model} role={role} "
+                f"max_output_tokens={max_output_tokens} text_len={len(text or '')}",
+                flush=True,
+            )
+
+        if text:
+            print(
+                f"GEMINI IMAGE TO TEXT OK model={current_model} role={role} len={len(text)} finish_reason={finish_reason}",
+                flush=True,
+            )
+            return _image_parse_result(
+                ok=True,
+                status="ok",
+                text=text,
+                model=current_model,
+                finish_reason=finish_reason,
+                tried_models=models_to_try,
+            )
+
+        if block_reason:
+            print(
+                f"GEMINI IMAGE TO TEXT BLOCKED model={current_model} role={role} reason={block_reason}",
+                flush=True,
+            )
+            return _image_parse_result(
+                status="blocked",
+                model=current_model,
+                finish_reason=finish_reason,
+                block_reason=block_reason,
+                tried_models=models_to_try,
+            )
+
+        if finish_reason == "MAX_TOKENS":
+            saw_max_tokens_without_text = True
+            continue
 
         print(
-            "GEMINI IMAGE PRIMARY SKIP "
-            f"model={primary_model} reason=daily_quota_cache "
-            f"fallback={fallback_model} key_id={key_id}",
+            f"GEMINI IMAGE TO TEXT EMPTY model={current_model} role={role} finish_reason={finish_reason}",
             flush=True,
         )
-        fallback_result = _run_image_model_attempts(
-            gemini_key=gemini_key,
-            model=fallback_model,
-            role="fallback",
-            prompt=prompt,
-            image_part=image_part,
-            config=config,
-            mime_type=mime_type,
-            retry_delays=_IMAGE_FALLBACK_RETRY_DELAYS,
-        )
-        if fallback_result.get("kind") == "blocked":
-            return GEMINI_BLOCKED
-        return fallback_result.get("text") if fallback_result.get("ok") else None
+        saw_empty_response = True
 
-    primary_result = _run_image_model_attempts(
-        gemini_key=gemini_key,
-        model=primary_model,
-        role="primary",
-        prompt=prompt,
-        image_part=image_part,
-        config=config,
-        mime_type=mime_type,
-        retry_delays=_IMAGE_PRIMARY_RETRY_DELAYS,
-    )
-
-    if primary_result.get("ok"):
-        return primary_result.get("text")
-
-    primary_kind = primary_result.get("kind")
-    if primary_kind == "blocked":
-        return GEMINI_BLOCKED
-
-    # 503 與短時間 429 到這裡代表同模型重試仍失敗；明確不切 fallback。
-    if primary_kind in {"high_demand", "rate_limit"}:
+    if saw_quota_error:
         print(
-            "GEMINI IMAGE PRIMARY FAILED NO FALLBACK "
-            f"model={primary_model} reason={primary_kind} key_id={key_id}",
+            f"GEMINI IMAGE TO TEXT FAILED QUOTA models={models_to_try}",
             flush=True,
         )
-        return None
-
-    fallback_reason = ""
-
-    if primary_kind == "daily_quota":
-        _disable_image_model_until_reset(
-            primary_model,
-            gemini_key,
-            reason="daily_quota",
+        return _image_parse_result(
+            status="quota_exhausted",
+            error=str(last_error or "quota_exhausted"),
+            tried_models=models_to_try,
         )
-        fallback_reason = "daily_quota"
-    elif primary_kind == "model_not_found":
-        fallback_reason = "model_not_found"
-    else:
+
+    if saw_unavailable_error:
         print(
-            "GEMINI IMAGE PRIMARY FAILED NO FALLBACK "
-            f"model={primary_model} reason={primary_kind or 'unknown'} key_id={key_id}",
+            f"GEMINI IMAGE TO TEXT FAILED UNAVAILABLE models={models_to_try}",
             flush=True,
         )
-        return None
+        return _image_parse_result(
+            status="service_unavailable",
+            error=str(last_error or "service_unavailable"),
+            tried_models=models_to_try,
+        )
 
-    if not fallback_model or fallback_model == primary_model:
+    if saw_max_tokens_without_text:
         print(
-            "GEMINI IMAGE FALLBACK UNAVAILABLE "
-            f"from={primary_model} reason={fallback_reason} key_id={key_id}",
+            f"GEMINI IMAGE TO TEXT FAILED NO OUTPUT AT MAX TOKENS models={models_to_try} max_output_tokens={max_output_tokens}",
             flush=True,
         )
-        return None
+        return _image_parse_result(
+            status="max_tokens_no_response",
+            error="max_tokens_without_text",
+            finish_reason="MAX_TOKENS",
+            tried_models=models_to_try,
+        )
 
-    print(
-        "GEMINI IMAGE FALLBACK SWITCH "
-        f"from={primary_model} to={fallback_model} "
-        f"reason={fallback_reason} key_id={key_id}",
-        flush=True,
-    )
+    if saw_empty_response:
+        print(
+            f"GEMINI IMAGE TO TEXT FAILED EMPTY RESPONSE models={models_to_try}",
+            flush=True,
+        )
+        return _image_parse_result(
+            status="no_response",
+            error="empty_response",
+            tried_models=models_to_try,
+        )
 
-    fallback_result = _run_image_model_attempts(
-        gemini_key=gemini_key,
-        model=fallback_model,
-        role="fallback",
-        prompt=prompt,
-        image_part=image_part,
-        config=config,
-        mime_type=mime_type,
-        retry_delays=_IMAGE_FALLBACK_RETRY_DELAYS,
-    )
+    if last_error:
+        print(
+            f"GEMINI IMAGE TO TEXT FAILED all_models={models_to_try} last_error={last_error}",
+            flush=True,
+        )
+        return _image_parse_result(
+            status="error",
+            error=str(last_error),
+            tried_models=models_to_try,
+        )
 
-    if fallback_result.get("kind") == "blocked":
-        return GEMINI_BLOCKED
-
-    if fallback_result.get("ok"):
-        return fallback_result.get("text")
-
-    print(
-        "GEMINI IMAGE TO TEXT FAILED "
-        f"primary={primary_model} fallback={fallback_model} "
-        f"fallback_reason={fallback_reason} fallback_error={fallback_result.get('kind')} "
-        f"key_id={key_id}",
-        flush=True,
-    )
-    return None
+    return _image_parse_result(status="no_response", tried_models=models_to_try)
 
 
 # =========================

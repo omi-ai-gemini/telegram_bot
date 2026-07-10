@@ -11,6 +11,17 @@ GEMINI_MODEL = "gemini-3.1-flash-lite"
 GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
 GEMINI_VISION_FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK_MODEL", "gemini-3-flash-preview")
 
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except Exception:
+        return int(default)
+
+# 圖片解析單次輸出上限：盡量拉高，避免過度保守截斷。
+GEMINI_VISION_MAX_OUTPUT_TOKENS = _env_int("GEMINI_VISION_MAX_OUTPUT_TOKENS", 65536)
+# 靜態貼圖維持較小上限，避免不必要的額度消耗。
+GEMINI_STICKER_MAX_OUTPUT_TOKENS = _env_int("GEMINI_STICKER_MAX_OUTPUT_TOKENS", 500)
+
 # 如果你未來想保留預設備用KEY才留著
 #DEFAULT_GEMINI_KEY = os.getenv("DEFAULT_GEMINI_KEY")
 
