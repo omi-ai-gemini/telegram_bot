@@ -1,0 +1,15 @@
+Telemini AI Horde 遮罩生圖修正
+
+這次修正原本錯誤的普通 img2img 流程：
+1. 基準圖不再直接改成輸出長寬。
+2. 基準圖會保持原比例，等比例置中到 896×1152 最終畫布。
+3. 程式動態建立 inpainting source_mask。
+4. 白色區域交給模型依本輪訊息、動作、場景與標籤重繪。
+5. 臉部核心保留為身份錨點，遮罩邊緣羽化。
+6. payload 改為 source_processing=inpainting，移除 img2img denoising_strength。
+
+Render 仍只需：
+AI_HORDE_API_KEY_1
+AI_HORDE_API_KEY_2
+
+不需要新增圖片尺寸環境變數。

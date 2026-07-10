@@ -56,6 +56,9 @@ def submit_image_request(
     prompt: str,
     source_image_bytes: bytes,
     source_mime_type: str = "image/png",
+    source_mask_bytes: bytes = b"",
+    width: int = 896,
+    height: int = 1152,
 ) -> Dict[str, Any]:
     keys = _keys()
     if not keys:
@@ -64,10 +67,13 @@ def submit_image_request(
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
 
-    width = int(os.getenv("AI_HORDE_IMAGE_WIDTH", "896"))
-    height = int(os.getenv("AI_HORDE_IMAGE_HEIGHT", "1152"))
+    # 尺寸由程式固定為最終畫布；不再用環境變數改變，也不拉伸基準圖。
+    width = int(width)
+    height = int(height)
     steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
-    denoising = float(os.getenv("AI_HORDE_DENOISING_STRENGTH", "0.58"))
+
+    if not source_mask_bytes:
+        return {"ok": False, "message": "缺少人物重繪遮罩，無法送出 inpainting 任務"}
     allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
 
     payload = {
@@ -79,11 +85,11 @@ def submit_image_request(
             "width": width,
             "height": height,
             "n": 1,
-            "denoising_strength": denoising,
         },
         "models": [AI_HORDE_MODEL],
         "source_image": base64.b64encode(source_image_bytes).decode("ascii"),
-        "source_processing": "img2img",
+        "source_mask": base64.b64encode(source_mask_bytes).decode("ascii"),
+        "source_processing": "inpainting",
         "nsfw": allow_nsfw,
         "censor_nsfw": not allow_nsfw,
         "trusted_workers": False,

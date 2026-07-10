@@ -35,7 +35,7 @@
         <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
       </select><div class="hint">預設生圖會依性別自動套用系統男／女基準圖。聊天室圖片代號或本次上傳圖會覆蓋系統基準圖。</div></div>
       <div id="defaultFields">
-        <div class="field"><label>聊天室圖片代號或名稱（選填）</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 某某正面"><div class="hint">填入後會改用圖片庫中的指定圖片；不填就依性別使用系統基準圖。</div></div>
+        <div class="field"><label>聊天室圖片代號或名稱（選填）</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><div class="hint">填入後會改用圖片庫中的指定圖片；不填就依性別使用系統基準圖。</div></div>
       </div>
       <div id="customFields" class="hidden">
         <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。這張圖不會加入圖片庫。</div></div>

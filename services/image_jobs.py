@@ -15,6 +15,7 @@ from services.aihorde_service import (
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.database import get_conn
+from services.image_inpaint import prepare_inpainting_assets
 from services.image_store import download_image_asset, save_image_asset
 from services.telegram_service import send_message, send_photo_bytes
 
@@ -368,11 +369,28 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 return
 
             _update_job(job["id"], status="submitting", started_at=datetime.utcnow(), heartbeat_at=datetime.utcnow())
+            try:
+                inpaint = prepare_inpainting_assets(reference["bytes"])
+            except ValueError as exc:
+                _fail(job, str(exc))
+                return
+
+            print(
+                "IMAGE INPAINT PREPARED "
+                f"job_id={job['id']} original={inpaint.get('original_size')} "
+                f"fitted={inpaint.get('fitted_size')} offset={inpaint.get('fitted_offset')} "
+                f"output={inpaint.get('width')}x{inpaint.get('height')}",
+                flush=True,
+            )
+
             submitted = submit_image_request(
                 job_id=job["id"],
                 prompt=prompt,
-                source_image_bytes=reference["bytes"],
-                source_mime_type=reference.get("mime_type") or "image/png",
+                source_image_bytes=inpaint["source_image_bytes"],
+                source_mime_type=inpaint["source_mime_type"],
+                source_mask_bytes=inpaint["source_mask_bytes"],
+                width=inpaint["width"],
+                height=inpaint["height"],
             )
             if not submitted.get("ok"):
                 _fail(job, submitted.get("message") or "AI Horde 拒絕任務")

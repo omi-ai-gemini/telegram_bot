@@ -1,3 +1,4 @@
+import os
 import re
 import threading
 import time
@@ -77,10 +78,26 @@ def is_service_center_bot(bot_id):
 
 
 def _admin_ids():
+    """每次判定都重新讀取環境變數，避免模組載入時保留舊值。"""
+    raw_value = os.getenv("SERVICE_CENTER_ADMIN_IDS")
+
+    # 相容既有 config 匯入值；正常情況應以即時環境變數為準。
+    if raw_value is None:
+        raw_value = SERVICE_CENTER_ADMIN_IDS
+
+    normalized = (
+        str(raw_value or "")
+        .replace("，", ",")
+        .replace("；", ",")
+        .replace(";", ",")
+        .replace("\n", ",")
+    )
+
     values = []
 
-    for raw in str(SERVICE_CENTER_ADMIN_IDS or "").replace("，", ",").split(","):
-        value = raw.strip()
+    for raw in normalized.split(","):
+        # 相容使用者不小心把單引號或雙引號一起貼入 Value。
+        value = raw.strip().strip('"').strip("'")
         if value:
             values.append(value)
 
@@ -89,11 +106,18 @@ def _admin_ids():
 
 def is_service_center_admin(user_id):
     admins = _admin_ids()
+    current_user_id = _text_id(user_id)
+    allowed = bool(admins) and current_user_id in admins
 
-    if not admins:
-        return False
+    print(
+        "SERVICE CENTER ADMIN CHECK "
+        f"user_id={current_user_id!r} "
+        f"configured_admins={sorted(admins)!r} "
+        f"allowed={allowed}",
+        flush=True,
+    )
 
-    return _text_id(user_id) in admins
+    return allowed
 
 
 def _main_menu_markup(user_id=None):

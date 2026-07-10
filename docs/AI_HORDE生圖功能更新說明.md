@@ -10,6 +10,8 @@
 - 每張圖片另外建立 8 位數圖片代號，可重新命名、查詢、刪除圖片庫紀錄。
 - 網頁臨時上傳圖只存在目前 Render process 記憶體，不寫 DB、不加入圖片庫。
 - 自訂上傳圖 > 聊天室圖片代號 > 系統男／女基準圖。
+- 基準圖會等比例置入 896×1152 最終畫布，不會被硬拉長或壓寬。
+- 生圖改用 inpainting：背景、身體、服裝與姿勢由遮罩開放重繪，臉部保留身份錨點。
 - 性別必填：男／女，未指定其他參考圖時自動選擇對應系統基準圖。
 - 固定標籤單選，先放：浴衣、睡衣、禮服；保留補充提示詞。
 - 保留完全自訂提示詞模式。
@@ -36,10 +38,7 @@ APP_ENCRYPTION_SECRET=原本資料加密密鑰
 ```text
 AI_HORDE_MODEL=Flux.1-Schnell fp8 (Compact)
 AI_HORDE_ALLOW_NSFW=false
-AI_HORDE_IMAGE_WIDTH=1024
-AI_HORDE_IMAGE_HEIGHT=1792
 AI_HORDE_IMAGE_STEPS=4
-AI_HORDE_DENOISING_STRENGTH=0.58
 AI_HORDE_CLIENT_AGENT=TeleminiAI:1.0:telegram-image-generation
 ```
 
@@ -96,7 +95,9 @@ model: Flux.1-Schnell fp8 (Compact)
 sampler: k_euler
 steps: 4
 cfg_scale: 1
-source_processing: img2img
+source_processing: inpainting
+source_mask: 動態產生的人物／場景重繪遮罩
+output: 896×1152
 n: 1
 ```
 
@@ -108,7 +109,7 @@ python -m compileall -q .
 
 Telegram：
 
-1. 放入男女基準圖。
+1. 確認男女基準圖存在；程式會自動等比例置中並建立遮罩。
 2. Render 加入兩把 AI Horde Key 並重新部署。
 3. 切到劇場模式，讓 AI 回覆一則訊息。
 4. 點回覆下方 `📸`。

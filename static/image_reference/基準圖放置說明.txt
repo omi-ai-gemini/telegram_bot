@@ -13,3 +13,8 @@ Telemini 系統基準圖放置位置
 若要把檔案放到其他位置，可在 Render 設定：
 AI_HORDE_REFERENCE_MALE_PATH=/完整路徑/男圖.png
 AI_HORDE_REFERENCE_FEMALE_PATH=/完整路徑/女圖.png
+
+遮罩生圖規則：
+- 基準圖不需要先改成輸出尺寸。
+- 程式會保持原始長寬比例，等比例置中到 896×1152 最終畫布。
+- 程式會動態建立 inpainting 遮罩，不會把人物直接拉長或壓寬。
