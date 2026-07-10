@@ -1,23 +1,4 @@
-Telemini AI Horde 遮罩生圖修正補丁
+將本資料夾內的 requirements.txt、services、service_center、docs 直接覆蓋到 Telemini 專案根目錄。
 
-請把本資料夾內檔案依相同路徑覆蓋到目前專案。
-
-必須新增：
-services/image_inpaint.py
-
-必須覆蓋：
-services/aihorde_service.py
-services/image_jobs.py
-services/image_prompt.py
-templates/image_gen_form.html
-
-文件可選擇覆蓋：
-docs/AI_HORDE生圖功能更新說明.md
-static/image_reference/基準圖放置說明.txt
-
-Render 環境變數不需要新增尺寸設定。
-仍需保留：
-AI_HORDE_API_KEY_1
-AI_HORDE_API_KEY_2
-
-覆蓋後重新部署。
+覆蓋後提交 GitHub，讓 Render 重新 Build 與 Deploy。
+不需要新增任何 Pillow 環境變數。

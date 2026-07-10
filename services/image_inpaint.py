@@ -1,7 +1,27 @@
+from __future__ import annotations
+
 from io import BytesIO
 from typing import Any, Dict, Tuple
 
-from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageStat
+try:
+    from PIL import Image, ImageDraw, ImageFilter, ImageOps, ImageStat
+    _PIL_IMPORT_ERROR = None
+except ImportError as exc:
+    # 不讓缺少 Pillow 造成整個 Web Service 啟動失敗。
+    # requirements.txt 正常安裝後不會進到這裡；若安裝異常，只停用生圖遮罩流程。
+    Image = None
+    ImageDraw = None
+    ImageFilter = None
+    ImageOps = None
+    ImageStat = None
+    _PIL_IMPORT_ERROR = exc
+
+
+def _require_pillow() -> None:
+    if _PIL_IMPORT_ERROR is not None:
+        raise RuntimeError(
+            "生圖遮罩功能缺少 Pillow 圖片處理套件，請確認 requirements.txt 已包含 Pillow==12.3.0"
+        ) from _PIL_IMPORT_ERROR
 
 
 # 最終輸出畫布尺寸。基準圖只會等比例放入，不會拉伸。
@@ -83,6 +103,8 @@ def prepare_inpainting_assets(source_image_bytes: bytes) -> Dict[str, Any]:
     2. 基準圖等比例縮放後置中，絕不改變人物長寬比例。
     3. 身體、衣服、姿勢與背景允許依 prompt 重繪；臉部保留身份錨點。
     """
+    _require_pillow()
+
     if not source_image_bytes:
         raise ValueError("基準圖內容為空")
 

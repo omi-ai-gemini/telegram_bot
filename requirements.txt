@@ -4,3 +4,4 @@ gunicorn
 google-genai
 psycopg2-binary
 cryptography
+Pillow==12.3.0
