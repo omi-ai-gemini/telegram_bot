@@ -6,6 +6,7 @@ from services.ai_actions import (
 from services.call_ai import run_ai, run_reply_recovery
 from services.commands import send_setting_menu
 from services.memory_view import send_memory_view_menu
+from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
 from test_lab.service import handle_test_lab_message
@@ -122,6 +123,20 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
     )
 
     if handled:
+        return
+
+    # =========================
+    # 圖片等待 10 秒：後續一般文字先交給圖片緩衝器
+    # - 指令、hidden keyboard、修改 AI 文字仍維持上方優先級
+    # - 被接收的文字不會先單獨呼叫 Gemini，也不會重複寫入記憶
+    # =========================
+    if queue_text_for_pending_photo(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        user_text=user_text,
+        message_id=message_id,
+    ):
         return
 
     run_ai(user_id, bot_id, chat_id, user_text, user_message_id=message_id)
