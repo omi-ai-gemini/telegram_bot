@@ -10,6 +10,7 @@ from routes.admin import admin_bp
 from routes.setting import setting_bp
 from routes.thought import thought_bp
 from routes.prompt_debug import prompt_debug_bp
+from routes.image_gen import image_gen_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
@@ -21,6 +22,8 @@ from service_center.handler import (
 from service_center.telegram import setup_service_center_webhook
 from service_center.db import init_service_center_db
 from service_center.scheduler import start_service_center_announcement_scheduler
+from services.image_store import init_image_tables
+from services.image_jobs import recover_active_image_jobs
 from services.media_ai import (
     run_photo_message_in_thread,
     run_sticker_message_in_thread,
@@ -38,6 +41,7 @@ app.register_blueprint(setting_bp)
 app.register_blueprint(thought_bp)
 app.register_blueprint(prompt_debug_bp)
 app.register_blueprint(test_lab_bp)
+app.register_blueprint(image_gen_bp)
 
 db_initialized = False
 
@@ -48,6 +52,12 @@ def init_once():
         init_db()
         init_test_lab_db()
         init_service_center_db()
+        init_image_tables()
+
+        try:
+            recover_active_image_jobs()
+        except Exception as exc:
+            print("IMAGE JOB RECOVERY INIT ERROR:", exc, flush=True)
 
         # 服務中心 bot 使用環境變數 token，不進 DB。
         # 第一次 request 時自動把 webhook 接到 BASE_URL/webhook/<SERVICE_CENTER_BOT_ID>。

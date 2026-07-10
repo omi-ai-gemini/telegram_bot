@@ -1,0 +1,15 @@
+Telemini 系統基準圖放置位置
+
+請把寫實風男、女基準圖分別放成：
+- male_reference.png
+- female_reference.png
+
+也支援 jpg / jpeg / webp；檔名主體必須是：
+- male_reference
+- female_reference
+
+預設資料夾：static/image_reference/
+
+若要把檔案放到其他位置，可在 Render 設定：
+AI_HORDE_REFERENCE_MALE_PATH=/完整路徑/男圖.png
+AI_HORDE_REFERENCE_FEMALE_PATH=/完整路徑/女圖.png

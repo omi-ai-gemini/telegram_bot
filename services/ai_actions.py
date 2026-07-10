@@ -39,6 +39,7 @@ from services.telegram_service import delete_message, edit_message_text, send_me
 from services.time_context import get_current_time_context
 from services.user_router import get_gemini_key
 from services.setting_sessions import save_setting_menu_session
+from services.image_actions import get_image_generation_url, send_hidden_image_link
 
 
 EDIT_PENDING_MINUTES = 5
@@ -112,6 +113,7 @@ HIDDEN_KEYBOARD_ACTIONS = {
     "🧠": "thought",
     "▶️": "continue",
     "💾": "summary",
+    "📸": "image",
     HIDDEN_KEYBOARD_CLOSE_TEXT: "close",
     "❌ 關閉功能鍵盤": "close",
 }
@@ -143,6 +145,10 @@ def _should_show_ai_buttons_for_mode(mode):
 
 
 def _should_show_ai_buttons(user_id, bot_id, chat_id):
+    # 群組仍不顯示整排修改／重跑按鈕；群組生圖改由 /hidden 的 📸 入口使用。
+    if _is_group_chat(chat_id):
+        return False
+
     try:
         settings = get_character_settings(bot_id, chat_id, user_id=user_id)
         return _should_show_ai_buttons_for_mode(settings.get("mode", "聊天模式"))
@@ -155,15 +161,15 @@ def _hidden_keyboard_key(bot_id, chat_id, user_id):
     return (_text_id(bot_id), _text_id(chat_id), _text_id(user_id))
 
 
-def _hidden_keyboard_markup():
-    """
-    /hidden 專用 Reply Keyboard。
-
-    這種鍵盤會出現在輸入框下面，不會掛在任何聊天訊息下方。
-    按下按鈕後 Telegram 會送出同文字訊息，所以 message_handler 需要攔截並刪除。
-    """
-    return {
-        "keyboard": [
+def _hidden_keyboard_markup(is_group=False):
+    """/hidden 專用 Reply Keyboard。群組先只開放生圖與關閉。"""
+    if is_group:
+        keyboard = [
+            [{"text": "📸"}],
+            [{"text": HIDDEN_KEYBOARD_CLOSE_TEXT}],
+        ]
+    else:
+        keyboard = [
             [
                 {"text": "🗣️"},
                 {"text": "✏️"},
@@ -173,9 +179,13 @@ def _hidden_keyboard_markup():
             ],
             [
                 {"text": "💾"},
+                {"text": "📸"},
             ],
             [{"text": HIDDEN_KEYBOARD_CLOSE_TEXT}],
-        ],
+        ]
+
+    return {
+        "keyboard": keyboard,
         "resize_keyboard": True,
         "one_time_keyboard": False,
         "selective": True,
@@ -382,11 +392,17 @@ def get_ai_thought_url(action_id):
 
 def build_ai_action_keyboard(action_id):
     thought_url = get_ai_thought_url(action_id)
+    image_url = get_image_generation_url(action_id)
 
     thought_button = (
         {"text": "🧠", "url": thought_url}
         if thought_url
         else {"text": "🧠", "callback_data": f"ai_thought_missing:{action_id}"}
+    )
+    image_button = (
+        {"text": "📸", "url": image_url}
+        if image_url
+        else {"text": "📸", "callback_data": f"ai_image_missing:{action_id}"}
     )
 
     return {
@@ -396,15 +412,13 @@ def build_ai_action_keyboard(action_id):
             {"text": "🔁", "callback_data": f"ai_regen:{action_id}"},
             thought_button,
             {"text": "▶️", "callback_data": f"ai_continue:{action_id}"},
+            image_button,
         ]]
     }
 
 
 def _get_latest_ai_action_id(bot_id, chat_id, user_id):
     """取得目前聊天室最後一筆可操作的 AI action。"""
-    if _is_group_chat(chat_id):
-        return None
-
     conn = get_conn()
 
     try:
@@ -443,9 +457,6 @@ def _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id):
     這種舊 action 可能沒有 telegram_message_id，所以「✏️ / 🔁」可能無法操作舊訊息，
     但「🗣️ / 🧠 / ▶️」仍有機會使用。
     """
-    if _is_group_chat(chat_id):
-        return None
-
     scope = "group" if _is_group_chat(chat_id) else "private"
     conn = get_conn()
 
@@ -524,13 +535,7 @@ def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None)
     - 開啟提示會延遲刪除，但鍵盤會留在輸入框下方。
     - 使用者按鍵後，該按鍵文字訊息會被刪除，並自動收起鍵盤。
     """
-    if _is_group_chat(chat_id):
-        if source_message_id:
-            delete_message(bot_id, chat_id, source_message_id)
-        result = send_message(bot_id, chat_id, "群組暫不開放 /hidden 開發者功能")
-        _delete_message_later(bot_id, chat_id, _extract_telegram_message_id(result), delay_seconds=3)
-        return False
-
+    is_group = _is_group_chat(chat_id)
     action_id = _get_latest_ai_action_id(bot_id, chat_id, user_id)
 
     if not action_id:
@@ -554,8 +559,8 @@ def send_hidden_ai_action_menu(bot_id, chat_id, user_id, source_message_id=None)
     result = send_message(
         bot_id,
         chat_id,
-        "開發者功能鍵盤已開啟",
-        reply_markup=_hidden_keyboard_markup(),
+        "群組生圖功能鍵盤已開啟" if is_group else "開發者功能鍵盤已開啟",
+        reply_markup=_hidden_keyboard_markup(is_group=is_group),
     )
     notice_message_id = _extract_telegram_message_id(result)
 
@@ -599,9 +604,7 @@ def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_
     if message_id:
         delete_message(bot_id, chat_id, message_id)
 
-    if _is_group_chat(chat_id):
-        return True
-
+    is_group = _is_group_chat(chat_id)
     session = _pop_hidden_keyboard_session(bot_id, chat_id, user_id)
 
     if not session or session.get("expired"):
@@ -616,6 +619,10 @@ def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_
 
     action_id = session.get("action_id")
 
+    if is_group and action_type not in {"image", "close"}:
+        _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
+        return True
+
     # 關閉鍵盤只收掉鍵盤與臨時訊息，不做 AI 操作。
     if action_type == "close":
         _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
@@ -623,6 +630,10 @@ def handle_hidden_keyboard_message(user_id, bot_id, chat_id, user_text, message_
 
     # 其他功能鍵：用完就自動收起鍵盤。
     _close_hidden_keyboard(bot_id, chat_id, user_id, session=session)
+
+    if action_type == "image":
+        send_hidden_image_link(bot_id, chat_id, action_id)
+        return True
 
     if action_type == "reply":
         # 🗣️ 是「除錯回覆」：必須以目前聊天室最後一筆短期記憶為準。
@@ -853,9 +864,6 @@ def create_ai_message_action(
     generation_type="reply",
 ):
     """建立 AI 訊息與 Telegram 訊息按鈕的對應資料，回傳 action_id。"""
-    if _is_group_chat(chat_id):
-        return None
-
     conn = get_conn()
 
     try:

@@ -9,6 +9,7 @@ from services.ai_actions import (
 )
 from services.call_ai import run_reply_recovery, run_blocked_reply_retry
 from services.memory_view import handle_memory_view_callback
+from services.image_jobs import cancel_job_for_user
 from services.commands import (
     send_character_menu,
     send_setting_menu,
@@ -208,6 +209,38 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         )
 
         run_continue_in_thread(user_id, bot_id, chat_id, action_id)
+        return
+
+    # =========================
+    # 圖片生成：取消任務 / 生圖連結缺失提示
+    # =========================
+    if isinstance(user_text, str) and user_text.startswith("image_cancel:"):
+        job_id = user_text.split(":", 1)[1]
+        result = cancel_job_for_user(job_id, user_id, bot_id, chat_id)
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text=result.get("message") or ("已送出取消要求" if result.get("ok") else "取消失敗"),
+            show_alert=not bool(result.get("ok")),
+        )
+        return
+
+    if isinstance(user_text, str) and user_text.startswith("ai_image_missing:"):
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="生圖設定連結尚未建立，請確認 BASE_URL / SETTING_LINK_SECRET",
+            show_alert=True,
+        )
+        return
+
+    if user_text == "image_library_missing":
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="圖片管理連結尚未建立，請確認 BASE_URL / SETTING_LINK_SECRET",
+            show_alert=True,
+        )
         return
 
     # =========================
@@ -816,7 +849,7 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
 
         answer_callback_query(bot_id, callback_id)
 
-        send_setting_menu(bot_id, chat_id, message_id)
+        send_setting_menu(bot_id, chat_id, message_id, user_id=user_id)
         return
 
     if user_text == "back_character":

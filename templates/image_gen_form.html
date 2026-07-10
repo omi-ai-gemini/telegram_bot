@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Telemini 生圖設定</title>
+  <style>
+    *{box-sizing:border-box} body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#fff}
+    .page{max-width:720px;margin:0 auto}.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+    h1{margin:0 0 8px;font-size:26px}.desc{color:rgba(255,255,255,.72);line-height:1.7;font-size:14px;margin:0 0 18px}
+    .notice,.error,.success{padding:13px 14px;border-radius:14px;margin:12px 0;line-height:1.6;font-size:14px}.notice{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.35);color:#fde68a}.error{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.35);color:#fecaca}.success{background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
+    .section{margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12)}.section-title{font-weight:700;font-size:18px;margin-bottom:14px}.field{margin-bottom:16px}label{display:block;margin-bottom:8px;font-size:14px;color:rgba(255,255,255,.86)}
+    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:130px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
+    .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none}
+    button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
+  </style>
+</head>
+<body>
+<div class="page"><div class="card">
+  <h1>📸 生圖設定</h1>
+  <p class="desc">送出後會在背景執行，不影響聊天室繼續對話。每位使用者最多同時保留 3 張排隊或生成中的圖片。</p>
+  <div class="notice">隱私提醒：圖片與提示詞會送往 AI Horde 的社群運算節點處理，不適合放入機密資料。網頁臨時上傳的圖片只供本次任務使用，不會加入 Telemini 圖片庫；任務送出後不會永久保存。</div>
+  {% if error %}<div class="error">{{ error }}</div>{% endif %}
+  {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
+
+  <form method="post" enctype="multipart/form-data" id="genForm">
+    <input type="hidden" name="token" value="{{ token }}">
+
+    <div class="section"><div class="section-title">1. 生圖來源</div>
+      <div class="field"><label>模式</label><div class="radio-row">
+        <label class="radio"><input type="radio" name="generation_mode" value="default" {% if form.get('generation_mode','default')!='custom' %}checked{% endif %}>預設生圖</label>
+        <label class="radio"><input type="radio" name="generation_mode" value="custom" {% if form.get('generation_mode')=='custom' %}checked{% endif %}>自訂上傳圖</label>
+      </div></div>
+      <div class="field"><label>人物性別（必填）</label><select name="gender" required>
+        <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
+      </select><div class="hint">預設生圖會依性別自動套用系統男／女基準圖。聊天室圖片代號或本次上傳圖會覆蓋系統基準圖。</div></div>
+      <div id="defaultFields">
+        <div class="field"><label>聊天室圖片代號或名稱（選填）</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 宇芊正面"><div class="hint">填入後會改用圖片庫中的指定圖片；不填就依性別使用系統基準圖。</div></div>
+      </div>
+      <div id="customFields" class="hidden">
+        <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。這張圖不會加入圖片庫。</div></div>
+      </div>
+    </div>
+
+    <div class="section"><div class="section-title">2. 提示詞</div>
+      <div class="field"><label>提示詞方式</label><div class="radio-row">
+        <label class="radio"><input type="radio" name="prompt_mode" value="tag" {% if form.get('prompt_mode','tag')!='custom' %}checked{% endif %}>本輪訊息＋固定標籤</label>
+        <label class="radio"><input type="radio" name="prompt_mode" value="custom" {% if form.get('prompt_mode')=='custom' %}checked{% endif %}>完全自訂提示詞</label>
+      </div></div>
+
+      <div id="tagFields">
+        <div class="field"><label>使用本輪哪一則訊息</label><select name="source_choice">
+          <option value="user" {% if form.get('source_choice')=='user' %}selected{% endif %}>使用者訊息</option>
+          <option value="ai" {% if form.get('source_choice','ai')=='ai' %}selected{% endif %}>AI 訊息</option>
+        </select></div>
+        <div class="field"><label>使用者訊息預覽</label><div class="preview">{{ context.get('user_text') or '沒有找到使用者訊息' }}</div></div>
+        <div class="field"><label>AI 訊息預覽</label><div class="preview">{{ context.get('assistant_text') or '沒有找到 AI 訊息' }}</div></div>
+        <div class="field"><label>固定標籤（單選）</label><select name="fixed_tag"><option value="">不使用固定標籤</option>{% for tag in fixed_tags %}<option value="{{ tag }}" {% if form.get('fixed_tag')==tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}</select></div>
+        <div class="field"><label>補充提示詞（選填）</label><textarea name="supplement_prompt" placeholder="固定標籤以外想補充的服裝、動作、場景或構圖">{{ form.get('supplement_prompt','') }}</textarea></div>
+      </div>
+
+      <div id="customPromptFields" class="hidden">
+        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成的圖片">{{ form.get('custom_prompt','') }}</textarea></div>
+      </div>
+      <div class="hint">程式會在提示詞下方直接加入「先整理訊息內容」的專用生圖任務指令，整個整理與生圖流程不會呼叫 Gemini。</div>
+    </div>
+
+    <div class="section"><button type="submit" id="submitBtn">送出生圖任務</button><div class="countdown" id="countdown"></div></div>
+  </form>
+</div></div>
+<script>
+  const exp={{ expires_at|int }}*1000;
+  const modeInputs=[...document.querySelectorAll('input[name="generation_mode"]')];
+  const promptInputs=[...document.querySelectorAll('input[name="prompt_mode"]')];
+  function refresh(){
+    const mode=document.querySelector('input[name="generation_mode"]:checked').value;
+    document.getElementById('defaultFields').classList.toggle('hidden',mode==='custom');
+    document.getElementById('customFields').classList.toggle('hidden',mode!=='custom');
+    const pm=document.querySelector('input[name="prompt_mode"]:checked').value;
+    document.getElementById('tagFields').classList.toggle('hidden',pm==='custom');
+    document.getElementById('customPromptFields').classList.toggle('hidden',pm!=='custom');
+  }
+  modeInputs.forEach(x=>x.addEventListener('change',refresh));promptInputs.forEach(x=>x.addEventListener('change',refresh));refresh();
+  function tick(){const left=Math.max(0,Math.floor((exp-Date.now())/1000));const m=Math.floor(left/60),s=left%60;document.getElementById('countdown').textContent=left?`連結剩餘 ${m}:${String(s).padStart(2,'0')}`:'連結已失效，請回 Telegram 重新開啟';document.getElementById('submitBtn').disabled=!left;}tick();setInterval(tick,1000);
+</script>
+</body></html>

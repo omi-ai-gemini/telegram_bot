@@ -1,0 +1,32 @@
+Telemini AI Horde 生圖功能檢查結果
+
+本修正版以 telemini(2).zip / commit 3b90844 medai-v2 為底包重新套用。
+
+已檢查：
+1. 全專案 Python compileall 通過。
+2. main.py 可正常 import。
+3. 生圖 Blueprint 路由已註冊：
+   - /image/generate
+   - /setting/images
+   - /setting/images/preview/<identifier>
+   - /setting/images/rename
+   - /setting/images/delete
+4. Jinja 模板解析通過。
+5. 專案內部 import 對照通過。
+6. 20 分鐘生圖連結 token 建立與驗證通過。
+7. 固定標籤、補充提示詞、完全自訂提示詞組裝通過。
+8. AI Horde 兩把 Key 依任務編號輪替測試通過。
+9. Flux.1-Schnell fp8 (Compact) payload：1024×1792、1 張、k_euler、4 steps、CFG 1。
+10. 單一使用者最多 3 個 active 任務，由 PostgreSQL advisory lock 防連點競態。
+11. 取消按鈕、20 分鐘超時與失敗訊息流程已接入。
+12. 使用者圖片與 AI 生成圖片存 Telegram file_id；網頁臨時上傳圖不寫 DB。
+
+媒體修復整合：
+- 採用最新 services/media_ai.py 的完整圖片等待流程。
+- 圖片解析期間或完成後 10 秒內的文字會合併為同一次輸入。
+- 同時保留生圖功能新增的圖片自動入庫，不會因覆蓋修復檔而遺失。
+
+基準圖已包含：
+static/image_reference/male_reference.png
+static/image_reference/female_reference.png
+尺寸皆為 1024×1792。

@@ -7,6 +7,7 @@ from services.bot_router import get_bot_token
 from services.character import get_character_mode, get_script_opening_status
 from services.setting_auth import create_setting_token, is_group_chat
 from services.setting_sessions import save_setting_menu_session_async
+from services.image_actions import get_image_library_url
 
 # =========================
 # Telegram API POST
@@ -196,6 +197,13 @@ def send_setting_menu(
     opening_status = get_script_opening_status(bot_id, chat_id)
     start_script_text = opening_status.get("button_text", "▶️ 開始劇本 | 無開場白")
 
+    image_button = [{"text": "🖼 圖片管理", "callback_data": "image_library_missing"}]
+
+    if user_id is not None:
+        image_url = get_image_library_url(user_id, bot_id, chat_id)
+        if image_url:
+            image_button = [{"text": "🖼 圖片管理", "url": image_url}]
+
     result = _send_or_edit(
         bot_id,
         chat_id,
@@ -205,6 +213,7 @@ def send_setting_menu(
             [{"text": "👤 人物設定", "callback_data": "character_setting"}],
             [{"text": "🎨 回覆風格", "callback_data": "reply_style_setting"}],
             [{"text": "🧠 記憶設定", "callback_data": "memory_setting"}],
+            image_button,
             [{"text": start_script_text, "callback_data": "start_script"}],
             [{"text": "❌ 結束設定", "callback_data": "close_setting_menu"}]
         ]

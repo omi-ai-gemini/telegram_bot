@@ -1,3 +1,4 @@
+import json
 import requests
 from config import TELEGRAM_API_BASE
 from services.bot_router import get_bot_token
@@ -49,6 +50,44 @@ def send_message(bot_id, chat_id, text, reply_markup=None):
         payload["reply_markup"] = reply_markup
 
     return _telegram_post(bot_id, "sendMessage", payload, timeout=30)
+
+
+# =========================
+# Telegram 傳送圖片 bytes
+# - 成功回傳 Telegram JSON
+# - 不附 caption，符合生圖完成後只傳圖片的需求
+# =========================
+def send_photo_bytes(bot_id, chat_id, image_bytes, filename="image.png", mime_type="image/png", reply_markup=None):
+    token = get_bot_token(bot_id)
+
+    if not token:
+        print("X token not found")
+        return None
+
+    url = f"{TELEGRAM_API_BASE}/bot{token}/sendPhoto"
+    data = {"chat_id": str(chat_id)}
+
+    if reply_markup:
+        data["reply_markup"] = json.dumps(reply_markup, ensure_ascii=False)
+
+    files = {
+        "photo": (str(filename or "image.png"), image_bytes, str(mime_type or "image/png")),
+    }
+
+    try:
+        res = _TELEGRAM_SESSION.post(url, data=data, files=files, timeout=120)
+    except Exception as exc:
+        print("TELEGRAM sendPhoto REQUEST ERROR:", exc, flush=True)
+        return None
+
+    if not res.ok:
+        print("TELEGRAM sendPhoto ERROR:", res.text[:1000], flush=True)
+        return None
+
+    try:
+        return res.json()
+    except Exception:
+        return {"ok": True}
 
 
 # =========================

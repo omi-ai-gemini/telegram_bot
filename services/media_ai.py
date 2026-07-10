@@ -11,6 +11,7 @@ from config import (
 from services.bot_router import get_bot_token
 from services.call_ai import run_ai
 from services.gemini_service import ask_gemini_image_to_text
+from services.image_store import save_incoming_photo_message
 from services.telegram_service import download_file_bytes, send_message
 from services.user_router import get_gemini_key
 
@@ -428,6 +429,18 @@ def queue_text_for_pending_photo(user_id, bot_id, chat_id, user_text, message_id
 # 圖片分流：3.5 Flash 讀圖 → 等待 10 秒 → 3.1 Flash Lite 回覆
 # =========================
 def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pending_token=None):
+    # 圖片一進聊天室就先保存 Telegram file_id / file_unique_id。
+    # 即使後續 Gemini 圖片解析失敗或使用者尚未設定 Gemini Key，圖片庫仍保留。
+    try:
+        saved = save_incoming_photo_message(user_id, bot_id, chat_id, message)
+        if saved:
+            print(
+                f"CHAT IMAGE SAVED code={saved.get('image_code')} source=user_upload",
+                flush=True,
+            )
+    except Exception as exc:
+        print("CHAT IMAGE AUTO SAVE ERROR:", exc, flush=True)
+
     gemini_key = get_gemini_key(user_id)
     bot_token = get_bot_token(bot_id)
 
