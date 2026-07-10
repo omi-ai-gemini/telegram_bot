@@ -64,8 +64,8 @@ def submit_image_request(
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
 
-    width = int(os.getenv("AI_HORDE_IMAGE_WIDTH", "1024"))
-    height = int(os.getenv("AI_HORDE_IMAGE_HEIGHT", "1792"))
+    width = int(os.getenv("AI_HORDE_IMAGE_WIDTH", "896"))
+    height = int(os.getenv("AI_HORDE_IMAGE_HEIGHT", "1152"))
     steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
     denoising = float(os.getenv("AI_HORDE_DENOISING_STRENGTH", "0.58"))
     allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
