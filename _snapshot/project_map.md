@@ -37,7 +37,9 @@ C:\Projects\telemini
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\圖片解析模型fallback更新說明.md`
 - `docs\媒體輸入更新說明.md`
+- `docs\服務中心公告推播更新說明.md`
 - `docs\服務中心更新說明.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
@@ -53,6 +55,7 @@ C:\Projects\telemini
 - `service_center\__init__.py`
 - `service_center\db.py`
 - `service_center\handler.py`
+- `service_center\scheduler.py`
 - `service_center\telegram.py`
 - `services\__init__.py`
 - `services\ai_actions.py`
@@ -108,7 +111,9 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
+- `圖片模型fallback覆蓋說明.txt`
 - `媒體輸入覆蓋說明.txt`
+- `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `模式-使用說明.txt`
 - `開場-更新說明.txt`
@@ -220,9 +225,18 @@ C:\Projects\telemini
 ### `service_center\db.py`
 - `_text_id()`
 - `init_service_center_db()`
+- `upsert_service_center_subscriber()`
+- `mark_service_center_subscriber_inactive()`
+- `list_service_center_subscribers()`
 - `list_announcements()`
+- `list_pushable_announcements()`
 - `get_latest_announcement()`
 - `create_announcement()`
+- `claim_announcement_delivery()`
+- `mark_announcement_pushed()`
+- `mark_announcement_delivery_result()`
+- `get_scheduler_state()`
+- `set_scheduler_state()`
 
 ### `service_center\handler.py`
 - `_text_id()`
@@ -238,7 +252,6 @@ C:\Projects\telemini
 - `_cancel_input_markup()`
 - `_home_text()`
 - `_format_announcement()`
-- `_latest_notice_text()`
 - `_notice_text()`
 - `_create_bot_text()`
 - `_wifi_text()`
@@ -256,6 +269,15 @@ C:\Projects\telemini
 - `_handle_announce_command()`
 - `handle_service_center_message()`
 - `handle_service_center_callback()`
+
+### `service_center\scheduler.py`
+- `_text_id()`
+- `_today_key()`
+- `_is_push_time()`
+- `_format_announcement_push()`
+- `push_pending_announcements_once()`
+- `_scheduler_loop()`
+- `start_service_center_announcement_scheduler()`
 
 ### `service_center\telegram.py`
 - `_telegram_post()`
@@ -437,6 +459,13 @@ C:\Projects\telemini
 - `_safe_response_text()`
 - `_extract_answer_and_thoughts()`
 - `_meta_result()`
+- `_image_model_key()`
+- `_now_ts()`
+- `_seconds_until_next_pacific_midnight()`
+- `_is_image_model_temporarily_disabled()`
+- `_disable_image_model_until_reset()`
+- `_is_retryable_or_quota_error()`
+- `_image_models_to_try()`
 - `ask_gemini_image_to_text()`
 - `ask_gemini()`
 - `summarize_memory()`

@@ -25,7 +25,9 @@
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
+  📄 圖片解析模型fallback更新說明.md
   📄 媒體輸入更新說明.md
+  📄 服務中心公告推播更新說明.md
   📄 服務中心更新說明.md
 📁 handlers/
   📄 __init__.py
@@ -44,6 +46,7 @@
   📄 __init__.py
   📄 db.py
   📄 handler.py
+  📄 scheduler.py
   📄 telegram.py
 📁 services/
   📄 __init__.py
@@ -105,7 +108,9 @@
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
+📄 圖片模型fallback覆蓋說明.txt
 📄 媒體輸入覆蓋說明.txt
+📄 服務中心公告推播覆蓋說明.txt
 📄 服務中心硬檢查覆蓋說明.txt
 📄 模式-使用說明.txt
 📄 開場-更新說明.txt

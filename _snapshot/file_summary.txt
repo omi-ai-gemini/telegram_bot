@@ -153,7 +153,7 @@ conn.close()
 # config.py
 
 - 類型：.py
-- 行數：58
+- 行數：59
 
 ## imports
 - os
@@ -169,8 +169,9 @@ import os
 GEMINI_MODEL = "gemini-3.1-flash-lite"
 
 # 圖片解析專用模型：只把圖片轉成文字描述，再交回主模型回覆。
-# 直接傳貼圖仍使用 GEMINI_MODEL（3.1 Flash Lite）讀靜態貼圖。
-GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-2.5-flash")
+# 先用 3.5 Flash；若遇到 quota / rate limit / service unavailable，會在 gemini_service.py 自動切到 3 Flash Preview。
+GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
+GEMINI_VISION_FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK_MODEL", "gemini-3-flash-preview")
 
 # 如果你未來想保留預設備用KEY才留著
 #DEFAULT_GEMINI_KEY = os.getenv("DEFAULT_GEMINI_KEY")
@@ -1612,6 +1613,76 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 
 ================================================================================
 
+# docs\圖片解析模型fallback更新說明.md
+
+- 類型：.md
+- 行數：58
+
+## preview
+```text
+# 圖片解析模型 fallback 更新
+
+## 更新目標
+
+圖片、靜態貼圖解析改成：
+
+1. 優先送進 `gemini-3.5-flash`
+2. 如果主模型遇到 quota / rate limit / 服務暫時不可用，改送進 `gemini-3-flash-preview`
+3. 主模型出現 429 / RESOURCE_EXHAUSTED / 503 後，會在目前 Render process 內暫停嘗試到 Pacific time 下一次午夜重置後
+4. 避免每天額度達上限後，每張圖片都先撞一次 3.5 Flash
+
+## 修改檔案
+
+- `config.py`
+- `services/gemini_service.py`
+
+## 環境變數
+
+可以在 Render 設定：
+
+```text
+GEMINI_VISION_MODEL=gemini-3.5-flash
+GEMINI_VISION_FALLBACK_MODEL=gemini-3-flash-preview
+```
+
+如果 Render 已經有舊的：
+
+```text
+GEMINI_VISION_MODEL=gemini-2.5-flash
+```
+
+要刪掉或改成：
+
+```text
+GEMINI_VISION_MODEL=gemini-3.5-flash
+```
+
+## Render log 判讀
+
+成功：
+
+```text
+GEMINI IMAGE TO TEXT OK model=gemini-3.5-flash len=...
+```
+
+主模型達上限後切換：
+
+```text
+GEMINI IMAGE TO TEXT ERROR model=gemini-3.5-flash ... 429 RESOURCE_EXHAUSTED ...
+GEMINI IMAGE MODEL DISABLED UNTIL RESET model=gemini-3.5-flash ...
+GEMINI IMAGE TO TEXT OK model=gemini-3-flash-preview len=...
+```
+
+全部失敗：
+
+```text
+GEMINI IMAGE TO TEXT FAILED all_models=[...]
+```
+```
+
+
+================================================================================
+
 # docs\媒體輸入更新說明.md
 
 - 類型：.md
@@ -1665,6 +1736,74 @@ GEMINI_VISION_MODEL=gemini-2.5-flash
 
 ```bash
 python -m py_compile main.py config.py services/telegram_service.py services/gemini_service.py services/media_ai.py
+```
+```
+
+
+================================================================================
+
+# docs\服務中心公告推播更新說明.md
+
+- 類型：.md
+- 行數：56
+
+## preview
+```text
+# 服務中心公告推播更新說明
+
+## 本次修改
+
+1. `/start` 不再先送最新公告。
+   - 現在 `/start` 只送服務中心主頁按鈕。
+   - 公告內容只放在「公告事項」按鈕內查看。
+
+2. 公告會存進 DB。
+   - table：`service_center_announcements`
+   - 最新公告仍顯示在公告事項最上面。
+
+3. 新增主動推播。
+   - table：`service_center_subscribers`
+   - 使用者只要曾經私訊或操作服務中心 bot，就會記錄 chat_id。
+   - Telegram bot 只能主動傳訊息給曾經開始過對話的使用者或曾經互動過的 chat。
+
+4. 每天下午五點推新公告。
+   - 時區：Asia/Taipei
+   - 每天 17:00 後檢查一次。
+   - 若有 `push_enabled = TRUE` 且 `pushed_at IS NULL` 的公告，就主動推播。
+   - 推播流程跑完後會把該公告設為 `push_enabled = FALSE` 並寫入 `pushed_at`，所以同一則公告不會在未來重複推給新加入的 chat。
+   - table：`service_center_announcement_deliveries`
+   - unique：`announcement_id + chat_id`，避免 Render 重啟或多 worker 重複推同一則公告。
+
+## 本次預設公告
+
+標籤：功能更新
+標題：圖片與貼圖輸入更新
+內容：
+
+1. 新增圖片訊息支援：使用者直接傳圖片時，系統會先解析圖片內容，再交回聊天流程自然回覆。
+2. 新增靜態貼圖支援：Telegram 靜態貼圖會被解析成可理解的文字內容，再由 AI 接續回覆。
+3. 新增未支援媒體防呆：語音、音訊、影片、GIF、動態貼圖、影片貼圖、文件、位置等目前尚未支援的輸入，會回覆提示，不會再完全沒反應。
+
+## 新增 table
+
+```sql
+service_center_subscribers
+service_center_announcement_deliveries
+service_center_scheduler_state
+```
+
+## 管理員新增公告
+
+```text
+/announce 功能更新｜標題｜內容
+```
+
+新增後會先出現在公告事項，下一次台灣時間下午五點主動推播一次。
+
+## 測試
+
+```bash
+python -m py_compile main.py service_center/db.py service_center/handler.py service_center/scheduler.py service_center/telegram.py
 ```
 ```
 
@@ -2022,7 +2161,7 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 # main.py
 
 - 類型：.py
-- 行數：229
+- 行數：235
 
 ## imports
 - config.SECRET_KEY
@@ -2039,6 +2178,7 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 - service_center.handler.handle_service_center_callback
 - service_center.handler.handle_service_center_message
 - service_center.handler.is_service_center_bot
+- service_center.scheduler.start_service_center_announcement_scheduler
 - service_center.telegram.send_message
 - service_center.telegram.setup_service_center_webhook
 - services.database.get_conn
@@ -2084,6 +2224,7 @@ from service_center.handler import (
 )
 from service_center.telegram import setup_service_center_webhook
 from service_center.db import init_service_center_db
+from service_center.scheduler import start_service_center_announcement_scheduler
 from services.media_ai import (
     run_photo_message_in_thread,
     run_sticker_message_in_thread,
@@ -2119,6 +2260,11 @@ def init_once():
         except Exception as exc:
             print("SERVICE CENTER WEBHOOK INIT ERROR:", exc, flush=True)
 
+        try:
+            start_service_center_announcement_scheduler()
+        except Exception as exc:
+            print("SERVICE CENTER ANNOUNCEMENT SCHEDULER INIT ERROR:", exc, flush=True)
+
         db_initialized = True
 
 # =========================
@@ -2136,14 +2282,8 @@ def webhook(bot_id):
     # callback_query
     # =========================
     if "callback_query" in data:
-
-        callback = data["callback_query"]
-
-        callback_id = callback["id"]
-        user_id = callback["from"]["id"]
-        chat_id = str(callback["message"]["chat"]["id"])
 ...
-... 已省略 149 行
+... 已省略 155 行
 ```
 
 
@@ -2728,7 +2868,7 @@ def thought_page(token):
 # service_center\db.py
 
 - 類型：.py
-- 行數：174
+- 行數：606
 
 ## imports
 - services.database.get_conn
@@ -2736,9 +2876,18 @@ def thought_page(token):
 ## functions
 - _text_id
 - init_service_center_db
+- upsert_service_center_subscriber
+- mark_service_center_subscriber_inactive
+- list_service_center_subscribers
 - list_announcements
+- list_pushable_announcements
 - get_latest_announcement
 - create_announcement
+- claim_announcement_delivery
+- mark_announcement_pushed
+- mark_announcement_delivery_result
+- get_scheduler_state
+- set_scheduler_state
 
 ## preview
 ```text
@@ -2749,20 +2898,21 @@ from services.database import get_conn
 # 服務中心公告資料庫
 # =========================
 # - 公告獨立於主遊戲資料表
-# - /start 會讀最新一則公告
-# - 公告事項會依 created_at / id 倒序顯示
+# - /start 不再主動顯示公告
+# - 公告按鈕會依 created_at / id 倒序顯示
+# - 每天下午 17:00（Asia/Taipei）如果有新公告，主動推播一次
 
-DEFAULT_ANNOUNCEMENT_KEY = "20260710_service_center_media_update"
+DEFAULT_ANNOUNCEMENT_KEY = "20260710_media_input_update"
 DEFAULT_ANNOUNCEMENT_LABEL = "功能更新"
-DEFAULT_ANNOUNCEMENT_TITLE = "服務中心與媒體輸入更新"
+DEFAULT_ANNOUNCEMENT_TITLE = "圖片與貼圖輸入更新"
 DEFAULT_ANNOUNCEMENT_BODY = """本次更新：
-1. 新增服務中心 Telemini Wifi：可直接貼上 BotFather token，自動加入遊戲並設定 webhook。
-2. 新增服務中心 Gemini API：可直接貼上 Gemini API Key，系統會寫入資料庫並清除快取。
-3. 新增公告資料庫，公告事項會依最新公告優先顯示。
-4. /start 會先顯示最新一則公告，再顯示服務中心主頁按鈕。
-5. 媒體輸入更新：支援圖片分流、靜態貼圖理解，以及未支援媒體的防呆回覆。
+1. 新增圖片訊息支援：使用者直接傳圖片時，系統會先解析圖片內容，再交回聊天流程自然回覆。
+2. 新增靜態貼圖支援：Telegram 靜態貼圖會被解析成可理解的文字內容，再由 AI 接續回覆。
+3. 新增未支援媒體防呆：語音、音訊、影片、GIF、動態貼圖、影片貼圖、文件、位置等目前尚未支援的輸入，會回覆提示，不會再完全沒反應。
 
-隱私提醒：Bot token 與 Gemini API Key 送出後，服務中心會嘗試刪除原始訊息；請不要在群組或公開聊天室貼上金鑰。"""
+提醒：圖片與貼圖解析會使用 Gemini 圖片理解能力，若使用者尚未設定 Gemini API Key，仍會先提示需要完成設定。"""
+
+SCHEDULER_STATE_KEY = "service_center_announcement_daily_push"
 
 
 def _text_id(value):
@@ -2779,51 +2929,50 @@ def init_service_center_db():
         cursor.execute("""
         CREATE TABLE IF NOT EXISTS service_center_announcements (
             id SERIAL PRIMARY KEY,
-            ann_key TEXT UNIQUE,
-            label TEXT NOT NULL,
-            title TEXT NOT NULL,
-            body TEXT NOT NULL,
+            ann_key TEXT,
+            label TEXT NOT NULL DEFAULT '公告',
+            title TEXT NOT NULL DEFAULT '更新公告',
+            body TEXT NOT NULL DEFAULT '',
             is_active BOOLEAN DEFAULT TRUE,
+            push_enabled BOOLEAN DEFAULT FALSE,
+            pushed_at TIMESTAMP,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+
+        # 舊表相容：CREATE TABLE IF NOT EXISTS 不會自動補欄位，所以這裡補齊。
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS ann_key TEXT")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS label TEXT NOT NULL DEFAULT '公告'")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS title TEXT NOT NULL DEFAULT '更新公告'")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS body TEXT NOT NULL DEFAULT ''")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS push_enabled BOOLEAN DEFAULT FALSE")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS pushed_at TIMESTAMP")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+        cursor.execute("ALTER TABLE service_center_announcements ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
 
         cursor.execute("""
         CREATE INDEX IF NOT EXISTS idx_service_center_announcements_active_latest
         ON service_center_announcements (is_active, created_at DESC, id DESC)
         """)
 
-        cursor.execute(
-            """
-            INSERT INTO service_center_announcements (
-                ann_key,
-                label,
-                title,
-                body,
-                is_active,
-                created_at,
-                updated_at
-            )
-            VALUES (%s, %s, %s, %s, TRUE, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-            ON CONFLICT (ann_key)
-            DO UPDATE SET
-                label = EXCLUDED.label,
-                title = EXCLUDED.title,
-                body = EXCLUDED.body,
-                is_active = TRUE,
-                updated_at = CURRENT_TIMESTAMP
-            """,
-            (
-                DEFAULT_ANNOUNCEMENT_KEY,
-                DEFAULT_ANNOUNCEMENT_LABEL,
-                DEFAULT_ANNOUNCEMENT_TITLE,
-                DEFAULT_ANNOUNCEMENT_BODY,
-            ),
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS service_center_subscribers (
+            id SERIAL PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            chat_id TEXT NOT NULL UNIQUE,
+            is_active BOOLEAN DEFAULT TRUE,
+            first_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
+        """)
 
+        cursor.execute("ALTER TABLE service_center_subscribers ADD COLUMN IF NOT EXISTS user_id TEXT")
+        cursor.execute("ALTER TABLE service_center_subscribers ADD COLUMN IF NOT EXISTS chat_id TEXT")
+        cursor.execute("ALTER TABLE service_center_subscribers ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT TRUE")
 ...
-... 已省略 94 行
+... 已省略 526 行
 ```
 
 
@@ -2832,15 +2981,15 @@ def init_service_center_db():
 # service_center\handler.py
 
 - 類型：.py
-- 行數：587
+- 行數：579
 
 ## imports
 - config.SERVICE_CENTER_ADMIN_IDS
 - config.SERVICE_CENTER_BOT_ID
 - re
 - service_center.db.create_announcement
-- service_center.db.get_latest_announcement
 - service_center.db.list_announcements
+- service_center.db.upsert_service_center_subscriber
 - service_center.telegram.answer_callback_query
 - service_center.telegram.delete_message
 - service_center.telegram.edit_message_text
@@ -2867,7 +3016,6 @@ def init_service_center_db():
 - _cancel_input_markup
 - _home_text
 - _format_announcement
-- _latest_notice_text
 - _notice_text
 - _create_bot_text
 - _wifi_text
@@ -2895,8 +3043,8 @@ import time
 from config import SERVICE_CENTER_ADMIN_IDS, SERVICE_CENTER_BOT_ID
 from service_center.db import (
     create_announcement,
-    get_latest_announcement,
     list_announcements,
+    upsert_service_center_subscriber,
 )
 from service_center.telegram import (
     answer_callback_query,
@@ -2969,7 +3117,126 @@ def is_service_center_bot(bot_id):
 def _admin_ids():
     values = []
 ...
-... 已省略 507 行
+... 已省略 499 行
+```
+
+
+================================================================================
+
+# service_center\scheduler.py
+
+- 類型：.py
+- 行數：142
+
+## imports
+- datetime.datetime
+- service_center.db.SCHEDULER_STATE_KEY
+- service_center.db.claim_announcement_delivery
+- service_center.db.get_scheduler_state
+- service_center.db.list_pushable_announcements
+- service_center.db.list_service_center_subscribers
+- service_center.db.mark_announcement_delivery_result
+- service_center.db.mark_announcement_pushed
+- service_center.db.mark_service_center_subscriber_inactive
+- service_center.db.set_scheduler_state
+- service_center.telegram.send_message
+- threading
+- time
+- zoneinfo.ZoneInfo
+
+## functions
+- _text_id
+- _today_key
+- _is_push_time
+- _format_announcement_push
+- push_pending_announcements_once
+- _scheduler_loop
+- start_service_center_announcement_scheduler
+
+## preview
+```text
+import threading
+import time
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+from service_center.db import (
+    SCHEDULER_STATE_KEY,
+    claim_announcement_delivery,
+    get_scheduler_state,
+    list_pushable_announcements,
+    list_service_center_subscribers,
+    mark_announcement_delivery_result,
+    mark_announcement_pushed,
+    mark_service_center_subscriber_inactive,
+    set_scheduler_state,
+)
+from service_center.telegram import send_message
+
+
+TAIPEI_TZ = ZoneInfo("Asia/Taipei")
+PUSH_HOUR = 17
+PUSH_MINUTE = 0
+CHECK_INTERVAL_SECONDS = 60
+_STARTED = False
+_LOCK = threading.Lock()
+
+
+def _text_id(value):
+    return str(value or "").strip()
+
+
+def _today_key(now=None):
+    now = now or datetime.now(TAIPEI_TZ)
+    return now.strftime("%Y-%m-%d")
+
+
+def _is_push_time(now=None):
+    now = now or datetime.now(TAIPEI_TZ)
+    return (now.hour, now.minute) >= (PUSH_HOUR, PUSH_MINUTE)
+
+
+def _format_announcement_push(item):
+    label = _text_id(item.get("label")) or "公告"
+    title = _text_id(item.get("title")) or "更新公告"
+    body = _text_id(item.get("body"))
+
+    return f"📢 [{label}] {title}\n\n{body}"
+
+
+def push_pending_announcements_once(reason="manual"):
+    """推播尚未送到各 chat 的公告。delivery table 會擋掉重複推播。"""
+    announcements = list_pushable_announcements(limit=20)
+    subscribers = list_service_center_subscribers(limit=5000)
+
+    if not announcements:
+        print(
+            f"SERVICE CENTER ANNOUNCEMENT PUSH SKIP reason={reason} announcements=0",
+            flush=True,
+        )
+        return {"sent": 0, "failed": 0, "claimed": 0}
+
+    if not subscribers:
+        for announcement in announcements:
+            mark_announcement_pushed(announcement.get("id"))
+        print(
+            f"SERVICE CENTER ANNOUNCEMENT PUSH NO SUBSCRIBERS reason={reason} "
+            f"announcements={len(announcements)} marked_pushed={len(announcements)}",
+            flush=True,
+        )
+        return {"sent": 0, "failed": 0, "claimed": 0}
+
+    sent = 0
+    failed = 0
+    claimed = 0
+
+    for announcement in announcements:
+        announcement_id = announcement.get("id")
+        text = _format_announcement_push(announcement)
+
+        for subscriber in subscribers:
+...
+... 已省略 62 行
 ```
 
 
@@ -4357,10 +4624,13 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：883
+- 行數：992
 
 ## imports
 - config.GEMINI_MODEL
+- config.GEMINI_VISION_FALLBACK_MODEL
+- datetime.datetime
+- datetime.timedelta
 - google.genai
 - google.genai.types
 - json
@@ -4368,6 +4638,8 @@ def save_encrypted_payload(
 - services.prompt_debug.save_prompt_debug_log
 - services.prompt_debug.update_prompt_debug_log
 - services.style.build_prompt
+- time
+- zoneinfo.ZoneInfo
 
 ## functions
 - _with_structured_reply_instructions
@@ -4383,6 +4655,13 @@ def save_encrypted_payload(
 - _safe_response_text
 - _extract_answer_and_thoughts
 - _meta_result
+- _image_model_key
+- _now_ts
+- _seconds_until_next_pacific_midnight
+- _is_image_model_temporarily_disabled
+- _disable_image_model_until_reset
+- _is_retryable_or_quota_error
+- _image_models_to_try
 - ask_gemini_image_to_text
 - ask_gemini
 - summarize_memory
@@ -4395,7 +4674,7 @@ import json
 import re
 from services.style import build_prompt
 from services.prompt_debug import save_prompt_debug_log, update_prompt_debug_log
-from config import GEMINI_MODEL
+from config import GEMINI_MODEL, GEMINI_VISION_FALLBACK_MODEL
 
 
 # =========================
@@ -4470,7 +4749,7 @@ reasoning_note 規則：
 
 def _with_structured_reply_instructions(prompt):
 ...
-... 已省略 803 行
+... 已省略 912 行
 ```
 
 
@@ -8489,6 +8768,41 @@ encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
 
 ================================================================================
 
+# 圖片模型fallback覆蓋說明.txt
+
+- 類型：.txt
+- 行數：23
+
+## preview
+```text
+Telemini 圖片解析模型 fallback 補丁
+
+覆蓋檔案：
+- config.py
+- services/gemini_service.py
+
+功能：
+- 圖片解析優先使用 gemini-3.5-flash
+- quota / rate limit / 503 時自動切到 gemini-3-flash-preview
+- 主模型出現 429 / RESOURCE_EXHAUSTED / 503 後，暫停到 Pacific time 下次午夜重置後再嘗試
+
+部署：
+python -m py_compile config.py services/gemini_service.py
+
+git add config.py services/gemini_service.py docs/圖片解析模型fallback更新說明.md 圖片模型fallback覆蓋說明.txt
+git commit -m "add image model fallback"
+git push origin main
+
+Render 環境變數：
+GEMINI_VISION_MODEL=gemini-3.5-flash
+GEMINI_VISION_FALLBACK_MODEL=gemini-3-flash-preview
+
+如果 Render 還有 GEMINI_VISION_MODEL=gemini-2.5-flash，請刪掉或改掉。
+```
+
+
+================================================================================
+
 # 媒體輸入覆蓋說明.txt
 
 - 類型：.txt
@@ -8516,6 +8830,39 @@ Telemini 媒體輸入更新外帶包
 
 部署前測試：
 python -m py_compile config.py main.py services/telegram_service.py services/gemini_service.py services/media_ai.py
+```
+
+
+================================================================================
+
+# 服務中心公告推播覆蓋說明.txt
+
+- 類型：.txt
+- 行數：21
+
+## preview
+```text
+服務中心公告推播更新包
+
+覆蓋 / 新增檔案：
+- main.py
+- service_center/db.py
+- service_center/handler.py
+- service_center/scheduler.py
+- docs/服務中心公告推播更新說明.md
+
+更新內容：
+1. /start 不再先送最新公告，只送服務中心主頁按鈕。
+2. 公告仍存 service_center_announcements，公告事項按鈕會顯示全部公告，最新在最上面。
+3. 新增 service_center_subscribers，記錄曾經私訊或操作服務中心 bot 的 chat。
+4. 新增 service_center_announcement_deliveries，防止同一則公告對同一個 chat 重複推播。
+5. 新增 service_center_scheduler_state，記錄每天 17:00 推播是否已跑過。
+6. 每天台灣時間 17:00 後，如果有新公告，就主動 sendMessage 推播一次。
+7. 推播處理完成後會寫入 pushed_at 並關閉 push_enabled，避免同一則公告未來又推給新 chat。
+8. 本次預設公告改成「圖片與貼圖輸入更新」。
+
+注意：
+Telegram bot 只能主動傳訊息給曾經私訊過 bot，或曾經和 bot 互動過的 chat。
 ```
 
 
