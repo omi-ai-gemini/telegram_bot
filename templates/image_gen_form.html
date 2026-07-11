@@ -13,7 +13,7 @@
     input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:210px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
     .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none!important}
     button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
-    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:crosshair;background:#111827}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
+    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{position:relative;border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:none;background:#111827;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}.brush-cursor{position:absolute;display:none;pointer-events:none;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.75);transform:translate(-50%,-50%);z-index:5}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
     @media(max-width:560px){body{padding:10px}.card{padding:16px}.radio{min-width:100%}.tool-grid{grid-template-columns:repeat(2,1fr)}.source-actions{display:block}.source-actions button{width:100%;margin-top:8px}}
   </style>
 </head>
@@ -58,7 +58,7 @@
           <button type="button" class="secondary-btn" id="clearBtn">🗑️ 清空</button>
           <button type="button" class="secondary-btn" id="invertBtn">◐ 反轉遮罩</button>
         </div>
-        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas></div>
+        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas><div id="brushCursor" class="brush-cursor"></div></div>
         <div class="hint">塗紅＝允許修改；未塗＝保護。換背景時可先塗人物，再按「反轉遮罩」，就會改成背景可修改、人物保護。</div>
       </div>
     </div>
@@ -114,6 +114,7 @@
   const undoBtn=document.getElementById('undoBtn');
   const clearBtn=document.getElementById('clearBtn');
   const invertBtn=document.getElementById('invertBtn');
+  const brushCursor=document.getElementById('brushCursor');
 
   let baseImage=null;
   let loadedSourceKey='';
@@ -124,16 +125,39 @@
   let history=[];
   let maskTouched=false;
   let objectUrl='';
+  let hoverPoint=null;
 
   function samePoint(a,b){return !!(a&&b&&Math.abs(a.x-b.x)<0.01&&Math.abs(a.y-b.y)<0.01);}
 
   function pointFromClient(clientX,clientY){
     const rect=canvas.getBoundingClientRect();
+    if(!rect.width||!rect.height)return null;
+    const displayX=Math.max(0,Math.min(rect.width,clientX-rect.left));
+    const displayY=Math.max(0,Math.min(rect.height,clientY-rect.top));
     return {
-      x:(clientX-rect.left)*(canvas.width/rect.width),
-      y:(clientY-rect.top)*(canvas.height/rect.height),
-      scale:canvas.width/rect.width
+      x:displayX*(canvas.width/rect.width),
+      y:displayY*(canvas.height/rect.height),
+      displayX,
+      displayY,
+      scale:canvas.width/rect.width,
+      clientX,
+      clientY
     };
+  }
+
+  function updateBrushCursor(point,visible=true){
+    if(!visible||!point||!baseImage){
+      brushCursor.style.display='none';
+      return;
+    }
+    const wrapRect=canvasWrap.getBoundingClientRect();
+    const size=Math.max(4,Number(brushSize.value)||4);
+    brushCursor.style.width=`${size}px`;
+    brushCursor.style.height=`${size}px`;
+    brushCursor.style.left=`${point.clientX-wrapRect.left}px`;
+    brushCursor.style.top=`${point.clientY-wrapRect.top}px`;
+    brushCursor.style.borderColor=tool==='erase'?'#60a5fa':'#ffffff';
+    brushCursor.style.display='block';
   }
 
   function startStroke(point){
@@ -192,15 +216,16 @@
     setTool('erase');
     maskStatus.textContent=baseImage?'目前工具：擦除。擦掉的區域會恢復保護。':'已選擇擦除工具，請先載入來源圖片。';
   });
-  brushSize.addEventListener('input',()=>brushSizeValue.textContent=`${brushSize.value} px`);
+  brushSize.addEventListener('input',()=>{
+    brushSizeValue.textContent=`${brushSize.value} px`;
+    updateBrushCursor(hoverPoint,!!hoverPoint);
+  });
 
   function resetMask(clearHistory=true){
     if(!maskCanvas.width)return;
-    maskCtx.save();
-    maskCtx.globalCompositeOperation='source-over';
-    maskCtx.fillStyle='#000';
-    maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
-    maskCtx.restore();
+    // 前端編輯層使用透明=保護、白色=修改。
+    // 送出前才轉成 AI Horde 需要的黑白 PNG，避免黑色不透明遮罩造成整張全紅。
+    maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     if(clearHistory)history=[];
     maskTouched=false;
     redraw();
@@ -272,11 +297,18 @@
   }
 
   function drawSegment(from,to){
-    const width=Number(brushSize.value)*to.scale;
+    if(!from||!to)return;
+    const width=Math.max(1,Number(brushSize.value)*to.scale);
     maskCtx.save();
-    maskCtx.globalCompositeOperation='source-over';
-    maskCtx.strokeStyle=tool==='paint'?'#fff':'#000';
-    maskCtx.fillStyle=tool==='paint'?'#fff':'#000';
+    if(tool==='erase'){
+      maskCtx.globalCompositeOperation='destination-out';
+      maskCtx.strokeStyle='#000';
+      maskCtx.fillStyle='#000';
+    }else{
+      maskCtx.globalCompositeOperation='source-over';
+      maskCtx.strokeStyle='#fff';
+      maskCtx.fillStyle='#fff';
+    }
     maskCtx.lineWidth=width;
     maskCtx.lineCap='round';
     maskCtx.lineJoin='round';
@@ -288,66 +320,82 @@
     maskCtx.arc(to.x,to.y,width/2,0,Math.PI*2);
     maskCtx.fill();
     maskCtx.restore();
-    maskTouched=true;
+    maskTouched=hasVisibleMask();
     redraw();
   }
 
-  function bindPointerEvents(){
-    canvas.addEventListener('pointerdown',event=>{
-      if(!baseImage)return;
-      event.preventDefault();
-      try{canvas.setPointerCapture(event.pointerId);}catch(_){ }
-      startStroke(pointFromClient(event.clientX,event.clientY));
-    });
-    canvas.addEventListener('pointermove',event=>{
-      if(!drawing)return;
-      event.preventDefault();
-      moveStroke(pointFromClient(event.clientX,event.clientY));
-    });
-    const stopPointer=event=>{
-      if(event)event.preventDefault();
-      if(event&&typeof event.pointerId!=='undefined'){
-        try{canvas.releasePointerCapture(event.pointerId);}catch(_){ }
-      }
-      endStroke();
-    };
-    canvas.addEventListener('pointerup',stopPointer);
-    canvas.addEventListener('pointercancel',stopPointer);
-    canvas.addEventListener('pointerleave',event=>{if(drawing)stopPointer(event);});
+  function hasVisibleMask(){
+    if(!maskCanvas.width)return false;
+    const pixels=maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height).data;
+    for(let i=3;i<pixels.length;i+=4){
+      if(pixels[i]>8)return true;
+    }
+    return false;
   }
 
-  function bindLegacyTouchAndMouseEvents(){
-    canvas.addEventListener('mousedown',event=>{
-      if(!baseImage)return;
-      event.preventDefault();
-      startStroke(pointFromClient(event.clientX,event.clientY));
-    });
-    canvas.addEventListener('mousemove',event=>{
-      if(!drawing)return;
-      event.preventDefault();
-      moveStroke(pointFromClient(event.clientX,event.clientY));
-    });
-    canvas.addEventListener('mouseup',event=>{if(drawing){event.preventDefault();endStroke();}});
-    canvas.addEventListener('mouseleave',()=>{if(drawing)endStroke();});
+  // Telegram 內建瀏覽器對 PointerEvent 的支援不一致。
+  // 這裡直接使用滑鼠與觸控兩條事件路徑，確保桌機與手機都可畫。
+  canvas.addEventListener('mousedown',event=>{
+    if(!baseImage||event.button!==0)return;
+    event.preventDefault();
+    const point=pointFromClient(event.clientX,event.clientY);
+    hoverPoint=point;
+    updateBrushCursor(point,true);
+    startStroke(point);
+  });
+  window.addEventListener('mousemove',event=>{
+    if(!baseImage)return;
+    const rect=canvas.getBoundingClientRect();
+    const inside=event.clientX>=rect.left&&event.clientX<=rect.right&&event.clientY>=rect.top&&event.clientY<=rect.bottom;
+    const point=pointFromClient(event.clientX,event.clientY);
+    hoverPoint=inside?point:null;
+    updateBrushCursor(point,inside||drawing);
+    if(!drawing)return;
+    event.preventDefault();
+    moveStroke(point);
+  },{passive:false});
+  window.addEventListener('mouseup',event=>{
+    if(!drawing)return;
+    event.preventDefault();
+    endStroke();
+  },{passive:false});
+  canvas.addEventListener('mouseleave',()=>{
+    if(!drawing){hoverPoint=null;updateBrushCursor(null,false);}
+  });
 
-    canvas.addEventListener('touchstart',event=>{
-      if(!baseImage)return;
-      const touch=event.touches&&event.touches[0];
-      if(!touch)return;
-      event.preventDefault();
-      startStroke(pointFromClient(touch.clientX,touch.clientY));
-    },{passive:false});
-    canvas.addEventListener('touchmove',event=>{
-      const touch=event.touches&&event.touches[0];
-      if(!drawing||!touch)return;
-      event.preventDefault();
-      moveStroke(pointFromClient(touch.clientX,touch.clientY));
-    },{passive:false});
-    canvas.addEventListener('touchend',event=>{if(drawing){event.preventDefault();endStroke();}},{passive:false});
-    canvas.addEventListener('touchcancel',event=>{if(drawing){event.preventDefault();endStroke();}},{passive:false});
-  }
-
-  if(window.PointerEvent){bindPointerEvents();}else{bindLegacyTouchAndMouseEvents();}
+  canvas.addEventListener('touchstart',event=>{
+    if(!baseImage)return;
+    const touch=event.touches&&event.touches[0];
+    if(!touch)return;
+    event.preventDefault();
+    const point=pointFromClient(touch.clientX,touch.clientY);
+    hoverPoint=point;
+    updateBrushCursor(point,true);
+    startStroke(point);
+  },{passive:false});
+  canvas.addEventListener('touchmove',event=>{
+    const touch=event.touches&&event.touches[0];
+    if(!drawing||!touch)return;
+    event.preventDefault();
+    const point=pointFromClient(touch.clientX,touch.clientY);
+    hoverPoint=point;
+    updateBrushCursor(point,true);
+    moveStroke(point);
+  },{passive:false});
+  window.addEventListener('touchend',event=>{
+    if(!drawing)return;
+    event.preventDefault();
+    endStroke();
+    hoverPoint=null;
+    updateBrushCursor(null,false);
+  },{passive:false});
+  window.addEventListener('touchcancel',event=>{
+    if(!drawing)return;
+    event.preventDefault();
+    endStroke();
+    hoverPoint=null;
+    updateBrushCursor(null,false);
+  },{passive:false});
 
   undoBtn.addEventListener('click',()=>{
     if(!requireLoadedImage('復原'))return;
@@ -368,15 +416,28 @@
     saveHistory();
     const data=maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height);
     for(let i=0;i<data.data.length;i+=4){
-      const value=255-data.data[i];
-      data.data[i]=data.data[i+1]=data.data[i+2]=value;
-      data.data[i+3]=255;
+      const alpha=255-data.data[i+3];
+      data.data[i]=255;
+      data.data[i+1]=255;
+      data.data[i+2]=255;
+      data.data[i+3]=alpha;
     }
     maskCtx.putImageData(data,0,0);
-    maskTouched=true;
+    maskTouched=hasVisibleMask();
     redraw();
-    maskStatus.textContent='遮罩已反轉。紅色區域會交給 AI 修改。';
+    maskStatus.textContent=maskTouched?'遮罩已反轉。紅色區域會交給 AI 修改。':'遮罩已反轉，目前沒有任何區域會被修改。';
   });
+
+  function exportMaskDataUrl(){
+    const exportCanvas=document.createElement('canvas');
+    exportCanvas.width=maskCanvas.width;
+    exportCanvas.height=maskCanvas.height;
+    const exportCtx=exportCanvas.getContext('2d');
+    exportCtx.fillStyle='#000';
+    exportCtx.fillRect(0,0,exportCanvas.width,exportCanvas.height);
+    exportCtx.drawImage(maskCanvas,0,0);
+    return exportCanvas.toDataURL('image/png');
+  }
 
   function loadedSourceStillMatches(){
     const file=sourceInput.files&&sourceInput.files[0];
@@ -401,7 +462,7 @@
       maskStatus.scrollIntoView({behavior:'smooth',block:'center'});
       return;
     }
-    maskDataInput.value=maskCanvas.toDataURL('image/png');
+    maskDataInput.value=exportMaskDataUrl();
     document.getElementById('submitBtn').disabled=true;
     document.getElementById('submitBtn').textContent='正在送出遮罩任務…';
   });

@@ -1,0 +1,36 @@
+Telemini 局部遮罩畫筆真正修復
+
+本包只覆蓋：
+- templates/image_gen_form.html
+
+修正內容：
+1. 修正來源圖片載入後整張全紅。
+   - 舊版黑色遮罩仍是完全不透明，紅色預覽錯把整張圖片當成可修改區。
+   - 新版前端以透明代表保護區、白色代表修改區；送出時才轉成 AI Horde 需要的黑底白區 PNG。
+
+2. 修正滑鼠與手指無法畫遮罩。
+   - 不再依賴 Telegram 內建瀏覽器不穩定的 PointerEvent 判斷。
+   - 改用獨立滑鼠事件與觸控事件，支援桌機與手機。
+
+3. 擦除改成真正移除遮罩透明度。
+4. 反轉遮罩改成反轉透明度，按下後會立即看到紅色區域反轉。
+5. 新增可見筆刷圓圈；調整筆刷大小時圓圈同步改變。
+6. 保留復原、清空與原本送出流程。
+
+已測試：
+- 初始載圖不全紅
+- 滑鼠塗抹
+- 滑鼠擦除
+- 手指觸控塗抹
+- 清空
+- 反轉兩次
+- 筆刷圓圈
+- 送出遮罩為不透明黑底白區 PNG
+- JavaScript 語法
+- Jinja 頁面渲染
+
+覆蓋後執行：
+python -m compileall -q .
+git add templates/image_gen_form.html
+git commit -m "fix mask editor drawing and preview"
+git push

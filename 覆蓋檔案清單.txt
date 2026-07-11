@@ -1,6 +1,1 @@
-routes/image_gen.py
-services/image_jobs.py
 templates/image_gen_form.html
-static/image_reference/male_reference.png
-static/image_reference/female_reference.png
-static/image_reference/基準圖放置說明.txt
