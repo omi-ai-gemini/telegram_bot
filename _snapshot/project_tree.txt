@@ -1,15 +1,18 @@
 📁 .agents/
 📄 __init__.py
+📄 AI_Horde生圖外帶說明.txt
 📄 api.py
 📄 check_db.py
 📄 config.py
 📁 docs/
+  📄 AI_HORDE生圖功能更新說明.md
   📄 AI_MESSAGE_ACTIONS_README.md
   📄 BLOCKED_RETRY_BUTTON_README.md
   📄 CUSTOM_STYLE_PREFIX_README.md
   📄 ENV_ENCRYPTION_README.md
   📄 HIDDEN_PASSIVE_SUMMARY_README.md
   📄 NORMAL_REPLY_UNIFIED_GENERATION_README.md
+  📄 Pillow依賴修復說明.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
   📄 PROMPT_DEBUG_DB_HOTFIX_README.md
@@ -25,6 +28,7 @@
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
+  📄 圖片等待函式匯入錯誤修正說明.md
   📄 圖片等待與模型切換修正說明.md
   📄 圖片解析上限與無回應提示更新說明.md
   📄 圖片解析模型fallback更新說明.md
@@ -41,6 +45,7 @@
 📄 requirements.txt
 📁 routes/
   📄 admin.py
+  📄 image_gen.py
   📄 prompt_debug.py
   📄 setting.py
   📄 thought.py
@@ -53,6 +58,7 @@
 📁 services/
   📄 __init__.py
   📄 ai_actions.py
+  📄 aihorde_service.py
   📄 bot_router.py
   📄 call_ai.py
   📄 character.py
@@ -63,6 +69,12 @@
   📄 database.py
   📄 encrypted_store.py
   📄 gemini_service.py
+  📄 image_actions.py
+  📄 image_auth.py
+  📄 image_inpaint.py
+  📄 image_jobs.py
+  📄 image_prompt.py
+  📄 image_store.py
   📄 media_ai.py
   📄 memory.py
   📄 memory_summary.py
@@ -81,10 +93,14 @@
   📄 user_notice.py
   📄 user_router.py
 📁 static/
+  📁 image_reference/
+    📄 基準圖放置說明.txt
 📁 templates/
   📄 character_form.html
   📄 chat_persona_form.html
   📄 developer.html
+  📄 image_gen_form.html
+  📄 image_library.html
   📄 important_memory_form.html
   📄 index.html
   📄 login.html
@@ -115,6 +131,11 @@
 📄 媒體輸入覆蓋說明.txt
 📄 服務中心公告推播覆蓋說明.txt
 📄 服務中心硬檢查覆蓋說明.txt
+📄 服務中心管理員判定修復說明.txt
 📄 模式-使用說明.txt
+📄 生圖功能檢查結果.txt
 📄 補丁覆蓋說明.txt
+📄 覆蓋方式.txt
+📄 覆蓋說明.txt
+📄 遮罩生圖修正說明.txt
 📄 開場-更新說明.txt

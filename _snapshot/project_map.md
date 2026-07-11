@@ -13,15 +13,18 @@ C:\Projects\telemini
 ## 主要檔案列表
 
 - `__init__.py`
+- `AI_Horde生圖外帶說明.txt`
 - `api.py`
 - `check_db.py`
 - `config.py`
+- `docs\AI_HORDE生圖功能更新說明.md`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
 - `docs\BLOCKED_RETRY_BUTTON_README.md`
 - `docs\CUSTOM_STYLE_PREFIX_README.md`
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\HIDDEN_PASSIVE_SUMMARY_README.md`
 - `docs\NORMAL_REPLY_UNIFIED_GENERATION_README.md`
+- `docs\Pillow依賴修復說明.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
 - `docs\PROMPT_DEBUG_DB_HOTFIX_README.md`
@@ -37,6 +40,7 @@ C:\Projects\telemini
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\圖片等待函式匯入錯誤修正說明.md`
 - `docs\圖片等待與模型切換修正說明.md`
 - `docs\圖片解析上限與無回應提示更新說明.md`
 - `docs\圖片解析模型fallback更新說明.md`
@@ -51,6 +55,7 @@ C:\Projects\telemini
 - `README_覆蓋說明.txt`
 - `requirements.txt`
 - `routes\admin.py`
+- `routes\image_gen.py`
 - `routes\prompt_debug.py`
 - `routes\setting.py`
 - `routes\thought.py`
@@ -61,6 +66,7 @@ C:\Projects\telemini
 - `service_center\telegram.py`
 - `services\__init__.py`
 - `services\ai_actions.py`
+- `services\aihorde_service.py`
 - `services\bot_router.py`
 - `services\call_ai.py`
 - `services\character.py`
@@ -71,6 +77,12 @@ C:\Projects\telemini
 - `services\database.py`
 - `services\encrypted_store.py`
 - `services\gemini_service.py`
+- `services\image_actions.py`
+- `services\image_auth.py`
+- `services\image_inpaint.py`
+- `services\image_jobs.py`
+- `services\image_prompt.py`
+- `services\image_store.py`
 - `services\media_ai.py`
 - `services\memory.py`
 - `services\memory_summary.py`
@@ -88,9 +100,12 @@ C:\Projects\telemini
 - `services\time_context.py`
 - `services\user_notice.py`
 - `services\user_router.py`
+- `static\image_reference\基準圖放置說明.txt`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
 - `templates\developer.html`
+- `templates\image_gen_form.html`
+- `templates\image_library.html`
 - `templates\important_memory_form.html`
 - `templates\index.html`
 - `templates\login.html`
@@ -118,8 +133,13 @@ C:\Projects\telemini
 - `媒體輸入覆蓋說明.txt`
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
+- `服務中心管理員判定修復說明.txt`
 - `模式-使用說明.txt`
+- `生圖功能檢查結果.txt`
 - `補丁覆蓋說明.txt`
+- `覆蓋方式.txt`
+- `覆蓋說明.txt`
+- `遮罩生圖修正說明.txt`
 - `開場-更新說明.txt`
 
 ## Python 路由總覽
@@ -142,6 +162,14 @@ C:\Projects\telemini
 - `/admin/manual/add_bot` → `add_bot_route`
 - `/admin/manual/add_key` → `add_key_route`
 - `/admin/login/developer` → `admin_login_developer`
+
+### `routes\image_gen.py`
+- `/image/generate` → `image_generate_page`
+- `/image/generate` → `image_generate_submit`
+- `/setting/images` → `image_library_page`
+- `/setting/images/preview/<identifier>` → `image_library_preview`
+- `/setting/images/rename` → `image_library_rename`
+- `/setting/images/delete` → `image_library_delete`
 
 ### `routes\prompt_debug.py`
 - `/prompt_debug` → `prompt_debug_list_page`
@@ -201,6 +229,17 @@ C:\Projects\telemini
 - `add_bot_route()`
 - `add_key_route()`
 - `admin_login_developer()`
+
+### `routes\image_gen.py`
+- `_token()`
+- `_auth()`
+- `_render_generate()`
+- `image_generate_page()`
+- `image_generate_submit()`
+- `image_library_page()`
+- `image_library_preview()`
+- `image_library_rename()`
+- `image_library_delete()`
 
 ### `routes\prompt_debug.py`
 - `_auth_from_request()`
@@ -350,6 +389,18 @@ C:\Projects\telemini
 - `run_continue_in_thread()`
 - `_worker()`
 
+### `services\aihorde_service.py`
+- `_bool_env()`
+- `_keys()`
+- `_headers()`
+- `_json_or_error()`
+- `_error_message()`
+- `submit_image_request()`
+- `check_image_request()`
+- `get_image_result()`
+- `cancel_image_request()`
+- `download_generated_image()`
+
 ### `services\bot_router.py`
 - `_decrypt_bot_token_safe()`
 - `_text_id()`
@@ -478,12 +529,88 @@ C:\Projects\telemini
 - `ask_gemini()`
 - `summarize_memory()`
 
+### `services\image_actions.py`
+- `_text()`
+- `_base_url()`
+- `get_action_identity()`
+- `get_image_generation_url()`
+- `get_image_library_url()`
+- `load_action_context()`
+- `send_hidden_image_link()`
+
+### `services\image_auth.py`
+- `_text()`
+- `_secret()`
+- `_b64e()`
+- `_b64d()`
+- `create_image_token()`
+- `verify_image_token()`
+
+### `services\image_inpaint.py`
+- `_require_pillow()`
+- `_border_color()`
+- `_png_bytes()`
+- `_identity_anchor_mask()`
+- `prepare_inpainting_assets()`
+
+### `services\image_jobs.py`
+- `_text()`
+- `_extract_message_id()`
+- `_cancel_markup()`
+- `_encrypt_prompt()`
+- `_decrypt_prompt()`
+- `_reference_path()`
+- `_read_system_reference()`
+- `_count_active()`
+- `create_image_job()`
+- `_get_job()`
+- `_claim_job()`
+- `_update_job()`
+- `_elapsed_seconds()`
+- `_format_duration()`
+- `_queue_text()`
+- `_fail()`
+- `_cancel()`
+- `_resolve_reference()`
+- `_save_generated_telegram_photo()`
+- `process_image_job()`
+- `run_image_job_in_thread()`
+- `cancel_job_for_user()`
+- `recover_active_image_jobs()`
+
+### `services\image_prompt.py`
+- `_clean()`
+- `build_image_prompt()`
+
+### `services\image_store.py`
+- `_text()`
+- `init_image_tables()`
+- `_new_code()`
+- `save_image_asset()`
+- `save_incoming_photo_message()`
+- `list_image_assets()`
+- `get_image_asset()`
+- `download_image_asset()`
+- `rename_image_asset()`
+- `delete_image_asset()`
+
 ### `services\media_ai.py`
 - `_text()`
+- `_pending_photo_key()`
+- `_cancel_pending_timer()`
 - `_missing_config()`
 - `send_unsupported_media_message()`
 - `_download_image()`
-- `_handle_media_parse_failure()`
+- `_media_parse_failure_text()`
+- `_normalize_parse_result()`
+- `_register_pending_photo()`
+- `_build_photo_user_text()`
+- `_dispatch_photo_item()`
+- `_remove_pending_photo()`
+- `_fail_pending_photo()`
+- `_photo_wait_timeout()`
+- `_complete_pending_photo()`
+- `queue_text_for_pending_photo()`
 - `handle_photo_message()`
 - `handle_sticker_message()`
 - `run_photo_message_in_thread()`
@@ -668,6 +795,7 @@ C:\Projects\telemini
 ### `services\telegram_service.py`
 - `_telegram_post()`
 - `send_message()`
+- `send_photo_bytes()`
 - `edit_message_text()`
 - `answer_callback_query()`
 - `delete_message()`
