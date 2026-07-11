@@ -107,6 +107,7 @@ C:\Projects\telemini
 - `services\time_context.py`
 - `services\user_notice.py`
 - `services\user_router.py`
+- `static\image_reference\基準圖放置說明.txt`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
 - `templates\developer.html`
@@ -147,6 +148,7 @@ C:\Projects\telemini
 - `模型切換共用路由修正說明.txt`
 - `模式-使用說明.txt`
 - `生圖功能檢查結果.txt`
+- `生圖排隊狀態與失敗通知覆蓋說明.txt`
 - `生圖改版相容性檢查結果.txt`
 - `生圖雙模式改版檢查結果.txt`
 - `生圖雙模式改版覆蓋說明.txt`
@@ -154,7 +156,9 @@ C:\Projects\telemini
 - `補丁套用說明.txt`
 - `補丁覆蓋說明.txt`
 - `覆蓋方式.txt`
+- `覆蓋檔案清單.txt`
 - `覆蓋說明.txt`
+- `遮罩局部修改外帶說明.txt`
 - `遮罩生圖修正說明.txt`
 - `開場-更新說明.txt`
 
@@ -235,6 +239,7 @@ C:\Projects\telemini
 - `admin_login_developer()`
 
 ### `routes\image_gen.py`
+- `_decode_mask_data_url()`
 - `_token()`
 - `_auth()`
 - `_render_generate()`
@@ -575,6 +580,7 @@ C:\Projects\telemini
 - `_text()`
 - `_extract_message_id()`
 - `_cancel_markup()`
+- `_delete_notice_markup()`
 - `_encrypt_prompt()`
 - `_decrypt_prompt()`
 - `_count_active()`
@@ -586,8 +592,12 @@ C:\Projects\telemini
 - `_format_duration()`
 - `_queue_text()`
 - `_edit_status_message()`
+- `_delete_status_message()`
+- `_send_result_notice()`
 - `_fail()`
 - `_cancel()`
+- `_processing_text()`
+- `_load_system_reference()`
 - `_resolve_reference()`
 - `_save_generated_telegram_photo()`
 - `process_image_job()`
@@ -598,6 +608,7 @@ C:\Projects\telemini
 ### `services\image_prepare.py`
 - `_round_to_step()`
 - `_choose_dynamic_output_size()`
+- `_prepare_mask_canvas()`
 - `prepare_img2img_source()`
 
 ### `services\image_prompt.py`

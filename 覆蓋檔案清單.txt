@@ -1,12 +1,6 @@
-本外帶包覆蓋檔案：
-
-handlers/call_handler.py
 routes/image_gen.py
-services/aihorde_service.py
 services/image_jobs.py
-services/image_prepare.py
-services/image_prompt.py
 templates/image_gen_form.html
-
-不新增資料表。
-已包含遮罩局部修改與本次排隊狀態修正。
+static/image_reference/male_reference.png
+static/image_reference/female_reference.png
+static/image_reference/基準圖放置說明.txt

@@ -20,7 +20,7 @@
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。任務會在背景執行，不影響聊天室繼續對話。</p>
+  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。文生圖可另外勾選啟用基準圖。任務會在背景執行，不影響聊天室繼續對話。</p>
   <div class="notice">隱私提醒：圖片、遮罩與提示詞會送往 AI Horde 社群運算節點。遮罩模式需要支援 inpainting 的工作節點，排隊時間可能比一般生圖長。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
@@ -40,6 +40,7 @@
         <div class="field"><label>人物性別（文生圖必填）</label><select name="gender">
           <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
         </select><div class="hint">只有文生圖會套用固定男女身份描述；提示詞明確要求的新外觀仍優先。</div></div>
+        <div class="field"><label style="display:flex;align-items:flex-start;gap:10px"><input type="checkbox" name="use_base_reference" value="1" style="width:auto;margin-top:3px" {% if form.get('use_base_reference') %}checked{% endif %}><span><b>啟用基準圖</b><br><span class="hint">開啟後，文生圖會額外套用對應性別的系統基準圖，讓人物外觀更穩定；關閉時維持現在的純文字生圖。</span></span></label></div>
       </div>
 
       <div id="imageModeFields" class="hidden">
@@ -124,6 +125,37 @@
   let maskTouched=false;
   let objectUrl='';
 
+  function samePoint(a,b){return !!(a&&b&&Math.abs(a.x-b.x)<0.01&&Math.abs(a.y-b.y)<0.01);}
+
+  function pointFromClient(clientX,clientY){
+    const rect=canvas.getBoundingClientRect();
+    return {
+      x:(clientX-rect.left)*(canvas.width/rect.width),
+      y:(clientY-rect.top)*(canvas.height/rect.height),
+      scale:canvas.width/rect.width
+    };
+  }
+
+  function startStroke(point){
+    if(!baseImage||!point)return;
+    saveHistory();
+    drawing=true;
+    lastPoint=point;
+    drawSegment(point,point);
+  }
+
+  function moveStroke(point){
+    if(!drawing||!point)return;
+    if(samePoint(lastPoint,point))return;
+    drawSegment(lastPoint,point);
+    lastPoint=point;
+  }
+
+  function endStroke(){
+    drawing=false;
+    lastPoint=null;
+  }
+
   function currentMode(){return document.querySelector('input[name="generation_mode"]:checked').value;}
   function refresh(){
     const mode=currentMode();
@@ -147,8 +179,19 @@
     eraseBtn.classList.toggle('active',tool==='erase');
     eraseBtn.classList.toggle('secondary-btn',tool!=='erase');
   }
-  paintBtn.addEventListener('click',()=>setTool('paint'));
-  eraseBtn.addEventListener('click',()=>setTool('erase'));
+  function requireLoadedImage(actionText){
+    if(baseImage&&maskCanvas.width)return true;
+    maskStatus.textContent=`請先載入來源圖片，再使用${actionText}。`;
+    return false;
+  }
+  paintBtn.addEventListener('click',()=>{
+    setTool('paint');
+    maskStatus.textContent=baseImage?'目前工具：塗修改區。紅色區域會交給 AI 修改。':'已選擇塗修改區工具，請先載入來源圖片。';
+  });
+  eraseBtn.addEventListener('click',()=>{
+    setTool('erase');
+    maskStatus.textContent=baseImage?'目前工具：擦除。擦掉的區域會恢復保護。':'已選擇擦除工具，請先載入來源圖片。';
+  });
   brushSize.addEventListener('input',()=>brushSizeValue.textContent=`${brushSize.value} px`);
 
   function resetMask(clearHistory=true){
@@ -222,15 +265,6 @@
     loadImageUrl(url,code,'reference');
   });
 
-  function pointFromEvent(event){
-    const rect=canvas.getBoundingClientRect();
-    return {
-      x:(event.clientX-rect.left)*(canvas.width/rect.width),
-      y:(event.clientY-rect.top)*(canvas.height/rect.height),
-      scale:canvas.width/rect.width
-    };
-  }
-
   function saveHistory(){
     if(!maskCanvas.width)return;
     history.push(maskCanvas.toDataURL('image/png'));
@@ -258,34 +292,67 @@
     redraw();
   }
 
-  canvas.addEventListener('pointerdown',event=>{
-    if(!baseImage)return;
-    event.preventDefault();
-    canvas.setPointerCapture(event.pointerId);
-    saveHistory();
-    drawing=true;
-    lastPoint=pointFromEvent(event);
-    drawSegment(lastPoint,lastPoint);
-  });
-  canvas.addEventListener('pointermove',event=>{
-    if(!drawing)return;
-    event.preventDefault();
-    const next=pointFromEvent(event);
-    drawSegment(lastPoint,next);
-    lastPoint=next;
-  });
-  function stopDrawing(event){
-    if(!drawing)return;
-    drawing=false;
-    lastPoint=null;
-    try{canvas.releasePointerCapture(event.pointerId);}catch(_){ }
+  function bindPointerEvents(){
+    canvas.addEventListener('pointerdown',event=>{
+      if(!baseImage)return;
+      event.preventDefault();
+      try{canvas.setPointerCapture(event.pointerId);}catch(_){ }
+      startStroke(pointFromClient(event.clientX,event.clientY));
+    });
+    canvas.addEventListener('pointermove',event=>{
+      if(!drawing)return;
+      event.preventDefault();
+      moveStroke(pointFromClient(event.clientX,event.clientY));
+    });
+    const stopPointer=event=>{
+      if(event)event.preventDefault();
+      if(event&&typeof event.pointerId!=='undefined'){
+        try{canvas.releasePointerCapture(event.pointerId);}catch(_){ }
+      }
+      endStroke();
+    };
+    canvas.addEventListener('pointerup',stopPointer);
+    canvas.addEventListener('pointercancel',stopPointer);
+    canvas.addEventListener('pointerleave',event=>{if(drawing)stopPointer(event);});
   }
-  canvas.addEventListener('pointerup',stopDrawing);
-  canvas.addEventListener('pointercancel',stopDrawing);
+
+  function bindLegacyTouchAndMouseEvents(){
+    canvas.addEventListener('mousedown',event=>{
+      if(!baseImage)return;
+      event.preventDefault();
+      startStroke(pointFromClient(event.clientX,event.clientY));
+    });
+    canvas.addEventListener('mousemove',event=>{
+      if(!drawing)return;
+      event.preventDefault();
+      moveStroke(pointFromClient(event.clientX,event.clientY));
+    });
+    canvas.addEventListener('mouseup',event=>{if(drawing){event.preventDefault();endStroke();}});
+    canvas.addEventListener('mouseleave',()=>{if(drawing)endStroke();});
+
+    canvas.addEventListener('touchstart',event=>{
+      if(!baseImage)return;
+      const touch=event.touches&&event.touches[0];
+      if(!touch)return;
+      event.preventDefault();
+      startStroke(pointFromClient(touch.clientX,touch.clientY));
+    },{passive:false});
+    canvas.addEventListener('touchmove',event=>{
+      const touch=event.touches&&event.touches[0];
+      if(!drawing||!touch)return;
+      event.preventDefault();
+      moveStroke(pointFromClient(touch.clientX,touch.clientY));
+    },{passive:false});
+    canvas.addEventListener('touchend',event=>{if(drawing){event.preventDefault();endStroke();}},{passive:false});
+    canvas.addEventListener('touchcancel',event=>{if(drawing){event.preventDefault();endStroke();}},{passive:false});
+  }
+
+  if(window.PointerEvent){bindPointerEvents();}else{bindLegacyTouchAndMouseEvents();}
 
   undoBtn.addEventListener('click',()=>{
+    if(!requireLoadedImage('復原'))return;
     const previous=history.pop();
-    if(!previous)return;
+    if(!previous){maskStatus.textContent='目前沒有可以復原的遮罩動作。';return;}
     const img=new Image();
     img.onload=()=>{
       maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
@@ -295,9 +362,9 @@
     };
     img.src=previous;
   });
-  clearBtn.addEventListener('click',()=>{saveHistory();resetMask(false);});
+  clearBtn.addEventListener('click',()=>{if(!requireLoadedImage('清空'))return;saveHistory();resetMask(false);maskStatus.textContent='遮罩已清空；目前沒有任何區域會被修改。';});
   invertBtn.addEventListener('click',()=>{
-    if(!maskCanvas.width)return;
+    if(!requireLoadedImage('反轉遮罩'))return;
     saveHistory();
     const data=maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height);
     for(let i=0;i<data.data.length;i+=4){
@@ -308,6 +375,7 @@
     maskCtx.putImageData(data,0,0);
     maskTouched=true;
     redraw();
+    maskStatus.textContent='遮罩已反轉。紅色區域會交給 AI 修改。';
   });
 
   function loadedSourceStillMatches(){

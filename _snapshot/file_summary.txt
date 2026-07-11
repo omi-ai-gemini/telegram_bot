@@ -2505,7 +2505,7 @@ python -m compileall -q .
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：875
+- 行數：889
 
 ## imports
 - services.ai_actions.get_ai_thought_url
@@ -2630,7 +2630,7 @@ def _send_script_opening(bot_id, chat_id):
 
     mark_script_opening_sent(
 ...
-... 已省略 795 行
+... 已省略 809 行
 ```
 
 
@@ -3108,9 +3108,11 @@ def add_key_route():
 # routes\image_gen.py
 
 - 類型：.py
-- 行數：226
+- 行數：276
 
 ## imports
+- base64
+- binascii
 - datetime.datetime
 - flask.Blueprint
 - flask.Response
@@ -3129,6 +3131,7 @@ def add_key_route():
 - services.image_store.rename_image_asset
 
 ## functions
+- _decode_mask_data_url
 - _token
 - _auth
 - _render_generate
@@ -3149,6 +3152,8 @@ def add_key_route():
 
 ## preview
 ```text
+import base64
+import binascii
 from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, render_template, request
@@ -3168,7 +3173,32 @@ from services.image_store import (
 
 image_gen_bp = Blueprint("image_gen", __name__)
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+MAX_MASK_BYTES = 4 * 1024 * 1024
 ALLOWED_UPLOAD_MIMES = {"image/jpeg", "image/png", "image/webp"}
+
+
+
+def _decode_mask_data_url(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    if text.startswith("data:"):
+        header, separator, encoded = text.partition(",")
+        if not separator or "base64" not in header.lower() or not header.lower().startswith("data:image/png"):
+            raise ValueError("遮罩格式錯誤，請重新圈選")
+    else:
+        encoded = text
+
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("遮罩資料損壞，請重新圈選") from exc
+
+    if not raw or len(raw) > MAX_MASK_BYTES:
+        raise ValueError("遮罩資料過大，請縮小圖片後重新圈選")
+
+    return {"bytes": raw, "mime_type": "image/png"}
 
 
 def _token():
@@ -3202,35 +3232,8 @@ def image_generate_page():
     auth, error = _auth("generate")
     if error:
         return error
-    context = load_action_context(
-        auth.get("action_id"), auth["user_id"], auth["bot_id"], auth["chat_id"]
-    )
-    if not context:
-        return "找不到這輪對話，請回 Telegram 重新開啟生圖設定", 404
-    return _render_generate(auth, context=context)
-
-
-@image_gen_bp.route("/image/generate", methods=["POST"])
-def image_generate_submit():
-    auth, error = _auth("generate")
-    if error:
-        return error
-
-    context = load_action_context(
-        auth.get("action_id"), auth["user_id"], auth["bot_id"], auth["chat_id"]
-    )
-    if not context:
-        return "找不到這輪對話，請回 Telegram 重新開啟生圖設定", 404
-
-    form = request.form.to_dict()
-    raw_mode = str(form.get("generation_mode") or "text").strip()
-    # 舊表單相容：default=文生圖、custom=圖生圖。
-    generation_mode = {"default": "text", "custom": "image"}.get(raw_mode, raw_mode)
-    gender = str(form.get("gender") or "").strip()
-    prompt_mode = str(form.get("prompt_mode") or "tag").strip()
-    source_choice = str(form.get("source_choice") or "ai").strip()
 ...
-... 已省略 146 行
+... 已省略 196 行
 ```
 
 
@@ -4285,7 +4288,7 @@ CONTINUE_USER_TEXT = """
 # services\aihorde_service.py
 
 - 類型：.py
-- 行數：223
+- 行數：255
 
 ## imports
 - base64
@@ -4320,6 +4323,9 @@ import requests
 
 AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2").rstrip("/")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
+# 遮罩局部修改使用獨立 inpainting 模型，避免拿 Flux 一般圖生圖硬做遮罩。
+# AI Horde 工作節點可用模型會浮動，因此保留環境變數覆蓋能力。
+AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Deliberate Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
@@ -4335,6 +4341,18 @@ try:
 except Exception:
     IMG2IMG_DENOISING_STRENGTH = 0.72
 IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
+INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "20"))
+try:
+    INPAINT_CFG_SCALE = float(os.getenv("AI_HORDE_INPAINT_CFG_SCALE", "7"))
+except Exception:
+    INPAINT_CFG_SCALE = 7.0
+try:
+    INPAINT_DENOISING_STRENGTH = float(
+        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.80")
+    )
+except Exception:
+    INPAINT_DENOISING_STRENGTH = 0.80
+INPAINT_DENOISING_STRENGTH = max(0.05, min(1.0, INPAINT_DENOISING_STRENGTH))
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -4376,23 +4394,8 @@ def _error_message(payload: Dict[str, Any], status_code: int) -> str:
         or f"HTTP {status_code}"
     )
 
-
-def submit_image_request(
-    job_id: int,
-    prompt: str,
-    source_image_bytes: bytes = b"",
-    source_mime_type: str = "image/png",
-    width: int = 896,
-    height: int = 1152,
-) -> Dict[str, Any]:
-    keys = _keys()
-    if not keys:
-        return {"ok": False, "message": "尚未設定 AI_HORDE_API_KEY_1 / AI_HORDE_API_KEY_2"}
-
-    preferred_index = (int(job_id) - 1) % len(keys)
-    ordered = keys[preferred_index:] + keys[:preferred_index]
 ...
-... 已省略 143 行
+... 已省略 175 行
 ```
 
 
@@ -5966,11 +5969,12 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：663
+- 行數：808
 
 ## imports
 - datetime.datetime
 - datetime.timezone
+- pathlib.Path
 - secrets
 - services.aihorde_service.cancel_image_request
 - services.aihorde_service.check_image_request
@@ -5987,6 +5991,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.image_prepare.prepare_img2img_source
 - services.image_store.download_image_asset
 - services.image_store.save_image_asset
+- services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
 - services.telegram_service.send_message
 - services.telegram_service.send_photo_bytes
@@ -6000,6 +6005,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - _text
 - _extract_message_id
 - _cancel_markup
+- _delete_notice_markup
 - _encrypt_prompt
 - _decrypt_prompt
 - _count_active
@@ -6011,8 +6017,12 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - _format_duration
 - _queue_text
 - _edit_status_message
+- _delete_status_message
+- _send_result_notice
 - _fail
 - _cancel
+- _processing_text
+- _load_system_reference
 - _resolve_reference
 - _save_generated_telegram_photo
 - process_image_job
@@ -6025,6 +6035,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 import secrets
 import threading
 import time
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -6039,13 +6050,19 @@ from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypte
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
-from services.telegram_service import send_message, send_photo_bytes, edit_message_text
+from services.telegram_service import delete_message, edit_message_text, send_message, send_photo_bytes
 
 
 ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
-JOB_TIMEOUT_SECONDS = 20 * 60
+QUEUE_TIMEOUT_SECONDS = 30 * 60
 POLL_SECONDS = 4
+STATUS_UPDATE_SECONDS = 10
+BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
+BASE_REFERENCE_FILES = {
+    "male": "male_reference.png",
+    "female": "female_reference.png",
+}
 
 
 def _text(value: Any) -> str:
@@ -6062,6 +6079,14 @@ def _cancel_markup(job_id: int):
     return {
         "inline_keyboard": [[
             {"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}
+        ]]
+    }
+
+
+def _delete_notice_markup(job_id: int):
+    return {
+        "inline_keyboard": [[
+            {"text": "刪除訊息", "callback_data": f"image_notice_delete:{int(job_id)}"}
         ]]
     }
 
@@ -6087,23 +6112,8 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
 
 
 def _count_active(user_id: Any) -> int:
-    conn = get_conn()
-    try:
-        cursor = conn.cursor()
-        cursor.execute("""
-            SELECT COUNT(*)
-            FROM image_generation_jobs
-            WHERE user_id=%s AND status = ANY(%s)
-        """, (_text(user_id), list(ACTIVE_STATUSES)))
-        row = cursor.fetchone()
-        return int(row[0] or 0)
-    finally:
-        conn.close()
-
-
-def create_image_job(
 ...
-... 已省略 583 行
+... 已省略 728 行
 ```
 
 
@@ -6112,34 +6122,40 @@ def create_image_job(
 # services\image_prepare.py
 
 - 類型：.py
-- 行數：120
+- 行數：187
 
 ## imports
 - PIL.Image
+- PIL.ImageFilter
 - PIL.ImageOps
+- PIL.ImageStat
 - io.BytesIO
 - math.sqrt
 - typing.Any
 - typing.Dict
+- typing.Optional
 - typing.Tuple
 
 ## functions
 - _round_to_step
 - _choose_dynamic_output_size
+- _prepare_mask_canvas
 - prepare_img2img_source
 
 ## preview
 ```text
 from io import BytesIO
 from math import sqrt
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 
 try:
-    from PIL import Image, ImageOps
+    from PIL import Image, ImageFilter, ImageOps, ImageStat
     _PIL_IMPORT_ERROR = None
 except ImportError as exc:
     Image = None
+    ImageFilter = None
     ImageOps = None
+    ImageStat = None
     _PIL_IMPORT_ERROR = exc
 
 
@@ -6151,6 +6167,7 @@ MIN_OUTPUT_SIDE = 512
 MAX_CANVAS_ASPECT_RATIO = 2.0
 DIMENSION_STEP = 64
 PAD_COLOR = (240, 240, 240)
+MASK_PAD_COLOR = 0
 
 
 def _round_to_step(value: float, step: int = DIMENSION_STEP) -> int:
@@ -6197,21 +6214,18 @@ def _choose_dynamic_output_size(original_width: int, original_height: int) -> Tu
     return int(width), int(height)
 
 
-def prepare_img2img_source(
-    source_image_bytes: bytes,
-    width: int = OUTPUT_WIDTH,
-    height: int = OUTPUT_HEIGHT,
+def _prepare_mask_canvas(
+    source_mask_bytes: bytes,
+    original_size: Tuple[int, int],
+    content_size: Tuple[int, int],
+    canvas_size: Tuple[int, int],
+    paste_position: Tuple[int, int],
 ) -> Dict[str, Any]:
     """
-    來源圖預處理：
-    - 保留完整原圖內容
-    - 使用最長邊 1024、最大 2:1 的相容畫布
-    - 等比例縮放，不裁切
-    - 超長或超寬圖片使用淺灰色補邊
-    """
-    if _PIL_IMPORT_ERROR is not None:
+    把前端手動畫出的遮罩，轉成與 AI Horde 來源圖完全對齊的灰階 PNG。
+
 ...
-... 已省略 40 行
+... 已省略 107 行
 ```
 
 
@@ -6220,7 +6234,7 @@ def prepare_img2img_source(
 # services\image_prompt.py
 
 - 類型：.py
-- 行數：229
+- 行數：254
 
 ## imports
 - re
@@ -6303,20 +6317,20 @@ Do not beautify, redesign, restyle, or replace the person without an explicit re
 """.strip()
 
 
+MASK_TO_IMAGE_GLOBAL_RULE = """
+Use the supplied source image together with its edit mask. White or light mask pixels are the only regions that may be regenerated. Black mask pixels are protected and must remain visually unchanged as much as the inpainting pipeline allows.
+
+Complete the newest explicit request clearly inside the masked region. Use nearby unmasked pixels for identity, lighting, perspective, texture, anatomy, and scene continuity. Do not redesign the whole image, do not move the camera, and do not alter protected faces, bodies, objects, signs, or background areas unless those pixels are inside the editable mask.
+
+Blend the edited area naturally across the soft mask boundary. Preserve the same person and surrounding scene. The result must look like a local photo edit, not a newly generated replacement image.
+""".strip()
+
+
 TEXT_NEGATIVE_PROMPT = (
     "close-up portrait, face-only portrait, headshot, studio portrait, glamour portrait, "
     "beauty advertisement, centered face, blurred empty background, automatic looking at camera, "
-    "AI generated look, CGI, 3d render, illustration, anime, doll-like face, plastic skin, "
-    "beauty filter, excessive retouching, over-smoothed skin, perfect synthetic skin, "
-    "unrealistic eyes, fake studio glow, text, subtitles, speech bubbles, watermark, logo, "
-    "duplicate person, extra limbs, extra fingers, malformed hands, distorted face, "
-    "stretched body, compressed body, unnatural anatomy, blurry, low resolution"
-)
-
-IMAGE_NEGATIVE_PROMPT = (
-    "unchanged source image, resize-only result, no requested edit, weak edit, "
 ...
-... 已省略 149 行
+... 已省略 174 行
 ```
 
 
@@ -8606,6 +8620,20 @@ def user_has_key(user_id: int) -> bool:
 
 ================================================================================
 
+# static\image_reference\基準圖放置說明.txt
+
+- 類型：.txt
+- 行數：2
+
+## preview
+```text
+文生圖勾選「啟用基準圖」時，系統會讀取這個資料夾內的 male_reference.png 或 female_reference.png 作為基準圖。
+你之後若要替換人物基準圖，直接覆蓋同名檔案即可。
+```
+
+
+================================================================================
+
 # templates\character_form.html
 
 - 類型：.html
@@ -8891,7 +8919,7 @@ def user_has_key(user_id: int) -> bool:
 # templates\image_gen_form.html
 
 - 類型：.html
-- 行數：88
+- 行數：417
 
 ## preview
 ```text
@@ -8902,42 +8930,61 @@ def user_has_key(user_id: int) -> bool:
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telemini 生圖設定</title>
   <style>
-    *{box-sizing:border-box} body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#fff}
-    .page{max-width:720px;margin:0 auto}.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+    *{box-sizing:border-box}body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#fff}
+    .page{max-width:760px;margin:0 auto}.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
     h1{margin:0 0 8px;font-size:26px}.desc{color:rgba(255,255,255,.72);line-height:1.7;font-size:14px;margin:0 0 18px}
     .notice,.error,.success{padding:13px 14px;border-radius:14px;margin:12px 0;line-height:1.6;font-size:14px}.notice{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.35);color:#fde68a}.error{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.35);color:#fecaca}.success{background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
     .section{margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12)}.section-title{font-weight:700;font-size:18px;margin-bottom:14px}.field{margin-bottom:16px}label{display:block;margin-bottom:8px;font-size:14px;color:rgba(255,255,255,.86)}
-    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:220px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
-    .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none}
+    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:210px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
+    .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none!important}
     button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
+    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:crosshair;background:#111827}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
+    @media(max-width:560px){body{padding:10px}.card{padding:16px}.radio{min-width:100%}.tool-grid{grid-template-columns:repeat(2,1fr)}.source-actions{display:block}.source-actions button{width:100%;margin-top:8px}}
   </style>
 </head>
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">文生圖會生成自然相機攝影風格的人物畫面；圖生圖會以來源圖片為主，只修改提示詞明確要求的內容。任務會在背景執行，不影響聊天室繼續對話。</p>
-  <div class="notice">隱私提醒：圖片與提示詞會送往 AI Horde 的社群運算節點處理，不適合放入機密資料。臨時上傳圖片只供本次任務使用，不加入 Telemini 圖片庫。</div>
+  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。文生圖可另外勾選啟用基準圖。任務會在背景執行，不影響聊天室繼續對話。</p>
+  <div class="notice">隱私提醒：圖片、遮罩與提示詞會送往 AI Horde 社群運算節點。遮罩模式需要支援 inpainting 的工作節點，排隊時間可能比一般生圖長。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
 
   <form method="post" enctype="multipart/form-data" id="genForm">
     <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="mask_data_url" id="maskDataInput" value="">
 
     <div class="section"><div class="section-title">1. 生圖模式</div>
       <div class="field"><div class="radio-row">
-        <label class="radio"><input type="radio" name="generation_mode" value="text" {% if form.get('generation_mode','text') not in ['image','custom'] %}checked{% endif %}><b>文生圖</b><div class="hint">使用固定人物身份描述，生成較自然、接近真實相機拍攝的畫面。</div></label>
-        <label class="radio"><input type="radio" name="generation_mode" value="image" {% if form.get('generation_mode') in ['image','custom'] %}checked{% endif %}><b>圖生圖</b><div class="hint">以來源圖為主，保留未指定修改的人物、構圖、背景、物品與文字區域。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="text" {% if form.get('generation_mode','text') not in ['image','custom','mask'] %}checked{% endif %}><b>文生圖</b><div class="hint">使用固定人物身份描述，從文字生成完整畫面。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="image" {% if form.get('generation_mode') in ['image','custom'] %}checked{% endif %}><b>整體圖生圖</b><div class="hint">整張圖片都可以被模型重繪，適合大幅改姿勢、構圖或場景。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="mask" {% if form.get('generation_mode')=='mask' %}checked{% endif %}><b>局部遮罩修改</b><div class="hint">只有塗紅區域交給 AI 修改，其他區域盡量保留。</div></label>
       </div></div>
 
       <div id="textModeFields">
         <div class="field"><label>人物性別（文生圖必填）</label><select name="gender">
           <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
         </select><div class="hint">只有文生圖會套用固定男女身份描述；提示詞明確要求的新外觀仍優先。</div></div>
+        <div class="field"><label style="display:flex;align-items:flex-start;gap:10px"><input type="checkbox" name="use_base_reference" value="1" style="width:auto;margin-top:3px" {% if form.get('use_base_reference') %}checked{% endif %}><span><b>啟用基準圖</b><br><span class="hint">開啟後，文生圖會額外套用對應性別的系統基準圖，讓人物外觀更穩定；關閉時維持現在的純文字生圖。</span></span></label></div>
       </div>
 
       <div id="imageModeFields" class="hidden">
-        <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。上傳圖與圖片代號同時填寫時，以上傳圖優先。</div></div>
-        <div class="field"><label>或使用聊天室圖片代號／名稱</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><div class="hint">圖生圖至少要提供其中一種來源圖。</div></div>
+        <div class="field"><label>本次臨時上傳圖片</label><input id="sourceImageInput" type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。上傳圖與圖片代號同時填寫時，以上傳圖優先。</div></div>
+        <div class="field"><label>或使用聊天室圖片代號／名稱</label><div class="source-actions"><input id="referenceCode" name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><button type="button" class="secondary-btn" id="loadReferenceBtn">載入圖片</button></div><div class="hint">整體圖生圖或遮罩模式至少要提供其中一種來源圖。</div></div>
+      </div>
+
+      <div id="maskEditorFields" class="hidden">
+        <div class="mask-status" id="maskStatus">請先選擇上傳圖片，或輸入聊天室圖片代號後按「載入圖片」。紅色區域代表 AI 可以修改。</div>
+        <div class="field"><label>筆刷大小</label><div class="range-row"><input id="brushSize" type="range" min="8" max="160" value="52"><span class="range-value" id="brushSizeValue">52 px</span></div></div>
+        <div class="tool-grid">
+          <button type="button" class="active" id="paintBtn">🖌️ 塗修改區</button>
+          <button type="button" class="secondary-btn" id="eraseBtn">🧽 擦除</button>
+          <button type="button" class="secondary-btn" id="undoBtn">↩️ 復原</button>
+          <button type="button" class="secondary-btn" id="clearBtn">🗑️ 清空</button>
+          <button type="button" class="secondary-btn" id="invertBtn">◐ 反轉遮罩</button>
+        </div>
+        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas></div>
+        <div class="hint">塗紅＝允許修改；未塗＝保護。換背景時可先塗人物，再按「反轉遮罩」，就會改成背景可修改、人物保護。</div>
       </div>
     </div>
 
@@ -8955,28 +9002,9 @@ def user_has_key(user_id: int) -> bool:
         <div class="field"><label>使用者訊息預覽</label><div class="preview">{{ context.get('user_text') or '沒有找到使用者訊息' }}</div></div>
         <div class="field"><label>AI 訊息預覽</label><div class="preview">{{ context.get('assistant_text') or '沒有找到 AI 訊息' }}</div></div>
         <div class="field"><label>固定標籤（單選）</label><select name="fixed_tag"><option value="">不使用固定標籤</option>{% for tag in fixed_tags %}<option value="{{ tag }}" {% if form.get('fixed_tag')==tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}</select></div>
-        <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="例如：寬鬆白色襯衫、手持鑰匙、站在高級住宅客廳。這裡的明確要求會優先於前面的對話內容。">{{ form.get('supplement_prompt','') }}</textarea></div>
-      </div>
-
-      <div id="customPromptFields" class="hidden">
-        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成或修改的圖片；這段內容會作為最高優先要求。">{{ form.get('custom_prompt','') }}</textarea></div>
-      </div>
-      <div class="hint">不再逐項拆髮型、衣服或場景。所有修改都使用同一條規則：最新且最明確的提示詞優先；圖生圖未提到的部分盡量保留原圖。</div>
-    </div>
-
-    <div class="section"><button type="submit" id="submitBtn">送出生圖任務</button><div class="countdown" id="countdown"></div></div>
-  </form>
-</div></div>
-<script>
-  const exp={{ expires_at|int }}*1000;
-  const modeInputs=[...document.querySelectorAll('input[name="generation_mode"]')];
-  const promptInputs=[...document.querySelectorAll('input[name="prompt_mode"]')];
-  function refresh(){
-    const mode=document.querySelector('input[name="generation_mode"]:checked').value;
-    document.getElementById('textModeFields').classList.toggle('hidden',mode!=='text');
-    document.getElementById('imageModeFields').classList.toggle('hidden',mode!=='image');
+        <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="遮罩模式請直接描述紅色區域要變成什麼，例如：把紅色區域的衣服改成寬鬆白襯衫。">{{ form.get('supplement_prompt','') }}</textarea></div>
 ...
-... 已省略 8 行
+... 已省略 337 行
 ```
 
 
@@ -11305,6 +11333,100 @@ Telemini AI Horde 遮罩生圖修正檢查結果
 
 ================================================================================
 
+# 生圖排隊狀態與失敗通知覆蓋說明.txt
+
+- 類型：.txt
+- 行數：148
+
+## preview
+```text
+Telemini 生圖排隊狀態與失敗通知外帶包
+
+本包已合併：
+- 遮罩局部修改／inpainting
+- AI Horde is_possible=false 繼續排隊
+- 排隊最長 30 分鐘
+- 排隊資訊定時更新
+- 失敗原因代號
+- 失敗通知刪除按鈕
+
+一、覆蓋方式
+
+把本資料夾內的：
+
+handlers
+routes
+services
+templates
+
+直接複製到 Telemini 專案根目錄：
+
+C:\Projects\telemini
+
+選擇覆蓋同名檔案。
+
+二、新的生圖訊息流程
+
+1. 使用者送出生圖表單後，原本的「prompt生成中」會被編輯成同一則狀態訊息：
+
+生圖中請稍後
+排隊位置：取得中／數字
+預計等待：估算中／時間
+已等待：時間
+
+2. 排隊位置、預計等待時間、已等待時間每 10 秒更新一次。
+
+3. AI Horde 回傳 is_possible=false 時：
+- 不會失敗。
+- 不會顯示相容節點等技術文字。
+- 繼續留在佇列等待。
+
+4. 排隊 30 分鐘內開始生成時：
+- 立刻刪除「生圖中請稍後」狀態訊息。
+- 生成工作繼續在背景執行。
+- 完成後直接傳送圖片。
+- 30 分鐘限制只管排隊階段，不會取消已經開始生成的任務。
+
+5. 排隊超過 30 分鐘仍未開始生成時：
+- 呼叫 AI Horde 取消任務。
+- 刪除排隊狀態訊息。
+- 傳送：
+
+生圖超過30分鐘，任務取消
+代號：QUEUE_TIMEOUT
+
+6. 使用者手動取消時：
+
+生圖任務已取消
+代號：USER_CANCELLED
+
+7. 所有失敗／取消通知下方會附上：
+
+[刪除訊息]
+
+按下後只刪除該則通知，不會重試、不會取消其他任務、不會再次呼叫 AI Horde。
+
+三、主要失敗代號
+
+OUTDATED_FLOW
+舊版生圖流程任務，需重新送出。
+
+UPLOAD_EXPIRED
+臨時上傳圖片已失效。
+
+REFERENCE_NOT_FOUND
+聊天室參考圖片不存在或已刪除。
+
+MASK_EXPIRED
+局部修改遮罩資料已失效。
+
+...
+... 已省略 68 行
+```
+
+
+================================================================================
+
 # 生圖改版相容性檢查結果.txt
 
 - 類型：.txt
@@ -11517,25 +11639,163 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 
 ================================================================================
 
-# 覆蓋說明.txt
+# 覆蓋檔案清單.txt
 
 - 類型：.txt
-- 行數：12
+- 行數：6
 
 ## preview
 ```text
-圖片等待函式匯入錯誤修正補丁
+routes/image_gen.py
+services/image_jobs.py
+templates/image_gen_form.html
+static/image_reference/male_reference.png
+static/image_reference/female_reference.png
+static/image_reference/基準圖放置說明.txt
+```
 
-只覆蓋：
-- services/media_ai.py
 
-這個檔案已合併：
-- queue_text_for_pending_photo 圖片等待函式
-- 10 秒圖片與後續文字合併
-- 圖片解析上限 65536
-- 貼圖解析上限 500
-- MAX_TOKENS / 無回應 / 當日額度提示
-- 圖片失敗時停止緩衝文字回應
+================================================================================
+
+# 覆蓋說明.txt
+
+- 類型：.txt
+- 行數：38
+
+## preview
+```text
+Telemini 遮罩操作、文生圖基準圖、生圖狀態整合外帶包
+
+直接把本壓縮檔內容解壓到 Telemini 專案根目錄並覆蓋同名檔案。
+
+修改檔案：
+- routes/image_gen.py
+- services/image_jobs.py
+- templates/image_gen_form.html
+
+加入／恢復：
+- static/image_reference/male_reference.png
+- static/image_reference/female_reference.png
+- static/image_reference/基準圖放置說明.txt
+
+本次內容：
+1. 遮罩預設為全黑空遮罩：預設沒有任何區域會被修改，不是整張全遮罩。
+2. 修正生圖頁 token 無法載入聊天室圖片預覽的問題。
+3. 遮罩畫筆支援 Pointer Events；舊版 Telegram WebView 自動改用滑鼠／觸控事件。
+4. 塗抹、擦除、復原、清空、反轉按鈕會顯示明確操作狀態。
+5. 文生圖新增「啟用基準圖」勾選：
+   - 關閉：維持純文字文生圖。
+   - 開啟：依男／女性別讀取對應系統基準圖，作為人物外觀參考。
+6. 排隊中維持動態顯示排隊位置、預計等待與已等待時間。
+7. 工作節點開始生成時，同一則訊息改成「正在生圖」。
+8. 圖片確實傳進 Telegram 後，才刪除「正在生圖」訊息。
+9. 失敗或取消時，仍會刪除狀態訊息並送出對應錯誤代號與「刪除訊息」按鈕。
+10. 30 分鐘只限制排隊階段；已開始生成不會因排隊逾時取消。
+
+不新增資料表，不修改 requirements.txt。
+
+部署前檢查：
+python -m compileall -q routes services
+
+部署後判讀 Log：
+- 純文字文生圖：mode=txt2img reference_type=system_prompt
+- 啟用基準圖：mode=img2img reference_type=system_reference
+- 遮罩局部修改：mode=inpainting has_mask=True
+- 開始生成：IMAGE GENERATION STARTED
+```
+
+
+================================================================================
+
+# 遮罩局部修改外帶說明.txt
+
+- 類型：.txt
+- 行數：156
+
+## preview
+```text
+Telemini 遮罩局部修改外帶包
+
+基底版本：telemini(9).zip
+用途：在既有生圖頁新增「局部遮罩修改」，保留原本文生圖與整體圖生圖。
+
+========================================
+一、覆蓋檔案
+========================================
+
+routes/image_gen.py
+services/aihorde_service.py
+services/image_jobs.py
+services/image_prepare.py
+services/image_prompt.py
+templates/image_gen_form.html
+
+不新增資料表。
+不修改 requirements.txt。
+不影響聊天、記憶、服務中心、圖片解析與原本圖片庫流程。
+
+========================================
+二、新功能
+========================================
+
+生圖頁新增三種模式：
+
+1. 文生圖
+2. 整體圖生圖
+3. 局部遮罩修改
+
+局部遮罩修改可使用：
+
+- 本次臨時上傳圖片
+- 聊天室圖片代號／名稱
+
+使用者可在網頁上用滑鼠或手指操作：
+
+- 塗抹要修改的區域
+- 擦除遮罩
+- 調整筆刷大小
+- 復原
+- 清空
+- 反轉遮罩
+
+畫面規則：
+
+- 紅色區域：AI 可以修改
+- 未塗區域：保護，盡量維持原圖
+
+換背景用法：
+
+1. 先把人物整體塗紅。
+2. 按「反轉遮罩」。
+3. 此時背景會成為可修改區域，人物則成為保護區。
+
+========================================
+三、後端流程
+========================================
+
+來源圖與遮罩會使用完全相同的處理座標：
+
+原圖
+→ 修正 EXIF 方向
+→ 等比例縮放
+→ 使用 AI Horde 相容畫布
+→ 不裁切，必要時淺灰補邊
+
+遮罩
+→ 映射回原圖尺寸
+→ 使用與原圖相同的縮放尺寸
+→ 使用與原圖相同的置中位置
+→ 黑色補邊
+→ 邊緣自動羽化
+
+避免前端圈選的位置，在送出後因縮放或補邊而偏移。
+
+送往 AI Horde 時：
+
+source_image=處理後來源圖
+source_mask=處理後黑白遮罩
+...
+... 已省略 76 行
 ```
 
 

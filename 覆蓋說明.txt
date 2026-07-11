@@ -1,12 +1,38 @@
-圖片等待函式匯入錯誤修正補丁
+Telemini 遮罩操作、文生圖基準圖、生圖狀態整合外帶包
 
-只覆蓋：
-- services/media_ai.py
+直接把本壓縮檔內容解壓到 Telemini 專案根目錄並覆蓋同名檔案。
 
-這個檔案已合併：
-- queue_text_for_pending_photo 圖片等待函式
-- 10 秒圖片與後續文字合併
-- 圖片解析上限 65536
-- 貼圖解析上限 500
-- MAX_TOKENS / 無回應 / 當日額度提示
-- 圖片失敗時停止緩衝文字回應
+修改檔案：
+- routes/image_gen.py
+- services/image_jobs.py
+- templates/image_gen_form.html
+
+加入／恢復：
+- static/image_reference/male_reference.png
+- static/image_reference/female_reference.png
+- static/image_reference/基準圖放置說明.txt
+
+本次內容：
+1. 遮罩預設為全黑空遮罩：預設沒有任何區域會被修改，不是整張全遮罩。
+2. 修正生圖頁 token 無法載入聊天室圖片預覽的問題。
+3. 遮罩畫筆支援 Pointer Events；舊版 Telegram WebView 自動改用滑鼠／觸控事件。
+4. 塗抹、擦除、復原、清空、反轉按鈕會顯示明確操作狀態。
+5. 文生圖新增「啟用基準圖」勾選：
+   - 關閉：維持純文字文生圖。
+   - 開啟：依男／女性別讀取對應系統基準圖，作為人物外觀參考。
+6. 排隊中維持動態顯示排隊位置、預計等待與已等待時間。
+7. 工作節點開始生成時，同一則訊息改成「正在生圖」。
+8. 圖片確實傳進 Telegram 後，才刪除「正在生圖」訊息。
+9. 失敗或取消時，仍會刪除狀態訊息並送出對應錯誤代號與「刪除訊息」按鈕。
+10. 30 分鐘只限制排隊階段；已開始生成不會因排隊逾時取消。
+
+不新增資料表，不修改 requirements.txt。
+
+部署前檢查：
+python -m compileall -q routes services
+
+部署後判讀 Log：
+- 純文字文生圖：mode=txt2img reference_type=system_prompt
+- 啟用基準圖：mode=img2img reference_type=system_reference
+- 遮罩局部修改：mode=inpainting has_mask=True
+- 開始生成：IMAGE GENERATION STARTED

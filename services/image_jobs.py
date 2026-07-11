@@ -1,6 +1,7 @@
 import secrets
 import threading
 import time
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -23,6 +24,11 @@ MAX_ACTIVE_PER_USER = 3
 QUEUE_TIMEOUT_SECONDS = 30 * 60
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
+BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
+BASE_REFERENCE_FILES = {
+    "male": "male_reference.png",
+    "female": "female_reference.png",
+}
 
 
 def _text(value: Any) -> str:
@@ -395,11 +401,36 @@ def _cancel(job: Dict[str, Any]):
     _send_result_notice(job, "生圖任務已取消\n代號：USER_CANCELLED")
 
 
+def _processing_text(elapsed_seconds: int) -> str:
+    # 工作節點已接單後，保留同一則狀態訊息直到圖片真的傳進聊天室。
+    return "正在生圖"
+
+
+def _load_system_reference(gender: Any) -> Optional[Dict[str, Any]]:
+    filename = BASE_REFERENCE_FILES.get(_text(gender))
+    if not filename:
+        return None
+    path = BASE_REFERENCE_DIR / filename
+    if not path.exists() or not path.is_file():
+        return None
+    try:
+        return {
+            "bytes": path.read_bytes(),
+            "mime_type": "image/png",
+            "path": str(path),
+        }
+    except Exception as exc:
+        print(f"SYSTEM REFERENCE READ ERROR gender={gender}:", exc, flush=True)
+        return None
+
+
 def _resolve_reference(job: Dict[str, Any], custom_upload: Optional[Dict[str, Any]]):
     if job.get("reference_type") == "custom_upload":
         return custom_upload
     if job.get("reference_type") == "chat_image":
         return download_image_asset(job.get("reference_code"), job["bot_id"], job["chat_id"])
+    if job.get("reference_type") == "system_reference":
+        return _load_system_reference(job.get("gender"))
     return None
 
 
@@ -445,20 +476,18 @@ def process_image_job(
             return
 
         if not job.get("horde_request_id"):
-            # 文生圖不傳來源圖；圖生圖只讀玩家上傳或聊天室圖片。
-            # 舊版 system_reference 任務不再使用，避免重新進入遮罩流程。
-            if job.get("reference_type") == "system_reference":
-                _fail(job, "生圖流程已更新，請重新開啟生圖頁送出任務", code="OUTDATED_FLOW")
-                return
-
+            # 文生圖預設不傳來源圖；若使用者在文生圖勾選啟用基準圖，
+            # 則讀取 static/image_reference 下的男女基準圖，走基準圖參考生圖。
             reference = None
-            if job.get("reference_type") in {"custom_upload", "chat_image"}:
+            if job.get("reference_type") in {"custom_upload", "chat_image", "system_reference"}:
                 reference = _resolve_reference(job, custom_upload)
                 if not reference or not reference.get("bytes"):
                     if job.get("reference_type") == "custom_upload":
                         _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出", code="UPLOAD_EXPIRED")
-                    else:
+                    elif job.get("reference_type") == "chat_image":
                         _fail(job, "找不到指定的聊天室圖片，可能已被刪除", code="REFERENCE_NOT_FOUND")
+                    else:
+                        _fail(job, "找不到文生圖基準圖，請確認 static/image_reference 已放入男女基準圖", code="BASE_REFERENCE_NOT_FOUND")
                     return
 
             if job.get("generation_mode") == "mask":
@@ -629,7 +658,10 @@ def process_image_job(
                         started_at=datetime.utcnow(),
                         heartbeat_at=datetime.utcnow(),
                     )
-                _delete_status_message(job)
+                    processing_text = _processing_text(queue_elapsed)
+                    _edit_status_message(job, processing_text)
+                    last_queue_text = processing_text
+                    last_queue_update_at = time.monotonic()
                 job = _get_job(job_id) or job
                 if newly_started:
                     print(
@@ -664,7 +696,8 @@ def process_image_job(
                 )
 
             if check.get("done"):
-                _delete_status_message(job)
+                # 先取得、下載並傳送圖片；只有 Telegram 確實收到圖片後，
+                # 才刪除「正在生圖」狀態，避免中間出現無提示空窗。
                 status = get_image_result(job.get("horde_request_id"), job.get("api_slot"))
                 if not status.get("ok"):
                     _fail(job, status.get("message") or "取得圖片結果失敗", code="RESULT_FETCH_FAILED")
@@ -699,6 +732,7 @@ def process_image_job(
                     completed_at=datetime.utcnow(),
                     worker_token=None,
                 )
+                _delete_status_message(job)
                 return
 
             time.sleep(POLL_SECONDS)

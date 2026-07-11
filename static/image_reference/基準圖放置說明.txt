@@ -1,0 +1,2 @@
+文生圖勾選「啟用基準圖」時，系統會讀取這個資料夾內的 male_reference.png 或 female_reference.png 作為基準圖。
+你之後若要替換人物基準圖，直接覆蓋同名檔案即可。

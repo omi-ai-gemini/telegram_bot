@@ -112,6 +112,7 @@ def image_generate_submit():
     supplement_prompt = str(form.get("supplement_prompt") or "").strip()
     custom_prompt = str(form.get("custom_prompt") or "").strip()
     reference_code = str(form.get("reference_code") or "").strip()
+    use_base_reference = str(form.get("use_base_reference") or "").strip().lower() in {"1", "true", "on", "yes"}
 
     if generation_mode not in {"text", "image", "mask"}:
         return _render_generate(auth, context, error="生圖模式錯誤", form=form, status=400)
@@ -124,7 +125,7 @@ def image_generate_submit():
 
     custom_upload = None
     custom_mask = None
-    reference_type = "system_prompt"
+    reference_type = "system_reference" if generation_mode == "text" and use_base_reference else "system_prompt"
 
     if generation_mode in {"image", "mask"}:
         upload = request.files.get("source_image")
@@ -230,9 +231,11 @@ def image_library_page():
 
 @image_gen_bp.route("/setting/images/preview/<identifier>", methods=["GET"])
 def image_library_preview(identifier):
-    auth, error = _auth("library")
-    if error:
-        return error
+    auth = verify_image_token(_token())
+    if not auth.get("ok"):
+        return auth.get("message") or "連結驗證失敗", 403
+    if auth.get("page_type") not in {"library", "generate"}:
+        return "連結用途不正確", 403
     media = download_image_asset(identifier, auth["bot_id"], auth["chat_id"])
     if not media:
         return "圖片讀取失敗", 404

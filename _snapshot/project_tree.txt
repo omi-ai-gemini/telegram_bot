@@ -99,6 +99,8 @@
   📄 user_notice.py
   📄 user_router.py
 📁 static/
+  📁 image_reference/
+    📄 基準圖放置說明.txt
 📁 templates/
   📄 character_form.html
   📄 chat_persona_form.html
@@ -145,6 +147,7 @@
 📄 清理舊檔案.ps1
 📄 清理舊檔案_編碼修正版.ps1
 📄 生圖功能檢查結果.txt
+📄 生圖排隊狀態與失敗通知覆蓋說明.txt
 📄 生圖改版相容性檢查結果.txt
 📄 生圖雙模式改版檢查結果.txt
 📄 生圖雙模式改版覆蓋說明.txt
@@ -152,6 +155,8 @@
 📄 補丁套用說明.txt
 📄 補丁覆蓋說明.txt
 📄 覆蓋方式.txt
+📄 覆蓋檔案清單.txt
 📄 覆蓋說明.txt
+📄 遮罩局部修改外帶說明.txt
 📄 遮罩生圖修正說明.txt
 📄 開場-更新說明.txt
