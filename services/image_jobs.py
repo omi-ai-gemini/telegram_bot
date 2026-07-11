@@ -15,13 +15,14 @@ from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypte
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
-from services.telegram_service import send_message, send_photo_bytes, edit_message_text
+from services.telegram_service import delete_message, edit_message_text, send_message, send_photo_bytes
 
 
 ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
-JOB_TIMEOUT_SECONDS = 20 * 60
+QUEUE_TIMEOUT_SECONDS = 30 * 60
 POLL_SECONDS = 4
+STATUS_UPDATE_SECONDS = 10
 
 
 def _text(value: Any) -> str:
@@ -38,6 +39,14 @@ def _cancel_markup(job_id: int):
     return {
         "inline_keyboard": [[
             {"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}
+        ]]
+    }
+
+
+def _delete_notice_markup(job_id: int):
+    return {
+        "inline_keyboard": [[
+            {"text": "刪除訊息", "callback_data": f"image_notice_delete:{int(job_id)}"}
         ]]
     }
 
@@ -271,16 +280,23 @@ def _format_duration(seconds: int) -> str:
     return f"{secs} 秒"
 
 
-def _queue_text(check: Dict[str, Any]) -> str:
+def _queue_text(check: Dict[str, Any], elapsed_seconds: int) -> str:
     wait_time = check.get("wait_time")
     queue_position = check.get("queue_position")
+
     lines = ["生圖中請稍後"]
-    if isinstance(wait_time, (int, float)) and int(wait_time) >= 0:
-        lines.append(f"預計等待約 {_format_duration(int(wait_time))}")
-    else:
-        lines.append("目前無法估算等待時間")
+
     if isinstance(queue_position, int) and queue_position >= 0:
-        lines.append(f"目前排隊位置：{queue_position}")
+        lines.append(f"排隊位置：{queue_position}")
+    else:
+        lines.append("排隊位置：取得中")
+
+    if isinstance(wait_time, (int, float)) and int(wait_time) >= 0:
+        lines.append(f"預計等待：約 {_format_duration(int(wait_time))}")
+    else:
+        lines.append("預計等待：估算中")
+
+    lines.append(f"已等待：{_format_duration(elapsed_seconds)}")
     return "\n".join(lines)
 
 
@@ -317,19 +333,53 @@ def _edit_status_message(
     return new_message_id
 
 
-def _fail(job: Dict[str, Any], message: str):
+def _delete_status_message(job: Dict[str, Any]) -> bool:
+    message_id = job.get("status_message_id")
+    if not message_id:
+        return False
+
+    deleted = delete_message(job["bot_id"], job["chat_id"], message_id)
+    _update_job(job["id"], status_message_id=None)
+    job["status_message_id"] = None
+
+    print(
+        f"IMAGE STATUS MESSAGE DELETE job_id={job['id']} "
+        f"message_id={message_id} ok={bool(deleted)}",
+        flush=True,
+    )
+    return bool(deleted)
+
+
+def _send_result_notice(job: Dict[str, Any], text: str) -> Optional[int]:
+    _delete_status_message(job)
+    sent = send_message(
+        job["bot_id"],
+        job["chat_id"],
+        text,
+        reply_markup=_delete_notice_markup(job["id"]),
+    )
+    return _extract_message_id(sent)
+
+
+def _fail(
+    job: Dict[str, Any],
+    message: str,
+    code: str = "UNKNOWN_ERROR",
+    public_text: Optional[str] = None,
+):
+    clean_message = _text(message) or "未知錯誤"
+    clean_code = _text(code) or "UNKNOWN_ERROR"
+
     _update_job(
         job["id"],
         status="failed",
-        error_message=_text(message)[:500],
+        error_message=f"{clean_code}: {clean_message}"[:500],
         completed_at=datetime.utcnow(),
         worker_token=None,
     )
-    _edit_status_message(
-        job,
-        f"生圖失敗：{_text(message) or '未知錯誤'}",
-        allow_cancel=False,
-    )
+
+    notice_text = _text(public_text) or f"生圖失敗：{clean_message}"
+    _send_result_notice(job, f"{notice_text}\n代號：{clean_code}")
 
 
 def _cancel(job: Dict[str, Any]):
@@ -338,10 +388,11 @@ def _cancel(job: Dict[str, Any]):
     _update_job(
         job["id"],
         status="canceled",
+        error_message="USER_CANCELLED",
         completed_at=datetime.utcnow(),
         worker_token=None,
     )
-    _edit_status_message(job, "生圖已取消", allow_cancel=False)
+    _send_result_notice(job, "生圖任務已取消\n代號：USER_CANCELLED")
 
 
 def _resolve_reference(job: Dict[str, Any], custom_upload: Optional[Dict[str, Any]]):
@@ -385,6 +436,9 @@ def process_image_job(
     if not job:
         return
 
+    last_queue_text = ""
+    last_queue_update_at = 0.0
+
     try:
         if job.get("cancel_requested"):
             _cancel(job)
@@ -394,7 +448,7 @@ def process_image_job(
             # 文生圖不傳來源圖；圖生圖只讀玩家上傳或聊天室圖片。
             # 舊版 system_reference 任務不再使用，避免重新進入遮罩流程。
             if job.get("reference_type") == "system_reference":
-                _fail(job, "生圖流程已更新，請重新開啟生圖頁送出任務")
+                _fail(job, "生圖流程已更新，請重新開啟生圖頁送出任務", code="OUTDATED_FLOW")
                 return
 
             reference = None
@@ -402,14 +456,14 @@ def process_image_job(
                 reference = _resolve_reference(job, custom_upload)
                 if not reference or not reference.get("bytes"):
                     if job.get("reference_type") == "custom_upload":
-                        _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出")
+                        _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出", code="UPLOAD_EXPIRED")
                     else:
-                        _fail(job, "找不到指定的聊天室圖片，可能已被刪除")
+                        _fail(job, "找不到指定的聊天室圖片，可能已被刪除", code="REFERENCE_NOT_FOUND")
                     return
 
             if job.get("generation_mode") == "mask":
                 if not custom_mask or not custom_mask.get("bytes"):
-                    _fail(job, "遮罩資料已失效，請重新開啟生圖頁並重新圈選修改區域")
+                    _fail(job, "遮罩資料已失效，請重新開啟生圖頁並重新圈選修改區域", code="MASK_EXPIRED")
                     return
 
             source_prompt = _decrypt_prompt(
@@ -418,7 +472,7 @@ def process_image_job(
                 field="source_prompt" if job.get("source_prompt") else "final_prompt",
             )
             if not source_prompt:
-                _fail(job, "生圖提示詞讀取失敗")
+                _fail(job, "生圖提示詞讀取失敗", code="PROMPT_READ_FAILED")
                 return
 
             prompt_status = _text(job.get("prompt_generation_status")) or "pending"
@@ -454,7 +508,7 @@ def process_image_job(
                 prompt = source_prompt
 
             if not prompt:
-                _fail(job, "生圖提示詞整理後為空")
+                _fail(job, "生圖提示詞整理後為空", code="PROMPT_EMPTY")
                 return
 
             _update_job(job["id"], status="submitting", heartbeat_at=datetime.utcnow())
@@ -471,7 +525,7 @@ def process_image_job(
                         else b"",
                     )
                 except (RuntimeError, ValueError) as exc:
-                    _fail(job, str(exc))
+                    _fail(job, str(exc), code="IMAGE_PREPARE_FAILED")
                     return
 
             if prepared_reference and prepared_reference.get("mask_bytes"):
@@ -505,16 +559,20 @@ def process_image_job(
                 height=request_height,
             )
             if not submitted.get("ok"):
-                _fail(job, submitted.get("message") or "AI Horde 拒絕任務")
+                _fail(job, submitted.get("message") or "AI Horde 拒絕任務", code="SUBMIT_FAILED")
                 return
 
-            _edit_status_message(job, queue_status_text)
+            initial_queue_text = _queue_text({}, _elapsed_seconds(job.get("created_at")))
+            _edit_status_message(job, initial_queue_text)
+            last_queue_text = initial_queue_text
+            last_queue_update_at = time.monotonic()
 
             _update_job(
                 job["id"],
                 status="queued",
                 horde_request_id=submitted.get("request_id"),
                 api_slot=submitted.get("api_slot"),
+                queued_notified=True,
                 heartbeat_at=datetime.utcnow(),
             )
             job = _get_job(job["id"])
@@ -528,17 +586,24 @@ def process_image_job(
                 _cancel(job)
                 return
 
-            if _elapsed_seconds(job.get("created_at")) >= JOB_TIMEOUT_SECONDS:
+            queue_elapsed = _elapsed_seconds(job.get("created_at"))
+            has_started_processing = bool(job.get("started_at")) or job.get("status") == "processing"
+            if not has_started_processing and queue_elapsed >= QUEUE_TIMEOUT_SECONDS:
                 if job.get("horde_request_id"):
                     cancel_image_request(job["horde_request_id"], job.get("api_slot"))
-                _fail(job, "排隊與生成時間超過 20 分鐘，任務已停止")
+                _fail(
+                    job,
+                    "排隊超過 30 分鐘仍未開始生成",
+                    code="QUEUE_TIMEOUT",
+                    public_text="生圖超過30分鐘，任務取消",
+                )
                 return
 
             check = check_image_request(job.get("horde_request_id"), job.get("api_slot"))
             if not check.get("ok"):
                 status_code = check.get("status_code")
                 if status_code == 404:
-                    _fail(job, "AI Horde 找不到這個任務")
+                    _fail(job, "AI Horde 找不到這個任務", code="HORDE_JOB_NOT_FOUND")
                     return
                 _update_job(job_id, heartbeat_at=datetime.utcnow())
                 time.sleep(POLL_SECONDS)
@@ -553,48 +618,67 @@ def process_image_job(
                 heartbeat_at=datetime.utcnow(),
             )
 
-            if not job.get("queued_notified"):
-                send_message(
-                    job["bot_id"],
-                    job["chat_id"],
-                    _queue_text(check),
-                    reply_markup=_cancel_markup(job_id),
-                )
-                _update_job(job_id, queued_notified=True)
-
             processing = int(check.get("processing") or 0)
-            if processing > 0 and not job.get("processing_notified"):
-                send_message(
-                    job["bot_id"],
-                    job["chat_id"],
-                    "生圖中請稍後",
-                    reply_markup=_cancel_markup(job_id),
+            if processing > 0:
+                newly_started = not (job.get("started_at") or job.get("status") == "processing")
+                if newly_started:
+                    _update_job(
+                        job_id,
+                        status="processing",
+                        processing_notified=True,
+                        started_at=datetime.utcnow(),
+                        heartbeat_at=datetime.utcnow(),
+                    )
+                _delete_status_message(job)
+                job = _get_job(job_id) or job
+                if newly_started:
+                    print(
+                        f"IMAGE GENERATION STARTED job_id={job_id} "
+                        f"queue_elapsed={queue_elapsed}",
+                        flush=True,
+                    )
+            elif not (job.get("started_at") or job.get("status") == "processing"):
+                queue_text = _queue_text(check, queue_elapsed)
+                now_monotonic = time.monotonic()
+                should_refresh = (
+                    not last_queue_text
+                    or now_monotonic - last_queue_update_at >= STATUS_UPDATE_SECONDS
                 )
-                _update_job(job_id, status="processing", processing_notified=True)
+                if should_refresh and queue_text != last_queue_text:
+                    _edit_status_message(job, queue_text)
+                    last_queue_text = queue_text
+                    last_queue_update_at = now_monotonic
+                    _update_job(job_id, queued_notified=True)
 
             if check.get("faulted"):
-                _fail(job, "AI Horde 回報任務異常")
+                _fail(job, "AI Horde 回報任務異常", code="HORDE_FAULTED")
                 return
 
-            if check.get("is_possible") is False:
-                _fail(job, "目前沒有可執行此模型與尺寸的工作節點")
-                return
+            if check.get("is_possible") is False and not (job.get("started_at") or job.get("status") == "processing"):
+                # 只代表目前沒有 worker 接單，任務仍留在佇列中等待。
+                # 對使用者只顯示一般排隊資訊，不顯示節點相容性細節。
+                _update_job(
+                    job_id,
+                    status="queued",
+                    heartbeat_at=datetime.utcnow(),
+                )
 
             if check.get("done"):
+                _delete_status_message(job)
                 status = get_image_result(job.get("horde_request_id"), job.get("api_slot"))
                 if not status.get("ok"):
-                    _fail(job, status.get("message") or "取得圖片結果失敗")
+                    _fail(job, status.get("message") or "取得圖片結果失敗", code="RESULT_FETCH_FAILED")
                     return
 
                 generations = status.get("generations") or []
                 generation = generations[0] if generations else None
                 if not generation:
-                    _fail(job, "AI Horde 沒有回傳圖片")
+                    _fail(job, "AI Horde 沒有回傳圖片", code="RESULT_EMPTY")
                     return
 
                 image = download_generated_image(generation.get("img"))
                 if not image or not image.get("bytes"):
-                    _fail(job, "生成完成，但圖片下載失敗")
+                    _fail(job, "生成完成，但圖片下載失敗", code="IMAGE_DOWNLOAD_FAILED")
                     return
 
                 sent = send_photo_bytes(
@@ -605,7 +689,7 @@ def process_image_job(
                     mime_type=image.get("mime_type") or "image/png",
                 )
                 if not _extract_message_id(sent):
-                    _fail(job, "圖片已生成，但傳送到 Telegram 失敗")
+                    _fail(job, "圖片已生成，但傳送到 Telegram 失敗", code="TELEGRAM_SEND_FAILED")
                     return
 
                 _save_generated_telegram_photo(job, sent)
@@ -615,14 +699,13 @@ def process_image_job(
                     completed_at=datetime.utcnow(),
                     worker_token=None,
                 )
-                _edit_status_message(job, "生圖完成", allow_cancel=False)
                 return
 
             time.sleep(POLL_SECONDS)
     except Exception as exc:
         print(f"IMAGE JOB ERROR job_id={job_id}:", exc, flush=True)
         current = _get_job(job_id) or job
-        _fail(current, "生圖流程發生未預期錯誤，請查看 Render log")
+        _fail(current, "生圖流程發生未預期錯誤，請查看 Render log", code="UNEXPECTED_ERROR")
 
 
 def run_image_job_in_thread(

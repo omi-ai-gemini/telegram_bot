@@ -212,6 +212,20 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
         return
 
     # =========================
+    # 圖片生成：刪除任務結果通知
+    # - 失敗 / 取消通知下方的按鈕只刪除該則通知
+    # - 不會重新送出任務，也不會再次呼叫 AI Horde
+    # =========================
+    if isinstance(user_text, str) and user_text.startswith("image_notice_delete:"):
+        answer_callback_query(
+            bot_id,
+            callback_id,
+            text="已刪除訊息",
+        )
+        delete_message(bot_id, chat_id, message_id)
+        return
+
+    # =========================
     # 圖片生成：取消任務 / 生圖連結缺失提示
     # =========================
     if isinstance(user_text, str) and user_text.startswith("image_cancel:"):
