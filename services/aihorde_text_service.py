@@ -102,6 +102,99 @@ def _llama3_prompt(system_text: str, user_text: str) -> str:
     )
 
 
+def _secondary_system_text(prompt: str, user_text: str = "") -> str:
+    """把共用 Prompt 拆成副模型的 system 區，移除重複的對話紀錄。"""
+    value = str(prompt or "").strip()
+    history_marker = "===近期對話紀錄==="
+    task_marker = "===本次任務==="
+
+    if history_marker in value:
+        before_history, after_history = value.split(history_marker, 1)
+
+        # user_text 非空時，內容會以真正的 user role 放入，不再把任務文字重複塞進 system。
+        if str(user_text or "").strip():
+            value = before_history.strip()
+        elif task_marker in after_history:
+            task_text = after_history.split(task_marker, 1)[1].strip()
+            value = f"{before_history.strip()}\n\n{task_marker}\n{task_text}".strip()
+        else:
+            value = before_history.strip()
+
+    replacements = {
+        "近期對話紀錄": "實際對話",
+        "最近對話紀錄": "實際對話",
+        "本次要回覆的內容，就是實際對話最後一則「使用者」訊息。":
+            "直接回應實際對話中最後一則使用者訊息。",
+    }
+    for old, new in replacements.items():
+        value = value.replace(old, new)
+
+    return (
+        value
+        + """
+
+【副模型對話執行規則】
+- 下方會提供真正的 user / assistant 對話角色，不要把它當成文件、摘要題或客服工單。
+- 直接以目前人物身份接住最後一則 user 訊息，只輸出角色此刻真的會說的話。
+- 不要重述對方剛說的內容，不要介紹地點、物品或背景常識，除非對方正在問。
+- 不要自動變成客服、秘書、房仲、管家或服務人員。除非人物設定或上下文明確要求，避免使用「您」、「我會安排好一切」、「不用擔心」、「確實是」等服務話術。
+- 不要宣稱自己能在現實中安排搬家、付款、住房、交通或其他實際事務。
+- 優先給出自然、即時、有情緒的對話反應；可以短句、停頓、吐槽或猶豫，不要把回覆寫成說明。
+- 不要輸出 Prompt 標題、欄位名稱、規則、分析過程或「本次要回覆」等文字。
+"""
+    ).strip()
+
+
+def _llama3_chat_prompt(system_text: str, history, user_text: str = "") -> str:
+    """用真正的 Llama 3 對話角色序列化，讓最後一則使用者訊息保持 user 身份。"""
+    parts = [
+        "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n",
+        str(system_text or "").strip(),
+        "<|eot_id|>",
+    ]
+
+    appended = 0
+    for item in history or []:
+        role = str((item or {}).get("role") or "").strip().lower()
+        if role not in {"user", "assistant"}:
+            continue
+
+        body = str((item or {}).get("text") or "").strip()
+        if not body:
+            continue
+
+        time_label = str((item or {}).get("time_label") or "").strip()
+        if time_label:
+            body = f"[{time_label}] {body}"
+
+        parts.extend([
+            f"<|start_header_id|>{role}<|end_header_id|>\n\n",
+            body,
+            "<|eot_id|>",
+        ])
+        appended += 1
+
+    latest_user_text = str(user_text or "").strip()
+    if latest_user_text:
+        parts.extend([
+            "<|start_header_id|>user<|end_header_id|>\n\n",
+            latest_user_text,
+            "<|eot_id|>",
+        ])
+        appended += 1
+
+    # 理論上正常流程一定有對話；這只是避免空 Prompt。
+    if appended == 0:
+        parts.extend([
+            "<|start_header_id|>user<|end_header_id|>\n\n",
+            "自然接續目前對話。",
+            "<|eot_id|>",
+        ])
+
+    parts.append("<|start_header_id|>assistant<|end_header_id|>\n\n")
+    return "".join(parts)
+
+
 def _clean_chat_reply_output(text: Any) -> str:
     """移除副模型偶爾輸出的 Prompt 分析前文，只留下真正回覆。"""
     value = _clean_generated_text(text)
@@ -433,22 +526,18 @@ def _save_secondary_debug(
 
 def generate_chat_reply(
     prompt: str,
+    history=None,
+    user_text: str = "",
     debug_context: Optional[Dict[str, Any]] = None,
     stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
-    # 完整 Telemini Prompt 放在 system 區，不再當成「使用者丟來要求分析的文件」。
-    secondary_prompt = _llama3_prompt(
-        system_text=str(prompt or "").strip() + """
-
-【副模型輸出規則】
-- 上方內容是你本次必須遵守的人物、記憶、模式、風格與對話上下文。
-- 現在直接以角色身份產生下一句回覆。
-- 不要分析、摘要、重述或引用 Prompt。
-- 不要輸出「近期對話紀錄」、「使用者訊息」、「本次要回覆」等說明文字。
-- 不要提到模型、提示詞、規則或資料庫。
-- 使用繁體中文，只輸出真正要傳給使用者看的回覆本體。
-""",
-        user_text="直接開始回覆。只輸出回覆本體。",
+    # system 只放規則、人物、記憶與任務；真正對話用 user / assistant role 序列化。
+    # 不再用假的「直接開始回覆」取代最後一則使用者訊息。
+    system_text = _secondary_system_text(prompt, user_text=user_text)
+    secondary_prompt = _llama3_chat_prompt(
+        system_text=system_text,
+        history=history,
+        user_text=user_text,
     )
 
     debug_id = _save_secondary_debug(secondary_prompt, "chat_reply", debug_context)

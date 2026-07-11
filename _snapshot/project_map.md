@@ -96,6 +96,7 @@ C:\Projects\telemini
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\prompt_debug.py`
+- `services\reply_model_router.py`
 - `services\reply_style.py`
 - `services\runtime_cache.py`
 - `services\setting_auth.py`
@@ -140,6 +141,7 @@ C:\Projects\telemini
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`
 - `本次修復說明.txt`
+- `模型切換共用路由修正說明.txt`
 - `模式-使用說明.txt`
 - `生圖功能檢查結果.txt`
 - `生圖改版相容性檢查結果.txt`
@@ -407,6 +409,7 @@ C:\Projects\telemini
 - `get_secondary_model_label()`
 - `_clean_generated_text()`
 - `_llama3_prompt()`
+- `_clean_chat_reply_output()`
 - `submit_text_request()`
 - `get_text_status()`
 - `cancel_text_request()`
@@ -428,7 +431,6 @@ C:\Projects\telemini
 - `_send_ai_message_with_retry()`
 - `_get_generation_settings()`
 - `_attach_reply_buttons_in_background()`
-- `_normalize_generation_result()`
 - `_generate_main_reply()`
 - `_generate_secondary_reply()`
 - `_finalize_generated_reply()`
@@ -549,6 +551,7 @@ C:\Projects\telemini
 - `_classify_image_error()`
 - `_image_models_to_try()`
 - `ask_gemini_image_to_text()`
+- `ask_gemini_prompt()`
 - `ask_gemini()`
 - `summarize_memory()`
 
@@ -769,6 +772,11 @@ C:\Projects\telemini
 - `_row_to_summary()`
 - `_row_to_detail()`
 - `send_prompt_debug_link()`
+
+### `services\reply_model_router.py`
+- `_normalize_main()`
+- `_normalize_secondary()`
+- `generate_reply_by_mode()`
 
 ### `services\reply_style.py`
 - `_text_id()`

@@ -87,6 +87,7 @@
   📄 privacy_migration.py
   📄 privacy_session.py
   📄 prompt_debug.py
+  📄 reply_model_router.py
   📄 reply_style.py
   📄 runtime_cache.py
   📄 setting_auth.py
@@ -136,6 +137,7 @@
 📄 服務中心硬檢查覆蓋說明.txt
 📄 服務中心管理員判定修復說明.txt
 📄 本次修復說明.txt
+📄 模型切換共用路由修正說明.txt
 📄 模式-使用說明.txt
 📄 清理舊檔案.ps1
 📄 清理舊檔案_編碼修正版.ps1

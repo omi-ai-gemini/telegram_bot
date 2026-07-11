@@ -100,6 +100,8 @@ def generate_reply_by_mode(
         secondary_debug["generation_type"] = secondary_debug.get("generation_type") or "reply_secondary"
         result = generate_chat_reply(
             prompt=prompt,
+            history=history,
+            user_text=user_text,
             debug_context=secondary_debug,
             stop_event=stop_event,
         )

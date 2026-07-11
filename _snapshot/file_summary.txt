@@ -4068,7 +4068,7 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1702
+- 行數：1711
 
 ## imports
 - datetime.datetime
@@ -4081,7 +4081,6 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 - services.chat_persona.get_chat_persona_settings
 - services.database.get_conn
 - services.gemini_service.GEMINI_BLOCKED
-- services.gemini_service.ask_gemini
 - services.image_actions.get_image_generation_url
 - services.image_actions.send_hidden_image_link
 - services.memory.add_chat
@@ -4101,6 +4100,9 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 - services.memory_summary.maintain_memory_after_reply
 - services.memory_summary.repair_blocked_summary_attempt
 - services.memory_summary.summarize_pending_memory
+- services.model_mode.MODE_MAIN
+- services.model_mode.get_api_model_mode
+- services.reply_model_router.generate_reply_by_mode
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
 - services.reply_style.resave_existing_reply_style_settings
@@ -4175,7 +4177,9 @@ from services.bot_router import get_bot_token
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.database import get_conn
-from services.gemini_service import GEMINI_BLOCKED, ask_gemini
+from services.gemini_service import GEMINI_BLOCKED
+from services.reply_model_router import generate_reply_by_mode
+from services.model_mode import MODE_MAIN, get_api_model_mode
 from services.memory import (
     add_chat,
     get_chat,
@@ -4243,10 +4247,8 @@ CONTINUE_USER_TEXT = """
 4. 不要像重新輸出同一段，不要回到場景開頭，不要重新介紹人物。
 5. 不要等待使用者輸入，不要問「要不要繼續」。
 6. 不要替使用者說話、行動或決定想法。
-7. 如果是聊天模式，就自然補上下一句；如果是劇場模式，就自然推進下一幕。
-
 ...
-... 已省略 1622 行
+... 已省略 1631 行
 ```
 
 
@@ -4371,7 +4373,7 @@ def submit_image_request(
 # services\aihorde_text_service.py
 
 - 類型：.py
-- 行數：518
+- 行數：561
 
 ## imports
 - os
@@ -4394,6 +4396,7 @@ def submit_image_request(
 - get_secondary_model_label
 - _clean_generated_text
 - _llama3_prompt
+- _clean_chat_reply_output
 - submit_text_request
 - get_text_status
 - cancel_text_request
@@ -4485,7 +4488,7 @@ def get_secondary_model_label() -> str:
 
 def _clean_generated_text(text: Any) -> str:
 ...
-... 已省略 438 行
+... 已省略 481 行
 ```
 
 
@@ -4601,7 +4604,7 @@ def bot_exists(bot_id: str) -> bool:
 # services\call_ai.py
 
 - 類型：.py
-- 行數：903
+- 行數：848
 
 ## imports
 - queue
@@ -4610,13 +4613,11 @@ def bot_exists(bot_id: str) -> bool:
 - services.ai_actions.create_ai_message_action
 - services.ai_actions.send_blocked_reply_message
 - services.ai_actions.update_action_telegram_message_id
-- services.aihorde_text_service.generate_chat_reply
 - services.aihorde_text_service.get_secondary_model_label
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
 - services.gemini_service.GEMINI_BLOCKED
-- services.gemini_service.ask_gemini
 - services.memory.add_chat
 - services.memory.detect_emotion
 - services.memory.get_chat
@@ -4631,8 +4632,8 @@ def bot_exists(bot_id: str) -> bool:
 - services.model_mode.MODE_SECONDARY
 - services.model_mode.get_api_model_mode
 - services.model_mode.set_api_model_mode
+- services.reply_model_router.generate_reply_by_mode
 - services.reply_style.get_reply_style_settings
-- services.style.build_prompt
 - services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
 - services.telegram_service.send_message
@@ -4648,7 +4649,6 @@ def bot_exists(bot_id: str) -> bool:
 - _send_ai_message_with_retry
 - _get_generation_settings
 - _attach_reply_buttons_in_background
-- _normalize_generation_result
 - _generate_main_reply
 - _generate_secondary_reply
 - _finalize_generated_reply
@@ -4672,15 +4672,15 @@ from services.ai_actions import (
     update_action_telegram_message_id,
     send_blocked_reply_message,
 )
-from services.gemini_service import ask_gemini, GEMINI_BLOCKED
-from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.gemini_service import GEMINI_BLOCKED
+from services.aihorde_text_service import get_secondary_model_label
+from services.reply_model_router import generate_reply_by_mode
 from services.model_mode import (
     MODE_MAIN,
     MODE_SECONDARY,
     get_api_model_mode,
     set_api_model_mode,
 )
-from services.style import build_prompt
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
 from services.telegram_service import send_message, edit_message_text, delete_message
@@ -4746,7 +4746,7 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
     telegram_message_id = _extract_telegram_message_id(sent)
 
 ...
-... 已省略 823 行
+... 已省略 768 行
 ```
 
 
@@ -5580,7 +5580,7 @@ def save_encrypted_payload(
 # services\gemini_service.py
 
 - 類型：.py
-- 行數：1134
+- 行數：1142
 
 ## imports
 - config.GEMINI_MODEL
@@ -5620,6 +5620,7 @@ def save_encrypted_payload(
 - _classify_image_error
 - _image_models_to_try
 - ask_gemini_image_to_text
+- ask_gemini_prompt
 - ask_gemini
 - summarize_memory
 
@@ -5706,7 +5707,7 @@ reasoning_note 規則：
 
 def _with_structured_reply_instructions(prompt):
 ...
-... 已省略 1054 行
+... 已省略 1062 行
 ```
 
 
@@ -7516,6 +7517,117 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
         if user_id is not None and _text_id(user_id) != token_user_id:
 ...
 ... 已省略 329 行
+```
+
+
+================================================================================
+
+# services\reply_model_router.py
+
+- 類型：.py
+- 行數：132
+
+## imports
+- services.aihorde_text_service.generate_chat_reply
+- services.aihorde_text_service.get_secondary_model_label
+- services.gemini_service.ask_gemini_prompt
+- services.model_mode.MODE_MAIN
+- services.model_mode.MODE_SECONDARY
+- services.model_mode.get_api_model_mode
+- services.style.build_prompt
+- typing.Any
+- typing.Dict
+- typing.Optional
+
+## functions
+- _normalize_main
+- _normalize_secondary
+- generate_reply_by_mode
+
+## preview
+```text
+from typing import Any, Dict, Optional
+
+from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.gemini_service import ask_gemini_prompt
+from services.model_mode import MODE_MAIN, MODE_SECONDARY, get_api_model_mode
+from services.style import build_prompt
+
+
+def _normalize_main(result: Any) -> Dict[str, Any]:
+    if isinstance(result, dict):
+        return {
+            "text": result.get("text"),
+            "thoughts": result.get("thoughts", ""),
+            "thought_source": result.get("thought_source", "empty"),
+            "provider": MODE_MAIN,
+            "model": "Gemini",
+            "ok": bool(result.get("text")),
+        }
+
+    return {
+        "text": result,
+        "thoughts": "",
+        "thought_source": "empty",
+        "provider": MODE_MAIN,
+        "model": "Gemini",
+        "ok": bool(result),
+    }
+
+
+def _normalize_secondary(result: Any) -> Dict[str, Any]:
+    payload = result if isinstance(result, dict) else {}
+    return {
+        "text": payload.get("text"),
+        "thoughts": "本次回覆由 AI Horde 副模型產生，沒有 Gemini 推理摘要。",
+        "thought_source": "generated",
+        "provider": MODE_SECONDARY,
+        "model": payload.get("model") or get_secondary_model_label(),
+        "error": payload.get("message") or (None if payload.get("text") else "副模型沒有回傳結果"),
+        "request_id": payload.get("request_id"),
+        "elapsed": payload.get("elapsed"),
+        "ok": bool(payload.get("ok") and payload.get("text")),
+        "canceled": bool(payload.get("canceled")),
+    }
+
+
+def generate_reply_by_mode(
+    *,
+    user_id: Any,
+    bot_id: Any,
+    chat_id: Any,
+    gemini_key: Optional[str],
+    history,
+    user_text,
+    emotion,
+    mode="聊天模式",
+    chat_persona_settings=None,
+    character_settings=None,
+    reply_style_settings=None,
+    facts=None,
+    memory_context=None,
+    time_context=None,
+    include_thoughts=True,
+    debug_context=None,
+    model_override=None,
+    stop_event=None,
+) -> Dict[str, Any]:
+    """
+    所有聊天回覆共用的唯一模型分流節點。
+
+    一般回覆、重跑、接續、/reply、阻擋競速都先完成同一份 Prompt，
+    到真正要送出模型的最後一步才依 /modes_api 決定 API。
+    """
+    selected_mode = model_override or get_api_model_mode(user_id, bot_id, chat_id)
+    if selected_mode not in {MODE_MAIN, MODE_SECONDARY}:
+        selected_mode = MODE_MAIN
+
+    prompt = build_prompt(
+        history=history,
+        user_text=user_text,
+        emotion=emotion,
+...
+... 已省略 52 行
 ```
 
 
@@ -10992,6 +11104,37 @@ Telemini 四不像專案整理修正版
 - docs/目前專案整合狀態.md
 
 直接使用完整專案包最乾淨。
+```
+
+
+================================================================================
+
+# 模型切換共用路由修正說明.txt
+
+- 類型：.txt
+- 行數：19
+
+## preview
+```text
+Telemini 模型切換共用路由修正
+
+本次修改：
+1. 新增 services/reply_model_router.py，作為所有聊天回覆唯一模型分流節點。
+2. 一般回覆、重跑、接續、/reply 補生、阻擋競速，全部先組同一份 Prompt，再於送出前依 /modes_api 決定 Gemini 或 AI Horde。
+3. 副模型不再把完整 Prompt 當成使用者要求分析的文件；完整 Prompt 改放 system 區，避免輸出「近期對話紀錄」「最後一則使用者訊息」等 Prompt 內容。
+4. 副模型結果增加 Prompt 洩漏清理。
+5. 切副模型後，即使沒有 Gemini Key，重跑與接續仍可使用副模型；記憶摘要需要 Gemini 時才略過。
+
+影響檔案：
+- services/reply_model_router.py
+- services/gemini_service.py
+- services/aihorde_text_service.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/model_mode.py
+
+驗證：
+python -m compileall -q .
 ```
 
 
