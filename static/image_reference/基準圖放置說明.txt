@@ -1,6 +1,0 @@
-此資料夾為舊版基準圖流程保留。
-
-目前「預設生圖」不再讀取 male_reference / female_reference，
-而是由 services/image_prompt.py 內的固定男女身份提示詞進行 txt2img。
-
-玩家指定聊天室圖片代號或臨時上傳圖片時，才會使用 img2img。

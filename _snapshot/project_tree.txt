@@ -1,8 +1,5 @@
-📁 .agents/
 📄 __init__.py
 📄 AI_Horde生圖外帶說明.txt
-📄 api.py
-📄 check_db.py
 📄 config.py
 📁 docs/
   📄 AI_HORDE生圖功能更新說明.md
@@ -28,6 +25,7 @@
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
+  📄 副模型競速與圖片Prompt整理更新說明.md
   📄 固定身份提示詞生圖更新說明.md
   📄 圖片等待函式匯入錯誤修正說明.md
   📄 圖片等待與模型切換修正說明.md
@@ -38,6 +36,7 @@
   📄 文生圖與圖生圖雙模式更新說明.md
   📄 服務中心公告推播更新說明.md
   📄 服務中心更新說明.md
+  📄 目前專案整合狀態.md
 📁 handlers/
   📄 __init__.py
   📄 call_handler.py
@@ -62,6 +61,7 @@
   📄 __init__.py
   📄 ai_actions.py
   📄 aihorde_service.py
+  📄 aihorde_text_service.py
   📄 bot_router.py
   📄 call_ai.py
   📄 character.py
@@ -74,7 +74,6 @@
   📄 gemini_service.py
   📄 image_actions.py
   📄 image_auth.py
-  📄 image_inpaint.py
   📄 image_jobs.py
   📄 image_prepare.py
   📄 image_prompt.py
@@ -83,6 +82,7 @@
   📄 memory.py
   📄 memory_summary.py
   📄 memory_view.py
+  📄 model_mode.py
   📄 privacy_access.py
   📄 privacy_migration.py
   📄 privacy_session.py
@@ -97,8 +97,6 @@
   📄 user_notice.py
   📄 user_router.py
 📁 static/
-  📁 image_reference/
-    📄 基準圖放置說明.txt
 📁 templates/
   📄 character_form.html
   📄 chat_persona_form.html
@@ -114,7 +112,6 @@
   📄 prompt_debug_list.html
   📄 reply_style_form.html
   📄 thought_view.html
-📄 test_db.py
 📁 test_lab/
   📄 __init__.py
   📄 db.py
@@ -129,7 +126,8 @@
   📄 apply_blocked_retry_patch.py
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
-  📄 python.txt
+📄 副模型競速與圖片Prompt覆蓋說明.txt
+📄 副模型競速與生圖流程檢查結果.txt
 📄 固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt
 📄 圖片模型fallback覆蓋說明.txt
 📄 圖片等待與模型切換覆蓋說明.txt
@@ -137,12 +135,16 @@
 📄 服務中心公告推播覆蓋說明.txt
 📄 服務中心硬檢查覆蓋說明.txt
 📄 服務中心管理員判定修復說明.txt
+📄 本次修復說明.txt
 📄 模式-使用說明.txt
+📄 清理舊檔案.ps1
+📄 清理舊檔案_編碼修正版.ps1
 📄 生圖功能檢查結果.txt
 📄 生圖改版相容性檢查結果.txt
 📄 生圖雙模式改版檢查結果.txt
 📄 生圖雙模式改版覆蓋說明.txt
 📄 生圖雙模式本次覆蓋說明.txt
+📄 補丁套用說明.txt
 📄 補丁覆蓋說明.txt
 📄 覆蓋方式.txt
 📄 覆蓋說明.txt

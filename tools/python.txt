@@ -1,2 +1,0 @@
-project_snapshot.py - 產生專案快照
-encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文

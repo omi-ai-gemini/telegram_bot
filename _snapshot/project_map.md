@@ -14,8 +14,6 @@ C:\Projects\telemini
 
 - `__init__.py`
 - `AI_Horde生圖外帶說明.txt`
-- `api.py`
-- `check_db.py`
 - `config.py`
 - `docs\AI_HORDE生圖功能更新說明.md`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
@@ -40,6 +38,7 @@ C:\Projects\telemini
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\副模型競速與圖片Prompt整理更新說明.md`
 - `docs\固定身份提示詞生圖更新說明.md`
 - `docs\圖片等待函式匯入錯誤修正說明.md`
 - `docs\圖片等待與模型切換修正說明.md`
@@ -50,6 +49,7 @@ C:\Projects\telemini
 - `docs\文生圖與圖生圖雙模式更新說明.md`
 - `docs\服務中心公告推播更新說明.md`
 - `docs\服務中心更新說明.md`
+- `docs\目前專案整合狀態.md`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
@@ -70,6 +70,7 @@ C:\Projects\telemini
 - `services\__init__.py`
 - `services\ai_actions.py`
 - `services\aihorde_service.py`
+- `services\aihorde_text_service.py`
 - `services\bot_router.py`
 - `services\call_ai.py`
 - `services\character.py`
@@ -82,7 +83,6 @@ C:\Projects\telemini
 - `services\gemini_service.py`
 - `services\image_actions.py`
 - `services\image_auth.py`
-- `services\image_inpaint.py`
 - `services\image_jobs.py`
 - `services\image_prepare.py`
 - `services\image_prompt.py`
@@ -91,6 +91,7 @@ C:\Projects\telemini
 - `services\memory.py`
 - `services\memory_summary.py`
 - `services\memory_view.py`
+- `services\model_mode.py`
 - `services\privacy_access.py`
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
@@ -104,7 +105,6 @@ C:\Projects\telemini
 - `services\time_context.py`
 - `services\user_notice.py`
 - `services\user_router.py`
-- `static\image_reference\基準圖放置說明.txt`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
 - `templates\developer.html`
@@ -119,7 +119,6 @@ C:\Projects\telemini
 - `templates\prompt_debug_list.html`
 - `templates\reply_style_form.html`
 - `templates\thought_view.html`
-- `test_db.py`
 - `test_lab\__init__.py`
 - `test_lab\db.py`
 - `test_lab\gemini.py`
@@ -131,7 +130,8 @@ C:\Projects\telemini
 - `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
-- `tools\python.txt`
+- `副模型競速與圖片Prompt覆蓋說明.txt`
+- `副模型競速與生圖流程檢查結果.txt`
 - `固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt`
 - `圖片模型fallback覆蓋說明.txt`
 - `圖片等待與模型切換覆蓋說明.txt`
@@ -139,12 +139,14 @@ C:\Projects\telemini
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`
+- `本次修復說明.txt`
 - `模式-使用說明.txt`
 - `生圖功能檢查結果.txt`
 - `生圖改版相容性檢查結果.txt`
 - `生圖雙模式改版檢查結果.txt`
 - `生圖雙模式改版覆蓋說明.txt`
 - `生圖雙模式本次覆蓋說明.txt`
+- `補丁套用說明.txt`
 - `補丁覆蓋說明.txt`
 - `覆蓋方式.txt`
 - `覆蓋說明.txt`
@@ -152,12 +154,6 @@ C:\Projects\telemini
 - `開場-更新說明.txt`
 
 ## Python 路由總覽
-
-### `api.py`
-- `/api/bot` → `add_bot`
-- `/api/bot` → `get_bots`
-- `/api/user` → `add_user`
-- `/api/user` → `get_users`
 
 ### `main.py`
 - `/webhook/<bot_id>` → `webhook`
@@ -206,12 +202,6 @@ C:\Projects\telemini
 - `/test_lab/save` → `save_test_lab_page`
 
 ## Python 函式總覽
-
-### `api.py`
-- `add_bot()`
-- `get_bots()`
-- `add_user()`
-- `get_users()`
 
 ### `config.py`
 - `_env_int()`
@@ -379,7 +369,6 @@ C:\Projects\telemini
 - `get_ai_message_action()`
 - `create_pending_edit()`
 - `pop_active_pending_edit()`
-- `_extract_telegram_message_id()`
 - `start_edit_ai_message()`
 - `process_pending_edit_message()`
 - `_load_generation_context()`
@@ -410,6 +399,22 @@ C:\Projects\telemini
 - `cancel_image_request()`
 - `download_generated_image()`
 
+### `services\aihorde_text_service.py`
+- `_keys()`
+- `_headers()`
+- `_json_or_error()`
+- `_error_message()`
+- `get_secondary_model_label()`
+- `_clean_generated_text()`
+- `_llama3_prompt()`
+- `submit_text_request()`
+- `get_text_status()`
+- `cancel_text_request()`
+- `generate_text()`
+- `_save_secondary_debug()`
+- `generate_chat_reply()`
+- `organize_image_prompt()`
+
 ### `services\bot_router.py`
 - `_decrypt_bot_token_safe()`
 - `_text_id()`
@@ -423,11 +428,20 @@ C:\Projects\telemini
 - `_send_ai_message_with_retry()`
 - `_get_generation_settings()`
 - `_attach_reply_buttons_in_background()`
+- `_normalize_generation_result()`
+- `_generate_main_reply()`
+- `_generate_secondary_reply()`
+- `_finalize_generated_reply()`
 - `_send_generated_reply()`
 - `run_ai()`
+- `_delete_status_later()`
+- `run_blocked_reply_race()`
 - `run_blocked_reply_retry()`
 - `run_reply_recovery()`
 - `worker()`
+- `worker()`
+- `run_main_branch()`
+- `run_secondary_branch()`
 
 ### `services\character.py`
 - `_text_id()`
@@ -569,6 +583,7 @@ C:\Projects\telemini
 - `_elapsed_seconds()`
 - `_format_duration()`
 - `_queue_text()`
+- `_edit_status_message()`
 - `_fail()`
 - `_cancel()`
 - `_resolve_reference()`
@@ -579,6 +594,8 @@ C:\Projects\telemini
 - `recover_active_image_jobs()`
 
 ### `services\image_prepare.py`
+- `_round_down_to_step()`
+- `_choose_dynamic_output_size()`
 - `prepare_img2img_source()`
 
 ### `services\image_prompt.py`
@@ -606,11 +623,10 @@ C:\Projects\telemini
 - `_missing_config()`
 - `send_unsupported_media_message()`
 - `_download_image()`
-- `_media_parse_failure_text()`
-- `_normalize_parse_result()`
 - `_register_pending_photo()`
 - `_build_photo_user_text()`
 - `_dispatch_photo_item()`
+- `_recover_buffered_text_after_photo_failure()`
 - `_remove_pending_photo()`
 - `_fail_pending_photo()`
 - `_photo_wait_timeout()`
@@ -696,6 +712,14 @@ C:\Projects\telemini
 - `_render_short_memory()`
 - `_render_summary_memory()`
 - `handle_memory_view_callback()`
+
+### `services\model_mode.py`
+- `_text()`
+- `get_api_model_mode()`
+- `set_api_model_mode()`
+- `toggle_api_model_mode()`
+- `_mode_text()`
+- `handle_modes_api_command()`
 
 ### `services\privacy_access.py`
 - `_text_id()`

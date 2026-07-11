@@ -80,150 +80,10 @@ python -m compileall -q .
 
 ================================================================================
 
-# api.py
-
-- 類型：.py
-- 行數：104
-
-## imports
-- flask.jsonify
-- flask.request
-- services.database.get_conn
-
-## functions
-- add_bot
-- get_bots
-- add_user
-- get_users
-
-## routes
-- /api/bot → add_bot
-- /api/bot → get_bots
-- /api/user → add_user
-- /api/user → get_users
-
-## preview
-```text
-from flask import request, jsonify
-from services.database import get_conn
-
-
-# =========================
-# 新增 / 更新 bot
-# =========================
-@app.route("/api/bot", methods=["POST"])
-def add_bot():
-
-    data = request.json
-    bot_id = data.get("bot_id")
-    token = data.get("token")
-
-    if not bot_id or not token:
-        return jsonify({"error": "missing data"}), 400
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO bot_config (bot_id, token)
-    VALUES (%s, %s)
-    ON CONFLICT (bot_id)
-    DO UPDATE SET token = EXCLUDED.token
-    """, (bot_id, token))
-
-    conn.commit()
-    conn.close()
-
-    return jsonify({"status": "ok"})
-
-
-# =========================
-# 查詢所有 bot
-# =========================
-@app.route("/api/bot", methods=["GET"])
-def get_bots():
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    SELECT bot_id, token FROM bot_config
-    """)
-
-    rows = cursor.fetchall()
-    conn.close()
-
-    return jsonify([
-        {"bot_id": r[0], "token": r[1]}
-        for r in rows
-    ])
-
-
-# =========================
-# 新增 / 更新 user gemini key
-# =========================
-@app.route("/api/user", methods=["POST"])
-def add_user():
-
-    data = request.json
-    user_id = data.get("user_id")
-    gemini_key = data.get("gemini_key")
-
-    if not user_id or not gemini_key:
-        return jsonify({"error": "missing data"}), 400
-
-    conn = get_conn()
-    cursor = conn.cursor()
-
-    cursor.execute("""
-    INSERT INTO user_config (user_id, gemini_key)
-    VALUES (%s, %s)
-    ON CONFLICT (user_id)
-    DO UPDATE SET gemini_key = EXCLUDED.gemini_key
-    """, (user_id, gemini_key))
-
-    conn.commit()
-    conn.close()
-...
-... 已省略 24 行
-```
-
-
-================================================================================
-
-# check_db.py
-
-- 類型：.py
-- 行數：14
-
-## imports
-- sqlite3
-
-## preview
-```text
-import sqlite3
-
-conn = sqlite3.connect("app.db")
-cursor = conn.cursor()
-
-print("BOT")
-for row in cursor.execute("SELECT * FROM bot_config"):
-    print(row)
-
-print("USER")
-for row in cursor.execute("SELECT * FROM user_config"):
-    print(row)
-
-conn.close()
-```
-
-
-================================================================================
-
 # config.py
 
 - 類型：.py
-- 行數：78
+- 行數：93
 
 ## imports
 - os
@@ -311,6 +171,10 @@ AI_HORDE_API_KEY_1 = os.getenv("AI_HORDE_API_KEY_1")
 AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "false")
+# =========================
+# AI Horde 副文字模型
+...
+... 已省略 13 行
 ```
 
 
@@ -1706,7 +1570,7 @@ setting_menu_sessions
 # docs\THOUGHT_WEB_VIEW_README.md
 
 - 類型：.md
-- 行數：92
+- 行數：89
 
 ## preview
 ```text
@@ -1784,14 +1648,108 @@ gunicorn main:app --workers 1 --threads 8 --timeout 120
 2. Gemini 這次沒有回傳 thought summary。
    - 這版會顯示「這筆沒有推理摘要」，不再誤顯示成過期。
    - Render log 會印出 `GEMINI extracted lengths` 與 `THOUGHT cache saved`，可用來確認。
-<<<<<<< HEAD
-=======
 
 ## /reply 救援搭配
 
 如果出現 Gemini 已回覆但聊天室沒有收到訊息，可輸入：
+
+```text
 ...
-... 已省略 12 行
+... 已省略 9 行
+```
+
+
+================================================================================
+
+# docs\副模型競速與圖片Prompt整理更新說明.md
+
+- 類型：.md
+- 行數：173
+
+## preview
+```text
+# Telemini 副模型競速與圖片 Prompt 整理更新
+
+## 1. AI Horde 副文字模型
+
+新增：
+
+- `services/aihorde_text_service.py`
+- `services/model_mode.py`
+
+預設副模型：
+
+```text
+koboldcpp/L3-8B-Stheno-v3.2
+koboldcpp/mini-magnum-12b-v1.1
+```
+
+兩個名稱會一起送進 AI Horde，由當下可用工作節點先接單。可在 Render 改成：
+
+```text
+AI_HORDE_TEXT_MODELS=模型一,模型二
+```
+
+沿用原本：
+
+```text
+AI_HORDE_API_KEY_1
+AI_HORDE_API_KEY_2
+```
+
+不需要新增第三把 Key。
+
+## 2. 安全阻擋按鈕
+
+一般回覆出現「內容被安全阻擋」時，按鈕改為：
+
+```text
+⚡ 副模型競速
+```
+
+按下後：
+
+1. 目前聊天室後續回覆模式切成副模型。
+2. Gemini 與 AI Horde 同時生成。
+3. 第一個有效回覆勝出。
+4. Gemini 安全阻擋或空回覆不算有效結果。
+5. Gemini 先完成時，程式會通知 AI Horde 取消仍在等待的文字任務。
+6. 競速狀態訊息完成後會自動刪除。
+
+重要 Log：
+
+```text
+MODEL RACE START
+MODEL RACE BRANCH RESULT
+MODEL RACE WINNER
+MODEL RACE ERROR
+```
+
+## 3. 主副模型切換指令
+
+```text
+/modes_api
+```
+
+不帶參數時，主模型與副模型互相切換。
+
+```text
+/modes_api main
+/modes_api secondary
+/modes_api status
+```
+
+- `main`：後續一般回覆走 Gemini。
+- `secondary`：後續一般回覆直接走 AI Horde。
+- `status`：只查看目前模式。
+
+切換與查詢會寫入 `MODEL MODE COMMAND` / `MODEL MODE SET` Log。
+
+狀態保存在：
+
+```text
+...
+... 已省略 93 行
 ```
 
 
@@ -2435,6 +2393,74 @@ updated_at
 
 ================================================================================
 
+# docs\目前專案整合狀態.md
+
+- 類型：.md
+- 行數：56
+
+## preview
+```text
+# Telemini 目前專案整合狀態
+
+本版已整理成單一路線，保留以下功能：
+
+- Gemini 主模型聊天／劇場回覆
+- AI Horde 副文字模型與 `/modes_api`
+- 安全阻擋後主副模型競速
+- 圖片 Prompt 先由副模型整理
+- 圖生圖原圖等比例縮放、不裁切
+- 依原圖比例自動選擇不超過安全像素量的 64 倍數尺寸
+- 淺灰色補邊
+- AI Horde 文生圖／圖生圖
+- 服務中心、公告推播、Telemini Wifi、Gemini API 設定
+- 圖片解析、貼圖解析、圖片庫、記憶與 Prompt Debug
+
+## 生圖正確流程
+
+```text
+使用者送出生圖表單
+→ Telegram 顯示「prompt生成中」
+→ AI Horde 副文字模型整理圖片 Prompt
+→ 成功：使用整理後 Prompt
+→ 失敗：保留原始 Prompt 當 fallback
+→ Telegram 更新為「生圖任務已送出，正在加入排隊」
+→ AI Horde 圖片模型開始排隊與生成
+```
+
+## 圖生圖尺寸流程
+
+```text
+任意尺寸原圖
+→ 修正 EXIF 方向
+→ 保留完整原圖比例
+→ 依安全總像素量選最大可用尺寸
+→ 寬高向下修成 64 的倍數
+→ 等比例縮放，不裁切
+→ 不足區域使用 RGB(240,240,240) 淺灰補邊
+→ 以動態寬高送入 AI Horde
+```
+
+## 已移除
+
+- 舊 SQLite 檢查腳本
+- 未掛載且會暴露密鑰的舊 `api.py`
+- 未使用的遮罩生圖占位檔
+- 未使用的男女基準圖片
+- Git 內部資料、快照、Python 快取
+- 檔名已損壞成 `#Uxxxx` 的舊補丁說明文件
+
+## 驗證
+
+部署前可執行：
+
+```bash
+python -m compileall -q .
+```
+```
+
+
+================================================================================
+
 # handlers\__init__.py
 
 - 類型：.py
@@ -2459,7 +2485,7 @@ updated_at
 - services.ai_actions.run_repair_blocked_summary_in_thread
 - services.ai_actions.run_reply_ai_message_in_thread
 - services.ai_actions.start_edit_ai_message
-- services.call_ai.run_blocked_reply_retry
+- services.call_ai.run_blocked_reply_race
 - services.call_ai.run_reply_recovery
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
@@ -2503,7 +2529,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
-from services.call_ai import run_reply_recovery, run_blocked_reply_retry
+from services.call_ai import run_reply_recovery, run_blocked_reply_race
 from services.memory_view import handle_memory_view_callback
 from services.image_jobs import cancel_job_for_user
 from services.commands import (
@@ -2584,7 +2610,7 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：142
+- 行數：152
 
 ## imports
 - services.ai_actions.handle_hidden_keyboard_message
@@ -2595,6 +2621,7 @@ def _send_script_opening(bot_id, chat_id):
 - services.commands.send_setting_menu
 - services.media_ai.queue_text_for_pending_photo
 - services.memory_view.send_memory_view_menu
+- services.model_mode.handle_modes_api_command
 - services.prompt_debug.send_prompt_debug_link
 - services.telegram_service.send_message
 - test_lab.service.handle_test_lab_message
@@ -2615,6 +2642,7 @@ from services.memory_view import send_memory_view_menu
 from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
+from services.model_mode import handle_modes_api_command
 from test_lab.service import handle_test_lab_message
 
 
@@ -2677,15 +2705,14 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         run_reply_recovery(user_id, bot_id, chat_id)
         return
 
-    if text in ["/prompt_debug", "/prompt", "/提示除錯"]:
-        send_prompt_debug_link(bot_id, chat_id, user_id, compare=False)
-        return
-
-    if text in ["/prompt_debug_compare", "/prompt_compare", "/提示比對"]:
-        send_prompt_debug_link(bot_id, chat_id, user_id, compare=True)
-        return
+    if text == "/modes_api" or text.startswith("/modes_api "):
+        handle_modes_api_command(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            command_text=text,
 ...
-... 已省略 62 行
+... 已省略 72 行
 ```
 
 
@@ -4041,7 +4068,7 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 # services\ai_actions.py
 
 - 類型：.py
-- 行數：1710
+- 行數：1702
 
 ## imports
 - datetime.datetime
@@ -4118,7 +4145,6 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 - get_ai_message_action
 - create_pending_edit
 - pop_active_pending_edit
-- _extract_telegram_message_id
 - start_edit_ai_message
 - process_pending_edit_message
 - _load_generation_context
@@ -4220,7 +4246,7 @@ CONTINUE_USER_TEXT = """
 7. 如果是聊天模式，就自然補上下一句；如果是劇場模式，就自然推進下一幕。
 
 ...
-... 已省略 1630 行
+... 已省略 1622 行
 ```
 
 
@@ -4342,6 +4368,129 @@ def submit_image_request(
 
 ================================================================================
 
+# services\aihorde_text_service.py
+
+- 類型：.py
+- 行數：518
+
+## imports
+- os
+- requests
+- services.prompt_debug.save_prompt_debug_log
+- services.prompt_debug.update_prompt_debug_log
+- threading
+- time
+- typing.Any
+- typing.Dict
+- typing.List
+- typing.Optional
+- typing.Tuple
+
+## functions
+- _keys
+- _headers
+- _json_or_error
+- _error_message
+- get_secondary_model_label
+- _clean_generated_text
+- _llama3_prompt
+- submit_text_request
+- get_text_status
+- cancel_text_request
+- generate_text
+- _save_secondary_debug
+- generate_chat_reply
+- organize_image_prompt
+
+## preview
+```text
+import os
+import threading
+import time
+from typing import Any, Dict, List, Optional, Tuple
+
+import requests
+
+from services.prompt_debug import save_prompt_debug_log, update_prompt_debug_log
+
+
+AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2").rstrip("/")
+AI_HORDE_TEXT_CLIENT_AGENT = os.getenv(
+    "AI_HORDE_TEXT_CLIENT_AGENT",
+    "TeleminiAI:1.0:telegram-secondary-text",
+)
+AI_HORDE_TEXT_MODELS = [
+    item.strip()
+    for item in os.getenv(
+        "AI_HORDE_TEXT_MODELS",
+        "koboldcpp/L3-8B-Stheno-v3.2,koboldcpp/mini-magnum-12b-v1.1",
+    ).split(",")
+    if item.strip()
+]
+AI_HORDE_TEXT_TIMEOUT_SECONDS = max(
+    20,
+    int(os.getenv("AI_HORDE_TEXT_TIMEOUT_SECONDS", "150")),
+)
+AI_HORDE_TEXT_POLL_SECONDS = max(
+    1,
+    int(os.getenv("AI_HORDE_TEXT_POLL_SECONDS", "2")),
+)
+AI_HORDE_TEXT_MAX_CONTEXT = max(
+    4096,
+    int(os.getenv("AI_HORDE_TEXT_MAX_CONTEXT", "16384")),
+)
+
+_SESSION = requests.Session()
+
+
+def _keys() -> List[Tuple[int, str]]:
+    values: List[Tuple[int, str]] = []
+    for slot in (1, 2):
+        key = str(os.getenv(f"AI_HORDE_API_KEY_{slot}") or "").strip()
+        if key:
+            values.append((slot, key))
+    return values
+
+
+def _headers(api_key: Optional[str] = None) -> Dict[str, str]:
+    headers = {
+        "Client-Agent": AI_HORDE_TEXT_CLIENT_AGENT,
+        "Content-Type": "application/json",
+    }
+    if api_key:
+        headers["apikey"] = api_key
+    return headers
+
+
+def _json_or_error(res: requests.Response) -> Dict[str, Any]:
+    try:
+        return res.json()
+    except Exception:
+        return {"message": (res.text or "")[:500]}
+
+
+def _error_message(payload: Dict[str, Any], status_code: int) -> str:
+    return str(
+        payload.get("message")
+        or payload.get("error")
+        or payload.get("reason")
+        or f"HTTP {status_code}"
+    )
+
+
+def get_secondary_model_label() -> str:
+    return ",".join(AI_HORDE_TEXT_MODELS)
+
+
+
+def _clean_generated_text(text: Any) -> str:
+...
+... 已省略 438 行
+```
+
+
+================================================================================
+
 # services\bot_router.py
 
 - 類型：.py
@@ -4452,14 +4601,17 @@ def bot_exists(bot_id: str) -> bool:
 # services\call_ai.py
 
 - 類型：.py
-- 行數：601
+- 行數：903
 
 ## imports
+- queue
 - services.ai_actions.build_ai_action_keyboard
 - services.ai_actions.cache_ai_thought_summary
 - services.ai_actions.create_ai_message_action
 - services.ai_actions.send_blocked_reply_message
 - services.ai_actions.update_action_telegram_message_id
+- services.aihorde_text_service.generate_chat_reply
+- services.aihorde_text_service.get_secondary_model_label
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
@@ -4475,13 +4627,20 @@ def bot_exists(bot_id: str) -> bool:
 - services.memory.update_emotion
 - services.memory_summary.get_memory_context
 - services.memory_summary.maintain_memory_after_reply
+- services.model_mode.MODE_MAIN
+- services.model_mode.MODE_SECONDARY
+- services.model_mode.get_api_model_mode
+- services.model_mode.set_api_model_mode
 - services.reply_style.get_reply_style_settings
+- services.style.build_prompt
+- services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
 - services.telegram_service.send_message
 - services.time_context.get_current_time_context
 - services.user_notice.send_once_user_notice
 - services.user_router.get_gemini_key
 - threading
+- time
 
 ## functions
 - _is_group_chat
@@ -4489,11 +4648,20 @@ def bot_exists(bot_id: str) -> bool:
 - _send_ai_message_with_retry
 - _get_generation_settings
 - _attach_reply_buttons_in_background
+- _normalize_generation_result
+- _generate_main_reply
+- _generate_secondary_reply
+- _finalize_generated_reply
 - _send_generated_reply
 - run_ai
+- _delete_status_later
+- run_blocked_reply_race
 - run_blocked_reply_retry
 - run_reply_recovery
 - worker
+- worker
+- run_main_branch
+- run_secondary_branch
 
 ## preview
 ```text
@@ -4505,16 +4673,26 @@ from services.ai_actions import (
     send_blocked_reply_message,
 )
 from services.gemini_service import ask_gemini, GEMINI_BLOCKED
+from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.model_mode import (
+    MODE_MAIN,
+    MODE_SECONDARY,
+    get_api_model_mode,
+    set_api_model_mode,
+)
+from services.style import build_prompt
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
-from services.telegram_service import send_message, edit_message_text
+from services.telegram_service import send_message, edit_message_text, delete_message
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
 from services.time_context import get_current_time_context
+import queue
 import threading
+import time
 
 from services.memory import (
     add_chat,
@@ -4567,18 +4745,8 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
     sent = send_message(bot_id, chat_id, text, reply_markup=reply_markup)
     telegram_message_id = _extract_telegram_message_id(sent)
 
-    print(
-        f"{label} SEND RESULT ok={bool(telegram_message_id)} "
-        f"telegram_message_id={telegram_message_id} raw_ok={bool(sent)}",
-        flush=True
-    )
-
-    if telegram_message_id or not reply_markup:
-        return sent, telegram_message_id
-
-    print(
 ...
-... 已省略 521 行
+... 已省略 823 行
 ```
 
 
@@ -5179,7 +5347,7 @@ def encrypt_text(plain_text: Any, aad: str = "") -> str:
 # services\database.py
 
 - 類型：.py
-- 行數：778
+- 行數：799
 
 ## imports
 - os
@@ -5289,7 +5457,7 @@ def get_conn():
         print(
             f"[DB OPEN] id={conn_id} "
 ...
-... 已省略 698 行
+... 已省略 719 行
 ```
 
 
@@ -5772,32 +5940,10 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 
 ================================================================================
 
-# services\image_inpaint.py
-
-- 類型：.py
-- 行數：10
-
-## preview
-```text
-"""舊遮罩生圖相容占位檔。
-
-目前生圖流程已改為：
-- 文生圖：txt2img
-- 圖生圖：img2img
-
-本模組不再被任何執行路徑匯入，保留檔名只避免舊部署差異造成混淆。
-"""
-
-INPAINTING_DISABLED = True
-```
-
-
-================================================================================
-
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：558
+- 行數：712
 
 ## imports
 - datetime.datetime
@@ -5808,6 +5954,7 @@ INPAINTING_DISABLED = True
 - services.aihorde_service.download_generated_image
 - services.aihorde_service.get_image_result
 - services.aihorde_service.submit_image_request
+- services.aihorde_text_service.organize_image_prompt
 - services.crypto_env.aad_for
 - services.crypto_env.decrypt_text
 - services.crypto_env.encrypt_text
@@ -5818,6 +5965,7 @@ INPAINTING_DISABLED = True
 - services.image_prepare.prepare_img2img_source
 - services.image_store.download_image_asset
 - services.image_store.save_image_asset
+- services.telegram_service.edit_message_text
 - services.telegram_service.send_message
 - services.telegram_service.send_photo_bytes
 - threading
@@ -5840,6 +5988,7 @@ INPAINTING_DISABLED = True
 - _elapsed_seconds
 - _format_duration
 - _queue_text
+- _edit_status_message
 - _fail
 - _cancel
 - _resolve_reference
@@ -5865,13 +6014,14 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
+from services.aihorde_text_service import organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
-from services.telegram_service import send_message, send_photo_bytes
+from services.telegram_service import send_message, send_photo_bytes, edit_message_text
 
 
-ACTIVE_STATUSES = ("created", "submitting", "queued", "processing")
+ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
 JOB_TIMEOUT_SECONDS = 20 * 60
 POLL_SECONDS = 4
@@ -5895,19 +6045,19 @@ def _cancel_markup(job_id: int):
     }
 
 
-def _encrypt_prompt(job_id: int, prompt: str) -> str:
+def _encrypt_prompt(job_id: int, prompt: str, field: str = "final_prompt") -> str:
     try:
-        return encrypt_text(prompt, aad=aad_for("image_generation_jobs", "final_prompt", job_id))
+        return encrypt_text(prompt, aad=aad_for("image_generation_jobs", field, job_id))
     except Exception as exc:
-        print("IMAGE PROMPT ENCRYPT ERROR:", exc, flush=True)
+        print(f"IMAGE PROMPT ENCRYPT ERROR field={field}:", exc, flush=True)
         return prompt
 
 
-def _decrypt_prompt(job_id: int, value: str) -> str:
+def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str:
     if not is_encrypted(value):
         return _text(value)
     try:
-        return decrypt_text(value, aad=aad_for("image_generation_jobs", "final_prompt", job_id))
+        return decrypt_text(value, aad=aad_for("image_generation_jobs", field, job_id))
     except Exception as exc:
         print("IMAGE PROMPT DECRYPT ERROR:", exc, flush=True)
         return ""
@@ -5930,9 +6080,8 @@ def _count_active(user_id: Any) -> int:
         conn.close()
 
 
-def create_image_job(
 ...
-... 已省略 478 行
+... 已省略 632 行
 ```
 
 
@@ -5941,22 +6090,27 @@ def create_image_job(
 # services\image_prepare.py
 
 - 類型：.py
-- 行數：51
+- 行數：101
 
 ## imports
 - PIL.Image
 - PIL.ImageOps
 - io.BytesIO
+- math.sqrt
 - typing.Any
 - typing.Dict
+- typing.Tuple
 
 ## functions
+- _round_down_to_step
+- _choose_dynamic_output_size
 - prepare_img2img_source
 
 ## preview
 ```text
 from io import BytesIO
-from typing import Any, Dict
+from math import sqrt
+from typing import Any, Dict, Tuple
 
 try:
     from PIL import Image, ImageOps
@@ -5969,6 +6123,39 @@ except ImportError as exc:
 
 OUTPUT_WIDTH = 896
 OUTPUT_HEIGHT = 1152
+MAX_SAFE_PIXELS = 1024 * 1024
+MIN_DIMENSION = 256
+DIMENSION_STEP = 64
+PAD_COLOR = (240, 240, 240)
+
+
+def _round_down_to_step(value: float, step: int = DIMENSION_STEP, minimum: int = MIN_DIMENSION) -> int:
+    rounded = int(value) // int(step) * int(step)
+    return max(int(minimum), rounded)
+
+
+def _choose_dynamic_output_size(original_width: int, original_height: int) -> Tuple[int, int]:
+    """依原圖比例，挑選不超過安全像素量的最大 64 倍數尺寸。"""
+    if original_width <= 0 or original_height <= 0:
+        return OUTPUT_WIDTH, OUTPUT_HEIGHT
+
+    ratio = float(original_width) / float(original_height)
+    target_height = sqrt(MAX_SAFE_PIXELS / ratio)
+    target_width = target_height * ratio
+
+    width = _round_down_to_step(target_width)
+    height = _round_down_to_step(target_height)
+
+    # 若四捨五入後仍超過總像素，就持續往下收。
+    while width * height > MAX_SAFE_PIXELS and width > DIMENSION_STEP and height > DIMENSION_STEP:
+        if width >= height:
+            width -= DIMENSION_STEP
+        else:
+            height -= DIMENSION_STEP
+
+    width = max(DIMENSION_STEP, width)
+    height = max(DIMENSION_STEP, height)
+    return width, height
 
 
 def prepare_img2img_source(
@@ -5976,7 +6163,13 @@ def prepare_img2img_source(
     width: int = OUTPUT_WIDTH,
     height: int = OUTPUT_HEIGHT,
 ) -> Dict[str, Any]:
-    """把來源圖等比例縮放與裁切到最終畫布，禁止直接拉伸人物。"""
+    """
+    來源圖預處理：
+    - 保留完整比例
+    - 依原圖比例自動挑選安全輸出尺寸
+    - 等比例縮放，不裁切
+    - 用淺灰色補邊，方便模型後續改寫
+    """
     if _PIL_IMPORT_ERROR is not None:
         raise RuntimeError(
             "圖生圖來源處理缺少 Pillow，請確認 requirements.txt 已包含 Pillow==12.3.0"
@@ -5989,23 +6182,14 @@ def prepare_img2img_source(
         with Image.open(BytesIO(source_image_bytes)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             original_size = image.size
-            fitted = ImageOps.fit(
-                image,
-                (int(width), int(height)),
-                method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.5),
-            )
-    except Exception as exc:
-        raise ValueError("參考圖片無法讀取，請改用 JPG、PNG 或 WEBP") from exc
+            dynamic_width, dynamic_height = _choose_dynamic_output_size(*original_size)
 
-    output = BytesIO()
-    fitted.save(output, format="PNG", optimize=True)
-    return {
-        "bytes": output.getvalue(),
-        "mime_type": "image/png",
-        "original_size": original_size,
-        "output_size": fitted.size,
-    }
+            contained = ImageOps.contain(
+                image,
+                (int(dynamic_width), int(dynamic_height)),
+                method=Image.Resampling.LANCZOS,
+...
+... 已省略 21 行
 ```
 
 
@@ -6119,7 +6303,7 @@ IMAGE_NEGATIVE_PROMPT = (
 # services\image_store.py
 
 - 類型：.py
-- 行數：289
+- 行數：303
 
 ## imports
 - random
@@ -6197,7 +6381,14 @@ def init_image_tables() -> None:
             reference_type TEXT NOT NULL,
             reference_code TEXT,
             has_custom_upload BOOLEAN DEFAULT FALSE,
+            source_prompt TEXT,
             final_prompt TEXT,
+            prompt_generation_status TEXT DEFAULT 'pending',
+            prompt_model TEXT,
+            prompt_error TEXT,
+            prompt_chars_before INTEGER,
+            prompt_chars_after INTEGER,
+            status_message_id INTEGER,
             status TEXT NOT NULL DEFAULT 'created',
             horde_request_id TEXT,
             api_slot INTEGER,
@@ -6215,17 +6406,10 @@ def init_image_tables() -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_user_active ON image_generation_jobs (user_id, status, created_at DESC)")
-        cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_recovery ON image_generation_jobs (status, heartbeat_at, created_at)")
-        conn.commit()
-    except Exception:
-        conn.rollback()
-        raise
-    finally:
-        conn.close()
-
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS source_prompt TEXT")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_generation_status TEXT DEFAULT 'pending'")
 ...
-... 已省略 209 行
+... 已省略 223 行
 ```
 
 
@@ -6234,18 +6418,16 @@ def init_image_tables() -> None:
 # services\media_ai.py
 
 - 類型：.py
-- 行數：674
+- 行數：579
 
 ## imports
 - config.GEMINI_MODEL
-- config.GEMINI_STICKER_MAX_OUTPUT_TOKENS
-- config.GEMINI_VISION_MAX_OUTPUT_TOKENS
 - config.GEMINI_VISION_MODEL
 - secrets
 - services.bot_router.get_bot_token
 - services.call_ai.run_ai
+- services.gemini_service.GEMINI_BLOCKED
 - services.gemini_service.ask_gemini_image_to_text
-- services.image_store.save_incoming_photo_message
 - services.telegram_service.download_file_bytes
 - services.telegram_service.send_message
 - services.user_router.get_gemini_key
@@ -6259,11 +6441,10 @@ def init_image_tables() -> None:
 - _missing_config
 - send_unsupported_media_message
 - _download_image
-- _media_parse_failure_text
-- _normalize_parse_result
 - _register_pending_photo
 - _build_photo_user_text
 - _dispatch_photo_item
+- _recover_buffered_text_after_photo_failure
 - _remove_pending_photo
 - _fail_pending_photo
 - _photo_wait_timeout
@@ -6281,32 +6462,19 @@ import secrets
 import threading
 import time
 
-from config import (
-    GEMINI_MODEL,
-    GEMINI_VISION_MODEL,
-    GEMINI_VISION_MAX_OUTPUT_TOKENS,
-    GEMINI_STICKER_MAX_OUTPUT_TOKENS,
-)
+from config import GEMINI_MODEL, GEMINI_VISION_MODEL
 from services.bot_router import get_bot_token
 from services.call_ai import run_ai
-from services.gemini_service import ask_gemini_image_to_text
-from services.image_store import save_incoming_photo_message
+from services.gemini_service import GEMINI_BLOCKED, ask_gemini_image_to_text
 from services.telegram_service import download_file_bytes, send_message
 from services.user_router import get_gemini_key
 
 
 UNSUPPORTED_MEDIA_TEXT = "程式尚不能對語音、動態貼圖、影片產生回覆"
-IMAGE_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止"
-IMAGE_PARSE_QUOTA_EXHAUSTED_TEXT = "今日圖片解析次數已用完，文字回應一併停止，請明天再試。"
-IMAGE_PARSE_UNAVAILABLE_TEXT = "圖片解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
-STICKER_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗貼圖次數1次，文字回應一併停止"
-STICKER_PARSE_QUOTA_EXHAUSTED_TEXT = "今日貼圖解析次數已用完，文字回應一併停止，請明天再試。"
-STICKER_PARSE_UNAVAILABLE_TEXT = "貼圖解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
-
 PHOTO_TEXT_WAIT_SECONDS = 10
 
-# 圖片等待狀態只存在目前 Render process 記憶體。
-# key 加入 user_id，避免群組內不同使用者的圖片與文字互相合併。
+# 圖片等待狀態只放在目前 Render process 記憶體。
+# key 使用 user + bot + chat，避免群組裡不同使用者互相吃到文字。
 _PENDING_PHOTOS = {}
 _PENDING_PHOTOS_LOCK = threading.Lock()
 
@@ -6324,14 +6492,11 @@ def _pending_photo_key(user_id, bot_id, chat_id):
 
 def _cancel_pending_timer(item):
     timer = (item or {}).get("timer")
-
-    if not timer:
-        return
-
-    try:
-        timer.cancel()
-    except Exception:
-        pass
+    if timer:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
 
 
 def _missing_config(bot_id, chat_id, user_id):
@@ -6357,8 +6522,24 @@ def _download_image(bot_id, file_id):
 
     mime_type = _text(item.get("mime_type")) or "image/jpeg"
 
+    if not mime_type.startswith("image/"):
+        print(f"MEDIA DOWNLOAD SKIP non-image mime={mime_type}", flush=True)
+        return None
+
+    return item
+
+
+# =========================
+# 圖片等待狀態
+# =========================
+def _register_pending_photo(user_id, bot_id, chat_id, message_id=None, caption=""):
+    key = _pending_photo_key(user_id, bot_id, chat_id)
+    token = secrets.token_urlsafe(12)
+
+    item = {
+        "token": token,
 ...
-... 已省略 594 行
+... 已省略 499 行
 ```
 
 
@@ -6760,6 +6941,114 @@ def _send_or_edit(bot_id, chat_id, message_id, text, reply_markup):
 
 ...
 ... 已省略 187 行
+```
+
+
+================================================================================
+
+# services\model_mode.py
+
+- 類型：.py
+- 行數：117
+
+## imports
+- services.database.get_conn
+- services.telegram_service.send_message
+- typing.Any
+- typing.Dict
+
+## functions
+- _text
+- get_api_model_mode
+- set_api_model_mode
+- toggle_api_model_mode
+- _mode_text
+- handle_modes_api_command
+
+## preview
+```text
+from typing import Any, Dict
+
+from services.database import get_conn
+from services.telegram_service import send_message
+
+
+MODE_MAIN = "main"
+MODE_SECONDARY = "secondary"
+VALID_MODES = {MODE_MAIN, MODE_SECONDARY}
+
+
+def _text(value: Any) -> str:
+    return str(value or "").strip()
+
+
+def get_api_model_mode(user_id: Any, bot_id: Any, chat_id: Any) -> str:
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT mode
+            FROM api_model_modes
+            WHERE user_id=%s AND bot_id=%s AND chat_id=%s
+            """,
+            (_text(user_id), _text(bot_id), _text(chat_id)),
+        )
+        row = cursor.fetchone()
+        mode = _text(row[0]) if row else MODE_MAIN
+        return mode if mode in VALID_MODES else MODE_MAIN
+    finally:
+        conn.close()
+
+
+def set_api_model_mode(user_id: Any, bot_id: Any, chat_id: Any, mode: str) -> str:
+    mode = _text(mode).lower()
+    if mode not in VALID_MODES:
+        raise ValueError("不支援的模型模式")
+
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO api_model_modes (user_id, bot_id, chat_id, mode, updated_at)
+            VALUES (%s,%s,%s,%s,CURRENT_TIMESTAMP)
+            ON CONFLICT (user_id, bot_id, chat_id)
+            DO UPDATE SET mode=EXCLUDED.mode, updated_at=CURRENT_TIMESTAMP
+            """,
+            (_text(user_id), _text(bot_id), _text(chat_id), mode),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(
+        f"MODEL MODE SET user_id={_text(user_id)} bot_id={_text(bot_id)} "
+        f"chat_id={_text(chat_id)} mode={mode}",
+        flush=True,
+    )
+    return mode
+
+
+def toggle_api_model_mode(user_id: Any, bot_id: Any, chat_id: Any) -> str:
+    current = get_api_model_mode(user_id, bot_id, chat_id)
+    target = MODE_SECONDARY if current == MODE_MAIN else MODE_MAIN
+    return set_api_model_mode(user_id, bot_id, chat_id, target)
+
+
+def _mode_text(mode: str) -> str:
+    if mode == MODE_SECONDARY:
+        return "副模型（AI Horde）"
+    return "主模型（Gemini）"
+
+
+def handle_modes_api_command(
+    user_id: Any,
+    bot_id: Any,
+    chat_id: Any,
+    command_text: str,
+...
+... 已省略 37 行
 ```
 
 
@@ -8184,24 +8473,6 @@ def user_has_key(user_id: int) -> bool:
 
 ================================================================================
 
-# static\image_reference\基準圖放置說明.txt
-
-- 類型：.txt
-- 行數：6
-
-## preview
-```text
-此資料夾為舊版基準圖流程保留。
-
-目前「預設生圖」不再讀取 male_reference / female_reference，
-而是由 services/image_prompt.py 內的固定男女身份提示詞進行 txt2img。
-
-玩家指定聊天室圖片代號或臨時上傳圖片時，才會使用 img2img。
-```
-
-
-================================================================================
-
 # templates\character_form.html
 
 - 類型：.html
@@ -9449,23 +9720,6 @@ def user_has_key(user_id: int) -> bool:
 
 ================================================================================
 
-# test_db.py
-
-- 類型：.py
-- 行數：2
-
-## imports
-- secrets
-
-## preview
-```text
-import secrets
-print(secrets.token_hex(32))
-```
-
-
-================================================================================
-
 # test_lab\__init__.py
 
 - 類型：.py
@@ -10385,15 +10639,103 @@ def should_ignore(path: Path) -> bool:
 
 ================================================================================
 
-# tools\python.txt
+# 副模型競速與圖片Prompt覆蓋說明.txt
 
 - 類型：.txt
-- 行數：2
+- 行數：48
 
 ## preview
 ```text
-project_snapshot.py - 產生專案快照
-encrypt_existing_plaintext.py - 已經存在的舊明文資料轉成密文
+Telemini 副模型競速與圖片 Prompt 整理更新包
+
+新增：
+- services/aihorde_text_service.py
+- services/model_mode.py
+- docs/副模型競速與圖片Prompt整理更新說明.md
+
+覆蓋：
+- config.py
+- handlers/message_handler.py
+- handlers/call_handler.py
+- services/database.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/image_store.py
+- services/image_jobs.py
+- routes/image_gen.py
+
+沿用原本 Render 環境變數：
+- AI_HORDE_API_KEY_1
+- AI_HORDE_API_KEY_2
+- APP_ENCRYPTION_SECRET
+- DATABASE_URL
+
+部署後第一次 request 會自動建立／補欄位：
+- api_model_modes
+- image_generation_jobs 的副模型 Prompt 狀態欄位
+
+測試指令：
+- /modes_api
+- /modes_api main
+- /modes_api secondary
+- /modes_api status
+
+生圖訊息流程：
+- prompt生成中
+- 生圖任務已送出，正在加入排隊
+- 後續排隊與生成流程不變
+
+編譯：
+python -m compileall -q .
+
+
+本修正版補充：
+- 已移除副模型 28000 字元靜默截斷。
+- 聊天／劇場完整 Prompt 原樣送往 AI Horde。
+- 預設上下文改為 16384。
+- worker 無法承接完整上下文時會回報失敗，不會用殘缺 Prompt 回覆。
+```
+
+
+================================================================================
+
+# 副模型競速與生圖流程檢查結果.txt
+
+- 類型：.txt
+- 行數：30
+
+## preview
+```text
+Telemini 副模型競速與生圖流程檢查結果
+
+已完成：
+1. 全專案 Python compileall 編譯檢查。
+2. AI Horde 文字 async payload／輪詢／結果解析 mock 測試。
+3. 圖片 Prompt 整理保留原負面提示詞 mock 測試。
+4. Gemini 安全阻擋、AI Horde 副模型勝出的競速 mock 測試。
+5. 競速 Prompt 不重複加入最後一則使用者訊息檢查。
+6. 生圖狀態順序檢查：先 prompt生成中，圖片 API 接受任務後才改為排隊訊息。
+7. 生圖完成／失敗／取消會更新同一則狀態訊息並移除取消按鈕。
+8. 禁用字串掃描。
+
+未執行：
+- 未使用你的正式 AI Horde Key、Gemini Key、Telegram Bot、Supabase 與 Render 做真實端到端連線測試。
+- AI Horde 工作節點與排隊狀態會隨時間改變，正式部署後請依 Render Log 確認模型是否被工作節點接受。
+
+重要 Log：
+MODEL MODE COMMAND
+MODEL MODE SET
+MODEL ROUTE
+MODEL RACE START
+MODEL RACE BRANCH RESULT
+MODEL RACE WINNER
+SECONDARY TEXT SUBMIT PREPARED
+SECONDARY TEXT SUBMIT OK
+SECONDARY TEXT STATUS
+SECONDARY TEXT DONE
+IMAGE PROMPT START
+IMAGE PROMPT DONE
+IMAGE PROMPT FALLBACK
 ```
 
 
@@ -10623,6 +10965,38 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 
 ================================================================================
 
+# 本次修復說明.txt
+
+- 類型：.txt
+- 行數：20
+
+## preview
+```text
+Telemini 四不像專案整理修正版
+
+本次修復：
+1. 補回副模型圖片 Prompt 整理流程。
+2. Telegram 生圖狀態恢復為：
+   prompt生成中
+   → 生圖任務已送出，正在加入排隊
+3. 保留最新圖生圖等比例縮放、不裁切、動態尺寸、淺灰補邊。
+4. 補回 image_generation_jobs 的 Prompt 狀態欄位讀寫流程。
+5. 修掉 THOUGHT_WEB_VIEW_README.md 的 Git conflict marker。
+6. 移除 services/ai_actions.py 內重複的 helper。
+7. 移除未使用、過時或有風險的舊檔案與專案快取。
+
+主要修改檔案：
+- services/image_jobs.py
+- services/ai_actions.py
+- docs/THOUGHT_WEB_VIEW_README.md
+- docs/目前專案整合狀態.md
+
+直接使用完整專案包最乾淨。
+```
+
+
+================================================================================
+
 # 模式-使用說明.txt
 
 - 類型：.txt
@@ -10839,6 +11213,27 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 部署：
 - 覆蓋後 git add / commit / push。
 - Render 重新部署即可；requirements.txt 未改，不需要因本包額外安裝套件。
+```
+
+
+================================================================================
+
+# 補丁套用說明.txt
+
+- 類型：.txt
+- 行數：9
+
+## preview
+```text
+1. 把本補丁內容覆蓋到 Telemini 專案根目錄。
+2. 在 PowerShell 進入專案根目錄後執行：
+   powershell -ExecutionPolicy Bypass -File .\清理舊檔案.ps1
+3. 執行：
+   python -m compileall -q .
+4. git add -A
+5. git commit / push
+
+直接改用完整專案包時，不需要執行清理腳本。
 ```
 
 

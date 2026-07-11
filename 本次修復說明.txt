@@ -1,0 +1,20 @@
+Telemini 四不像專案整理修正版
+
+本次修復：
+1. 補回副模型圖片 Prompt 整理流程。
+2. Telegram 生圖狀態恢復為：
+   prompt生成中
+   → 生圖任務已送出，正在加入排隊
+3. 保留最新圖生圖等比例縮放、不裁切、動態尺寸、淺灰補邊。
+4. 補回 image_generation_jobs 的 Prompt 狀態欄位讀寫流程。
+5. 修掉 THOUGHT_WEB_VIEW_README.md 的 Git conflict marker。
+6. 移除 services/ai_actions.py 內重複的 helper。
+7. 移除未使用、過時或有風險的舊檔案與專案快取。
+
+主要修改檔案：
+- services/image_jobs.py
+- services/ai_actions.py
+- docs/THOUGHT_WEB_VIEW_README.md
+- docs/目前專案整合狀態.md
+
+直接使用完整專案包最乾淨。

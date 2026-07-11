@@ -1,0 +1,9 @@
+1. 把本補丁內容覆蓋到 Telemini 專案根目錄。
+2. 在 PowerShell 進入專案根目錄後執行：
+   powershell -ExecutionPolicy Bypass -File .\清理舊檔案.ps1
+3. 執行：
+   python -m compileall -q .
+4. git add -A
+5. git commit / push
+
+直接改用完整專案包時，不需要執行清理腳本。

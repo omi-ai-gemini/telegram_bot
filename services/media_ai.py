@@ -2,32 +2,19 @@ import secrets
 import threading
 import time
 
-from config import (
-    GEMINI_MODEL,
-    GEMINI_VISION_MODEL,
-    GEMINI_VISION_MAX_OUTPUT_TOKENS,
-    GEMINI_STICKER_MAX_OUTPUT_TOKENS,
-)
+from config import GEMINI_MODEL, GEMINI_VISION_MODEL
 from services.bot_router import get_bot_token
 from services.call_ai import run_ai
-from services.gemini_service import ask_gemini_image_to_text
-from services.image_store import save_incoming_photo_message
+from services.gemini_service import GEMINI_BLOCKED, ask_gemini_image_to_text
 from services.telegram_service import download_file_bytes, send_message
 from services.user_router import get_gemini_key
 
 
 UNSUPPORTED_MEDIA_TEXT = "程式尚不能對語音、動態貼圖、影片產生回覆"
-IMAGE_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止"
-IMAGE_PARSE_QUOTA_EXHAUSTED_TEXT = "今日圖片解析次數已用完，文字回應一併停止，請明天再試。"
-IMAGE_PARSE_UNAVAILABLE_TEXT = "圖片解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
-STICKER_PARSE_LIMIT_EXCEEDED_TEXT = "不小心超過單次最大限制，消耗貼圖次數1次，文字回應一併停止"
-STICKER_PARSE_QUOTA_EXHAUSTED_TEXT = "今日貼圖解析次數已用完，文字回應一併停止，請明天再試。"
-STICKER_PARSE_UNAVAILABLE_TEXT = "貼圖解析模型目前忙碌中，文字回應一併停止，請稍後再試。"
-
 PHOTO_TEXT_WAIT_SECONDS = 10
 
-# 圖片等待狀態只存在目前 Render process 記憶體。
-# key 加入 user_id，避免群組內不同使用者的圖片與文字互相合併。
+# 圖片等待狀態只放在目前 Render process 記憶體。
+# key 使用 user + bot + chat，避免群組裡不同使用者互相吃到文字。
 _PENDING_PHOTOS = {}
 _PENDING_PHOTOS_LOCK = threading.Lock()
 
@@ -45,14 +32,11 @@ def _pending_photo_key(user_id, bot_id, chat_id):
 
 def _cancel_pending_timer(item):
     timer = (item or {}).get("timer")
-
-    if not timer:
-        return
-
-    try:
-        timer.cancel()
-    except Exception:
-        pass
+    if timer:
+        try:
+            timer.cancel()
+        except Exception:
+            pass
 
 
 def _missing_config(bot_id, chat_id, user_id):
@@ -85,76 +69,6 @@ def _download_image(bot_id, file_id):
     return item
 
 
-def _media_parse_failure_text(result, *, media_type="photo"):
-    status = _text((result or {}).get("status")) or "error"
-
-    print(
-        f"MEDIA PARSE FAILURE media_type={media_type} status={status} "
-        f"model={_text((result or {}).get('model')) or '-'} "
-        f"finish_reason={_text((result or {}).get('finish_reason')) or '-'}",
-        flush=True,
-    )
-
-    if status == "blocked":
-        return (
-            "圖片內容被安全阻擋，無法解析。"
-            if media_type == "photo"
-            else "貼圖內容被安全阻擋，無法解析。"
-        )
-
-    if status == "quota_exhausted":
-        return (
-            IMAGE_PARSE_QUOTA_EXHAUSTED_TEXT
-            if media_type == "photo"
-            else STICKER_PARSE_QUOTA_EXHAUSTED_TEXT
-        )
-
-    if status == "service_unavailable":
-        return (
-            IMAGE_PARSE_UNAVAILABLE_TEXT
-            if media_type == "photo"
-            else STICKER_PARSE_UNAVAILABLE_TEXT
-        )
-
-    if status in ["max_tokens_no_response", "no_response"]:
-        return (
-            IMAGE_PARSE_LIMIT_EXCEEDED_TEXT
-            if media_type == "photo"
-            else STICKER_PARSE_LIMIT_EXCEEDED_TEXT
-        )
-
-    return (
-        "圖片解析失敗，文字回應一併停止，請稍後再試。"
-        if media_type == "photo"
-        else "貼圖解析失敗，文字回應一併停止，請稍後再試。"
-    )
-
-
-def _normalize_parse_result(result):
-    """相容結構化新版與部署期間可能殘留的舊字串回傳。"""
-    if isinstance(result, dict):
-        return result
-
-    text = _text(result)
-
-    if text:
-        return {
-            "ok": True,
-            "status": "ok",
-            "text": text,
-            "model": "",
-            "finish_reason": "",
-        }
-
-    return {
-        "ok": False,
-        "status": "no_response",
-        "text": "",
-        "model": "",
-        "finish_reason": "",
-    }
-
-
 # =========================
 # 圖片等待狀態
 # =========================
@@ -172,7 +86,6 @@ def _register_pending_photo(user_id, bot_id, chat_id, message_id=None, caption="
         "caption": _text(caption),
         "texts": [],
         "description": "",
-        "model": "",
         "phase": "parsing",
         "timer": None,
         "created_at": time.time(),
@@ -181,7 +94,6 @@ def _register_pending_photo(user_id, bot_id, chat_id, message_id=None, caption="
 
     with _PENDING_PHOTOS_LOCK:
         previous = _PENDING_PHOTOS.pop(key, None)
-
         if previous:
             _cancel_pending_timer(previous)
             previous["superseded"] = True
@@ -199,13 +111,12 @@ def _register_pending_photo(user_id, bot_id, chat_id, message_id=None, caption="
     return token
 
 
-def _build_photo_user_text(description, caption="", texts=None, model=""):
-    texts = [value for value in (texts or []) if _text(value)]
-    model_name = _text(model) or "Gemini 圖片模型"
+def _build_photo_user_text(description, caption="", texts=None):
+    texts = [text for text in (texts or []) if _text(text)]
 
     sections = [
         "【使用者傳送了一張圖片】",
-        f"【{model_name} 圖片解析結果】",
+        "【圖片解析結果】",
         _text(description),
     ]
 
@@ -247,7 +158,6 @@ def _dispatch_photo_item(item, reason):
         description=description,
         caption=caption,
         texts=texts,
-        model=item.get("model"),
     )
 
     source_message_id = item.get("text_message_id") or item.get("image_message_id")
@@ -271,36 +181,56 @@ def _dispatch_photo_item(item, reason):
     return True
 
 
+def _recover_buffered_text_after_photo_failure(item, failure_text):
+    if not item:
+        return
+
+    texts = [_text(value) for value in (item.get("texts") or []) if _text(value)]
+
+    # 圖片解析失敗時，不能把解析期間被攔住的文字一起吞掉。
+    if texts:
+        recovered_text = "\n".join(texts)
+        print(
+            "MEDIA PHOTO TEXT RECOVERY "
+            f"user_id={item.get('user_id')} chat_id={item.get('chat_id')} "
+            f"text_count={len(texts)} text_len={len(recovered_text)}",
+            flush=True,
+        )
+        run_ai(
+            user_id=item.get("user_id"),
+            bot_id=item.get("bot_id"),
+            chat_id=item.get("chat_id"),
+            user_text=recovered_text,
+            user_message_id=item.get("text_message_id"),
+        )
+        return
+
+    send_message(item.get("bot_id"), item.get("chat_id"), failure_text)
+
+
 def _remove_pending_photo(key, token):
     with _PENDING_PHOTOS_LOCK:
         current = _PENDING_PHOTOS.get(key)
-
         if not current or current.get("token") != token:
             return None
-
         return _PENDING_PHOTOS.pop(key, None)
 
 
 def _fail_pending_photo(user_id, bot_id, chat_id, token, failure_text):
-    """
-    圖片解析失敗時，清除等待狀態並只送失敗提示。
-
-    解析期間被緩衝的文字也直接中斷，不另行呼叫文字模型，
-    符合「文字回應一併停止」規則。
-    """
     key = _pending_photo_key(user_id, bot_id, chat_id)
-    item = _remove_pending_photo(key, token) if token else None
+    item = _remove_pending_photo(key, token)
 
-    if item:
-        _cancel_pending_timer(item)
-        print(
-            "MEDIA PHOTO PENDING FAILED "
-            f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} "
-            f"buffered_text_discarded={len(item.get('texts') or [])}",
-            flush=True,
-        )
+    if not item:
+        return
 
-    send_message(bot_id, chat_id, failure_text)
+    _cancel_pending_timer(item)
+    print(
+        "MEDIA PHOTO PENDING FAILED "
+        f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} "
+        f"buffered_text_count={len(item.get('texts') or [])}",
+        flush=True,
+    )
+    _recover_buffered_text_after_photo_failure(item, failure_text)
 
 
 def _photo_wait_timeout(key, token):
@@ -308,7 +238,6 @@ def _photo_wait_timeout(key, token):
 
     with _PENDING_PHOTOS_LOCK:
         current = _PENDING_PHOTOS.get(key)
-
         if not current or current.get("token") != token:
             return
 
@@ -327,7 +256,7 @@ def _photo_wait_timeout(key, token):
         _dispatch_photo_item(item, reason="wait_timeout")
 
 
-def _complete_pending_photo(user_id, bot_id, chat_id, token, description, model=""):
+def _complete_pending_photo(user_id, bot_id, chat_id, token, description):
     key = _pending_photo_key(user_id, bot_id, chat_id)
     dispatch_now = None
     timer_to_start = None
@@ -335,11 +264,12 @@ def _complete_pending_photo(user_id, bot_id, chat_id, token, description, model=
     with _PENDING_PHOTOS_LOCK:
         current = _PENDING_PHOTOS.get(key)
 
+        # 使用者在解析期間又傳了另一張圖時，舊圖片不再佔用等待槽，
+        # 但仍把舊圖片解析結果單獨送出，避免內容完全消失。
         if not current or current.get("token") != token:
-            return False
+            return None
 
         current["description"] = _text(description)
-        current["model"] = _text(model)
         current["phase"] = "waiting"
 
         if current.get("texts"):
@@ -385,7 +315,6 @@ def queue_text_for_pending_photo(user_id, bot_id, chat_id, user_text, message_id
     回傳 False：目前沒有待處理圖片，照原本流程處理。
     """
     text = _text(user_text)
-
     if not text:
         return False
 
@@ -395,7 +324,6 @@ def queue_text_for_pending_photo(user_id, bot_id, chat_id, user_text, message_id
 
     with _PENDING_PHOTOS_LOCK:
         current = _PENDING_PHOTOS.get(key)
-
         if not current:
             return False
 
@@ -429,27 +357,15 @@ def queue_text_for_pending_photo(user_id, bot_id, chat_id, user_text, message_id
 # 圖片分流：3.5 Flash 讀圖 → 等待 10 秒 → 3.1 Flash Lite 回覆
 # =========================
 def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pending_token=None):
-    # 圖片一進聊天室就先保存 Telegram file_id / file_unique_id。
-    # 即使後續 Gemini 圖片解析失敗或使用者尚未設定 Gemini Key，圖片庫仍保留。
-    try:
-        saved = save_incoming_photo_message(user_id, bot_id, chat_id, message)
-        if saved:
-            print(
-                f"CHAT IMAGE SAVED code={saved.get('image_code')} source=user_upload",
-                flush=True,
-            )
-    except Exception as exc:
-        print("CHAT IMAGE AUTO SAVE ERROR:", exc, flush=True)
-
     gemini_key = get_gemini_key(user_id)
     bot_token = get_bot_token(bot_id)
 
     if not gemini_key or not bot_token:
-        failure_text = "圖片處理需要先完成 Bot 與 Gemini API 設定。"
-
-        if pending_token:
-            _fail_pending_photo(user_id, bot_id, chat_id, pending_token, failure_text)
-        else:
+        _fail_pending_photo(
+            user_id, bot_id, chat_id, pending_token,
+            "圖片處理需要先完成 Bot 與 Gemini API 設定。",
+        )
+        if not pending_token:
             _missing_config(bot_id, chat_id, user_id)
         return
 
@@ -457,11 +373,8 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
 
     if not photos:
         _fail_pending_photo(
-            user_id,
-            bot_id,
-            chat_id,
-            pending_token,
-            "圖片讀取失敗，文字回應一併停止，請再傳一次。",
+            user_id, bot_id, chat_id, pending_token,
+            "圖片讀取失敗，請再傳一次。",
         )
         return
 
@@ -473,8 +386,7 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
     print(
         "MEDIA PHOTO PARSE START "
         f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} "
-        f"message_id={message_id} model={GEMINI_VISION_MODEL} "
-        f"caption={bool(caption)} max_output_tokens={GEMINI_VISION_MAX_OUTPUT_TOKENS}",
+        f"message_id={message_id} model={GEMINI_VISION_MODEL} caption={bool(caption)}",
         flush=True,
     )
 
@@ -482,11 +394,8 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
 
     if not media:
         _fail_pending_photo(
-            user_id,
-            bot_id,
-            chat_id,
-            pending_token,
-            "圖片讀取失敗，文字回應一併停止，請再傳一次。",
+            user_id, bot_id, chat_id, pending_token,
+            "圖片讀取失敗，請再傳一次。",
         )
         return
 
@@ -502,35 +411,34 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
 使用者圖片附註：{caption or "無"}
 """.strip()
 
-    raw_result = ask_gemini_image_to_text(
+    description = ask_gemini_image_to_text(
         gemini_key=gemini_key,
         image_bytes=media.get("bytes"),
         mime_type=media.get("mime_type"),
         prompt=prompt,
         model=GEMINI_VISION_MODEL,
         temperature=0.1,
-        max_output_tokens=GEMINI_VISION_MAX_OUTPUT_TOKENS,
+        max_output_tokens=65536,
     )
-    parse_result = _normalize_parse_result(raw_result)
-    description = _text(parse_result.get("text"))
 
-    if not parse_result.get("ok") or not description:
-        failure_text = _media_parse_failure_text(parse_result, media_type="photo")
+    if description == GEMINI_BLOCKED:
         _fail_pending_photo(
-            user_id,
-            bot_id,
-            chat_id,
-            pending_token,
-            failure_text,
+            user_id, bot_id, chat_id, pending_token,
+            "圖片內容被安全阻擋，無法解析。",
+        )
+        return
+
+    if not description:
+        _fail_pending_photo(
+            user_id, bot_id, chat_id, pending_token,
+            "圖片解析失敗，請稍後再試一次。",
         )
         return
 
     print(
         "MEDIA PHOTO PARSE OK "
         f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} "
-        f"description_len={len(description)} "
-        f"model={_text(parse_result.get('model')) or GEMINI_VISION_MODEL} "
-        f"finish_reason={_text(parse_result.get('finish_reason')) or '-'}",
+        f"description_len={len(description)}",
         flush=True,
     )
 
@@ -541,7 +449,6 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
             chat_id=chat_id,
             token=pending_token,
             description=description,
-            model=parse_result.get("model"),
         )
         return
 
@@ -555,7 +462,6 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
         "caption": caption,
         "texts": [],
         "description": description,
-        "model": parse_result.get("model"),
     }
     _dispatch_photo_item(fallback_item, reason="legacy_direct_call")
 
@@ -601,24 +507,22 @@ def handle_sticker_message(user_id, bot_id, chat_id, message, message_id=None):
 貼圖類型：{sticker_type or "regular"}
 """.strip()
 
-    raw_result = ask_gemini_image_to_text(
+    description = ask_gemini_image_to_text(
         gemini_key=gemini_key,
         image_bytes=media.get("bytes"),
         mime_type=media.get("mime_type"),
         prompt=prompt,
         model=GEMINI_MODEL,
         temperature=0.1,
-        max_output_tokens=GEMINI_STICKER_MAX_OUTPUT_TOKENS,
+        max_output_tokens=500,
     )
-    parse_result = _normalize_parse_result(raw_result)
-    description = _text(parse_result.get("text"))
 
-    if not parse_result.get("ok") or not description:
-        send_message(
-            bot_id,
-            chat_id,
-            _media_parse_failure_text(parse_result, media_type="sticker"),
-        )
+    if description == GEMINI_BLOCKED:
+        send_message(bot_id, chat_id, "貼圖內容被安全阻擋，無法解析。")
+        return
+
+    if not description:
+        send_message(bot_id, chat_id, "貼圖解析失敗，請稍後再試一次。")
         return
 
     synthetic_text = (
@@ -642,7 +546,8 @@ def handle_sticker_message(user_id, bot_id, chat_id, message, message_id=None):
 # Webhook 背景入口
 # =========================
 def run_photo_message_in_thread(user_id, bot_id, chat_id, message, message_id=None):
-    # 解析 thread 啟動前先建立等待狀態，接住圖片後立刻補送的文字。
+    # 必須在啟動解析 thread 前先建立等待狀態，
+    # 才能接住「圖片剛送出就立刻補文字」的情況。
     pending_token = _register_pending_photo(
         user_id=user_id,
         bot_id=bot_id,

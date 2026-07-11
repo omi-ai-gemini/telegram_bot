@@ -1098,14 +1098,6 @@ def pop_active_pending_edit(bot_id, chat_id, user_id):
         conn.close()
 
 
-def _extract_telegram_message_id(result):
-    if not isinstance(result, dict):
-        return None
-
-    message = result.get("result") or {}
-    return message.get("message_id")
-
-
 def start_edit_ai_message(user_id, bot_id, chat_id, action_id):
     if _is_group_chat(chat_id):
         return False, "群組暫不開放這個功能"
