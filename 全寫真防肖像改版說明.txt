@@ -1,0 +1,40 @@
+Telemini 全寫真路線與防肖像改版
+
+覆蓋檔案：
+- services/image_prompt.py
+- services/aihorde_text_service.py
+
+本次行為：
+1. 文生圖、圖生圖、局部遮罩全部固定走真實相機照片路線。
+2. 預設採用生活寫真、街拍、紀實、旅拍、場景攝影或自然抓拍語言。
+3. 文生圖預設禁止：
+   - 頭肩肖像
+   - 臉部占滿畫面
+   - 棚拍美女照
+   - 大頭照
+   - 空白散景背景
+   - 自動直視鏡頭
+4. 預設優先：
+   - 中遠景
+   - 四分之三身
+   - 膝上或全身
+   - 人物與場景共同入鏡
+   - 衣服、動作、手、物品、環境都可看見
+5. 只有使用者明確要求下列內容時才放行肖像：
+   - 肖像照／人像照／人像攝影
+   - 臉部特寫／面部特寫
+   - 大頭照／證件照／個人頭像
+   - 自拍照
+   - portrait／headshot／selfie 等
+6. 使用者明確要求全身、街拍、生活照、場景照、中遠景或不要肖像時，會優先鎖定非肖像構圖。
+7. 副模型整理圖片 Prompt 後，程式會再次補回寫真與防肖像硬規則，避免副模型整理時把規則刪掉。
+8. 圖生圖與遮罩不會無故把原圖裁成臉部特寫或肖像。
+9. 不更換 AI Horde 圖片模型，不影響排隊、遮罩畫筆、基準圖與生圖狀態流程。
+10. 不新增資料表，不需要新增 Render 環境變數。
+
+檢查：
+python -m py_compile services/image_prompt.py services/aihorde_text_service.py
+
+git add services/image_prompt.py services/aihorde_text_service.py
+git commit -m "enforce photographic style and prevent default portraits"
+git push

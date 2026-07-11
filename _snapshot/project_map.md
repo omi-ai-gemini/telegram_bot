@@ -133,6 +133,7 @@ C:\Projects\telemini
 - `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
+- `全寫真防肖像改版說明.txt`
 - `副模型真實對話角色修正說明.txt`
 - `副模型競速與圖片Prompt覆蓋說明.txt`
 - `副模型競速與生圖流程檢查結果.txt`
@@ -141,6 +142,7 @@ C:\Projects\telemini
 - `圖片模型fallback覆蓋說明.txt`
 - `圖片等待與模型切換覆蓋說明.txt`
 - `媒體輸入覆蓋說明.txt`
+- `局部遮罩畫筆修復說明.txt`
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`
@@ -613,6 +615,8 @@ C:\Projects\telemini
 
 ### `services\image_prompt.py`
 - `_clean()`
+- `_matches_any()`
+- `_portrait_requested()`
 - `_fixed_tag_prompt()`
 - `_request_sections()`
 - `build_image_prompt()`

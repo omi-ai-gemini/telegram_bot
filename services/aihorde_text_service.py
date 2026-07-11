@@ -581,24 +581,39 @@ def organize_image_prompt(
     debug_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     positive, separator, negative = str(draft_prompt or "").partition(" ### ")
-    mode_name = "img2img" if str(generation_mode) == "image" else "txt2img"
+    generation_mode = str(generation_mode or "text")
+    mode_name = {
+        "text": "txt2img real-camera photograph",
+        "image": "img2img real-photo edit",
+        "mask": "masked local real-photo inpainting",
+    }.get(generation_mode, "txt2img real-camera photograph")
+
+    portrait_allowed = "PORTRAIT_POLICY: ALLOW_EXPLICIT" in positive
 
     organizer_prompt = _llama3_prompt(
         system_text="""
-You compile user requests into precise diffusion-image prompts.
+You compile user requests into precise diffusion-image prompts for realistic photography.
+Every output must remain a real-camera photograph or a real-photo edit. Never convert it into anime, illustration, CGI, 3D art, digital painting, or synthetic beauty artwork.
 Return only one English positive prompt with no explanation or markdown.
 """,
         user_text=f"""
 Task mode: {mode_name}
+Portrait policy: {"portrait explicitly requested and allowed" if portrait_allowed else "block portrait defaults and face-dominant framing"}
 
 Convert the source request below into one concise, concrete English positive prompt.
 Rules:
 - Preserve every explicit person, clothing, pose, action, object, camera, scene, lighting, and identity requirement.
 - Translate Chinese visual descriptions into direct English visual instructions.
 - Resolve wording into visible image details instead of story narration.
-- Do not remove adult sensual details that are explicitly requested.
+- Keep a genuine candid, documentary, lifestyle, editorial-location, travel, or everyday snapshot appearance.
+- Require natural skin texture, ordinary camera perspective, believable ambient light, real fabric, and realistic surroundings.
+- Do not remove explicitly requested adult visual details.
 - Do not add new people, new objects, or new story events.
-- For img2img, preserve the source person's recognizable identity, but if the request asks for a different pose, clothing, framing, background, room, bed, or scene, write the prompt so those changes are executed decisively instead of preserving the original composition.
+- Do not add anime, illustration, CGI, 3D, fantasy-render, beauty-advertisement, plastic-skin, or glamour-retouching language.
+- When portrait policy blocks portraits, require medium-wide, three-quarter-body, knee-up, or full-body environmental framing; the location must remain visible; the face must not dominate; no headshot, shoulder-up crop, centered beauty portrait, or empty bokeh background.
+- Only when portrait policy explicitly allows it, preserve the requested portrait, headshot, close-up, selfie, or profile composition.
+- For img2img, preserve recognizable identity, but execute requested pose, clothing, framing, background, room, furniture, or scene changes decisively.
+- For masked inpainting, keep the camera and protected regions unchanged and edit only the masked area.
 - Return only the final English positive prompt.
 - No explanation, no title, no markdown, no negative prompt.
 
@@ -611,8 +626,8 @@ SOURCE REQUEST:
     result = generate_text(
         prompt=organizer_prompt,
         purpose="image_prompt",
-        max_length=int(os.getenv("AI_HORDE_IMAGE_PROMPT_MAX_LENGTH", "360")),
-        temperature=float(os.getenv("AI_HORDE_IMAGE_PROMPT_TEMPERATURE", "0.55")),
+        max_length=int(os.getenv("AI_HORDE_IMAGE_PROMPT_MAX_LENGTH", "520")),
+        temperature=float(os.getenv("AI_HORDE_IMAGE_PROMPT_TEMPERATURE", "0.35")),
         timeout_seconds=int(os.getenv("AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS", "120")),
     )
 
@@ -627,6 +642,11 @@ SOURCE REQUEST:
             if marker in organized:
                 organized = organized.split(marker, 1)[0].strip()
 
+        # 移除只給程式辨識的控制標記，接著用程式碼重新補回不可被副模型刪掉的硬規則。
+        organized = organized.replace("PORTRAIT_POLICY: BLOCK", "").replace(
+            "PORTRAIT_POLICY: ALLOW_EXPLICIT", ""
+        ).strip(" ,.;")
+
         if len(organized) < 20:
             result = {
                 **result,
@@ -634,7 +654,41 @@ SOURCE REQUEST:
                 "message": "副模型整理後提示詞過短",
             }
         else:
-            result["text"] = organized + (f" ### {negative.strip()}" if separator and negative.strip() else "")
+            hard_guards = [
+                "genuine real-camera photograph",
+                "candid documentary lifestyle photography",
+                "natural unretouched skin texture with subtle imperfections",
+                "believable ambient light and ordinary lens perspective",
+                "realistic environment and fabric detail",
+                "not CGI, not 3D, not illustration, not anime, not synthetic beauty art",
+            ]
+
+            if generation_mode == "text":
+                if portrait_allowed:
+                    hard_guards.append(
+                        "honor the explicitly requested portrait framing while keeping it natural and minimally retouched"
+                    )
+                else:
+                    hard_guards.extend([
+                        "environmental medium-wide, three-quarter-body, knee-up, or full-body framing",
+                        "subject integrated into a clearly visible location",
+                        "face not dominant in the frame",
+                        "no headshot, no shoulder-up crop, no centered beauty portrait, no empty bokeh background",
+                    ])
+            elif generation_mode == "image":
+                hard_guards.append(
+                    "preserve recognizable source identity and avoid any unrequested close-up, face zoom, or portrait crop"
+                )
+            elif generation_mode == "mask":
+                hard_guards.append(
+                    "local photorealistic inpainting only inside the mask with protected regions and composition unchanged"
+                )
+
+            # 即使副模型把寫真或防肖像規則壓縮掉，送 AI Horde 前仍會固定補回。
+            organized = organized + ", " + ", ".join(hard_guards)
+            result["text"] = organized + (
+                f" ### {negative.strip()}" if separator and negative.strip() else ""
+            )
 
     if debug_id:
         try:
@@ -648,3 +702,4 @@ SOURCE REQUEST:
             print("IMAGE PROMPT DEBUG UPDATE SKIPPED:", exc, flush=True)
 
     return result
+

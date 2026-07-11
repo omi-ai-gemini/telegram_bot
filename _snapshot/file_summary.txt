@@ -4404,7 +4404,7 @@ def _error_message(payload: Dict[str, Any], status_code: int) -> str:
 # services\aihorde_text_service.py
 
 - 類型：.py
-- 行數：650
+- 行數：705
 
 ## imports
 - os
@@ -4521,7 +4521,7 @@ def get_secondary_model_label() -> str:
 
 def _clean_generated_text(text: Any) -> str:
 ...
-... 已省略 570 行
+... 已省略 625 行
 ```
 
 
@@ -6234,7 +6234,7 @@ def _prepare_mask_canvas(
 # services\image_prompt.py
 
 - 類型：.py
-- 行數：254
+- 行數：316
 
 ## imports
 - re
@@ -6243,6 +6243,8 @@ def _prepare_mask_canvas(
 
 ## functions
 - _clean
+- _matches_any
+- _portrait_requested
 - _fixed_tag_prompt
 - _request_sections
 - build_image_prompt
@@ -6269,68 +6271,68 @@ FIXED_TAGS: Dict[str, str] = {
 }
 
 
-# 文生圖只固定人物身份基礎，不逐項解析髮型、服裝、動作、物品或場景。
-# 所有更新都交給共用的「最新明確要求優先」規則。
+# 文生圖固定人物身份只負責角色一致性，不把人物推成棚拍美女肖像。
 TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     "female": [
         "one adult East Asian woman in her twenties",
-        "naturally attractive but realistic everyday appearance",
+        "realistic everyday appearance rather than an idealized beauty model",
         "soft oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes with natural double eyelids",
         "small straight nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "slim naturally proportioned body",
-        "natural black hair as the default only when no newer request changes it",
-        "keep a recognizable character identity without turning the image into a face portrait",
+        "natural black hair only as the fallback when no newer request changes it",
+        "recognizable character identity shown as part of a real scene rather than a face showcase",
     ],
     "male": [
         "one adult East Asian man in his twenties",
-        "naturally attractive but realistic everyday appearance",
+        "realistic everyday appearance rather than an idealized fashion model",
         "balanced masculine oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes",
         "straight natural nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "lean naturally proportioned body",
-        "natural short black hair as the default only when no newer request changes it",
-        "keep a recognizable character identity without turning the image into a face portrait",
+        "natural short black hair only as the fallback when no newer request changes it",
+        "recognizable character identity shown as part of a real scene rather than a face showcase",
     ],
 }
 
 
-TEXT_TO_IMAGE_GLOBAL_RULE = """
-Create a candid environmental lifestyle photograph taken with a real camera. The image must tell the requested scene instead of defaulting to a posed beauty portrait. Unless the newest request explicitly asks for a close-up, use a medium-wide, three-quarter-body, or full-body composition. Keep enough camera distance to show the requested clothing, posture, action, hand interaction, object, and surrounding environment clearly. When a location or scene is mentioned, the environment must occupy a meaningful part of the frame and remain recognizable rather than becoming a generic blurred backdrop.
+PHOTO_REALISM_RULE = """
+Create a genuine real-camera photograph. The default visual language is candid lifestyle photography, documentary photography, editorial location photography, travel photography, or an unstaged everyday snapshot. The image must look captured in a real place by a physical camera, not designed as AI beauty artwork.
 
-Avoid centered head-and-shoulders portraits, face-only framing, studio headshots, glamour photography, beauty-advertisement poses, empty blurred backgrounds, and automatic looking-at-camera poses. Use natural camera exposure, believable dynamic range, realistic skin texture, subtle pores, slight facial asymmetry, natural hair strands, ordinary environmental details, and physically believable light and shadow. Keep the person attractive but human and naturally photographed, not CGI, illustration, or an over-retouched AI beauty image.
+Use believable ambient light, realistic exposure, natural dynamic range, ordinary lens perspective, physically plausible shadows, real fabric folds, natural hair strands, visible skin texture, pores, tiny imperfections, slight facial asymmetry, and lived-in environmental details. Avoid glamour retouching, commercial beauty lighting, plastic skin, synthetic perfection, fantasy rendering, illustration, anime, CGI, 3D, game-art styling, and overprocessed HDR.
 
-Treat the newest explicit request as the highest-priority visual instruction. When earlier context conflicts with the newest request, ignore the conflicting earlier detail. Do not add unrelated redesigns. Do not render dialogue, captions, subtitles, watermarks, or newly invented written text.
+Treat the newest explicit request as the highest-priority visual instruction. Ignore older details that conflict with it. Do not add unrelated people, props, redesigns, captions, subtitles, watermarks, logos, or invented writing.
+""".strip()
+
+
+NON_PORTRAIT_COMPOSITION_RULE = """
+PORTRAIT_POLICY: BLOCK
+This is not a portrait session. Do not default to a face-centered composition. Use an environmental medium-wide, three-quarter-body, knee-up, or full-body photograph. Keep enough camera distance to show the requested location, clothing, posture, action, hands, interacting objects, and surrounding environment. The person should occupy only part of the frame and the location must remain visually meaningful.
+
+Prefer candid activity, natural body language, off-center composition, ordinary eye-level camera placement, and 35mm-to-50mm environmental perspective. Do not automatically make the subject stare into the camera. Do not crop at the shoulders or chest. Do not let the face dominate the image. Do not replace the requested scene with a blurred empty background.
+""".strip()
+
+
+PORTRAIT_ALLOWED_COMPOSITION_RULE = """
+PORTRAIT_POLICY: ALLOW_EXPLICIT
+The newest request explicitly requires portrait-oriented framing. Follow the requested portrait, close-up, headshot, profile image, selfie, or studio composition precisely, while keeping it a believable natural camera photograph with realistic skin and restrained retouching.
 """.strip()
 
 
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image as the identity and visual reference, then perform a real image edit. The newest explicit request is the target result and must be completed clearly. Do not return the source image unchanged, do not merely resize it, and do not hide behind tiny texture changes when the request asks for different clothing, pose, action, framing, visible body area, object, or scene.
+Use the supplied source image as the identity and visual reference, then perform a real photographic edit. The newest explicit request is the required result and must be completed clearly. Do not return the source unchanged, do not merely resize it, and do not hide behind tiny texture changes when a visible wardrobe, pose, action, object, framing, or scene change was requested.
 
-Preserve the same recognizable person, facial identity, and overall character as closely as possible, together with any visual parts that are not asked to change. However, if the newest request implies a larger edit, you are allowed and expected to change pose, body position, hand position, camera distance, crop, framing, viewpoint, background, room, bed, furniture, objects, lighting, and scene composition as needed to satisfy the request. Do not preserve the original pose, crop, or background when they block the requested result.
+Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
 
-Apply the requested clothing change as a real wardrobe replacement. Apply the requested scene change as a real scene change. Apply the requested pose or action as a real pose or action change. Preserve existing signs or readable text only when they are outside the requested edit and do not conflict with the requested result.
-
-Do not beautify, redesign, restyle, or replace the person without an explicit request. Keep a realistic camera-photo look with natural skin texture and believable lighting.
+The finished edit must retain a genuine real-camera appearance with natural skin texture, realistic ambient light, believable perspective, and no CGI, illustration, anime, plastic skin, or beauty-advertisement finish.
 """.strip()
 
 
 MASK_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image together with its edit mask. White or light mask pixels are the only regions that may be regenerated. Black mask pixels are protected and must remain visually unchanged as much as the inpainting pipeline allows.
-
-Complete the newest explicit request clearly inside the masked region. Use nearby unmasked pixels for identity, lighting, perspective, texture, anatomy, and scene continuity. Do not redesign the whole image, do not move the camera, and do not alter protected faces, bodies, objects, signs, or background areas unless those pixels are inside the editable mask.
-
-Blend the edited area naturally across the soft mask boundary. Preserve the same person and surrounding scene. The result must look like a local photo edit, not a newly generated replacement image.
-""".strip()
-
-
-TEXT_NEGATIVE_PROMPT = (
-    "close-up portrait, face-only portrait, headshot, studio portrait, glamour portrait, "
-    "beauty advertisement, centered face, blurred empty background, automatic looking at camera, "
 ...
-... 已省略 174 行
+... 已省略 236 行
 ```
 
 
@@ -8919,7 +8921,7 @@ def user_has_key(user_id: int) -> bool:
 # templates\image_gen_form.html
 
 - 類型：.html
-- 行數：417
+- 行數：478
 
 ## preview
 ```text
@@ -8938,7 +8940,7 @@ def user_has_key(user_id: int) -> bool:
     input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:210px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
     .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none!important}
     button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
-    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:crosshair;background:#111827}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
+    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{position:relative;border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:none;background:#111827;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}.brush-cursor{position:absolute;display:none;pointer-events:none;border:2px solid #fff;border-radius:50%;box-shadow:0 0 0 1px rgba(0,0,0,.75);transform:translate(-50%,-50%);z-index:5}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
     @media(max-width:560px){body{padding:10px}.card{padding:16px}.radio{min-width:100%}.tool-grid{grid-template-columns:repeat(2,1fr)}.source-actions{display:block}.source-actions button{width:100%;margin-top:8px}}
   </style>
 </head>
@@ -8983,7 +8985,7 @@ def user_has_key(user_id: int) -> bool:
           <button type="button" class="secondary-btn" id="clearBtn">🗑️ 清空</button>
           <button type="button" class="secondary-btn" id="invertBtn">◐ 反轉遮罩</button>
         </div>
-        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas></div>
+        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas><div id="brushCursor" class="brush-cursor"></div></div>
         <div class="hint">塗紅＝允許修改；未塗＝保護。換背景時可先塗人物，再按「反轉遮罩」，就會改成背景可修改、人物保護。</div>
       </div>
     </div>
@@ -9004,7 +9006,7 @@ def user_has_key(user_id: int) -> bool:
         <div class="field"><label>固定標籤（單選）</label><select name="fixed_tag"><option value="">不使用固定標籤</option>{% for tag in fixed_tags %}<option value="{{ tag }}" {% if form.get('fixed_tag')==tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}</select></div>
         <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="遮罩模式請直接描述紅色區域要變成什麼，例如：把紅色區域的衣服改成寬鬆白襯衫。">{{ form.get('supplement_prompt','') }}</textarea></div>
 ...
-... 已省略 337 行
+... 已省略 398 行
 ```
 
 
@@ -10800,6 +10802,58 @@ def should_ignore(path: Path) -> bool:
 
 ================================================================================
 
+# 全寫真防肖像改版說明.txt
+
+- 類型：.txt
+- 行數：40
+
+## preview
+```text
+Telemini 全寫真路線與防肖像改版
+
+覆蓋檔案：
+- services/image_prompt.py
+- services/aihorde_text_service.py
+
+本次行為：
+1. 文生圖、圖生圖、局部遮罩全部固定走真實相機照片路線。
+2. 預設採用生活寫真、街拍、紀實、旅拍、場景攝影或自然抓拍語言。
+3. 文生圖預設禁止：
+   - 頭肩肖像
+   - 臉部占滿畫面
+   - 棚拍美女照
+   - 大頭照
+   - 空白散景背景
+   - 自動直視鏡頭
+4. 預設優先：
+   - 中遠景
+   - 四分之三身
+   - 膝上或全身
+   - 人物與場景共同入鏡
+   - 衣服、動作、手、物品、環境都可看見
+5. 只有使用者明確要求下列內容時才放行肖像：
+   - 肖像照／人像照／人像攝影
+   - 臉部特寫／面部特寫
+   - 大頭照／證件照／個人頭像
+   - 自拍照
+   - portrait／headshot／selfie 等
+6. 使用者明確要求全身、街拍、生活照、場景照、中遠景或不要肖像時，會優先鎖定非肖像構圖。
+7. 副模型整理圖片 Prompt 後，程式會再次補回寫真與防肖像硬規則，避免副模型整理時把規則刪掉。
+8. 圖生圖與遮罩不會無故把原圖裁成臉部特寫或肖像。
+9. 不更換 AI Horde 圖片模型，不影響排隊、遮罩畫筆、基準圖與生圖狀態流程。
+10. 不新增資料表，不需要新增 Render 環境變數。
+
+檢查：
+python -m py_compile services/image_prompt.py services/aihorde_text_service.py
+
+git add services/image_prompt.py services/aihorde_text_service.py
+git commit -m "enforce photographic style and prevent default portraits"
+git push
+```
+
+
+================================================================================
+
 # 副模型真實對話角色修正說明.txt
 
 - 類型：.txt
@@ -11095,6 +11149,54 @@ Telemini 媒體輸入更新外帶包
 
 部署前測試：
 python -m py_compile config.py main.py services/telegram_service.py services/gemini_service.py services/media_ai.py
+```
+
+
+================================================================================
+
+# 局部遮罩畫筆修復說明.txt
+
+- 類型：.txt
+- 行數：36
+
+## preview
+```text
+Telemini 局部遮罩畫筆真正修復
+
+本包只覆蓋：
+- templates/image_gen_form.html
+
+修正內容：
+1. 修正來源圖片載入後整張全紅。
+   - 舊版黑色遮罩仍是完全不透明，紅色預覽錯把整張圖片當成可修改區。
+   - 新版前端以透明代表保護區、白色代表修改區；送出時才轉成 AI Horde 需要的黑底白區 PNG。
+
+2. 修正滑鼠與手指無法畫遮罩。
+   - 不再依賴 Telegram 內建瀏覽器不穩定的 PointerEvent 判斷。
+   - 改用獨立滑鼠事件與觸控事件，支援桌機與手機。
+
+3. 擦除改成真正移除遮罩透明度。
+4. 反轉遮罩改成反轉透明度，按下後會立即看到紅色區域反轉。
+5. 新增可見筆刷圓圈；調整筆刷大小時圓圈同步改變。
+6. 保留復原、清空與原本送出流程。
+
+已測試：
+- 初始載圖不全紅
+- 滑鼠塗抹
+- 滑鼠擦除
+- 手指觸控塗抹
+- 清空
+- 反轉兩次
+- 筆刷圓圈
+- 送出遮罩為不透明黑底白區 PNG
+- JavaScript 語法
+- Jinja 頁面渲染
+
+覆蓋後執行：
+python -m compileall -q .
+git add templates/image_gen_form.html
+git commit -m "fix mask editor drawing and preview"
+git push
 ```
 
 
@@ -11642,16 +11744,12 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 # 覆蓋檔案清單.txt
 
 - 類型：.txt
-- 行數：6
+- 行數：2
 
 ## preview
 ```text
-routes/image_gen.py
-services/image_jobs.py
-templates/image_gen_form.html
-static/image_reference/male_reference.png
-static/image_reference/female_reference.png
-static/image_reference/基準圖放置說明.txt
+services/image_prompt.py
+services/aihorde_text_service.py
 ```
 
 

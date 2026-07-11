@@ -1,1 +1,2 @@
-templates/image_gen_form.html
+services/image_prompt.py
+services/aihorde_text_service.py
