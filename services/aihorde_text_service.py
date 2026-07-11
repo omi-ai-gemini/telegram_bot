@@ -102,6 +102,39 @@ def _llama3_prompt(system_text: str, user_text: str) -> str:
     )
 
 
+def _clean_chat_reply_output(text: Any) -> str:
+    """移除副模型偶爾輸出的 Prompt 分析前文，只留下真正回覆。"""
+    value = _clean_generated_text(text)
+
+    for marker in (
+        "所以本次要回覆的內容就是：",
+        "本次要回覆的內容就是：",
+        "最終回覆：",
+        "回覆內容：",
+    ):
+        if marker in value:
+            candidate = value.rsplit(marker, 1)[1].strip()
+            if candidate:
+                value = candidate
+                break
+
+    leak_terms = (
+        "近期對話紀錄",
+        "最近對話紀錄",
+        "由於最後一則使用者訊息",
+        "SOURCE REQUEST",
+        "本次任務",
+    )
+    if any(term in value for term in leak_terms):
+        paragraphs = [part.strip() for part in value.split("\n\n") if part.strip()]
+        for candidate in reversed(paragraphs):
+            if not any(term in candidate for term in leak_terms) and not candidate.startswith(("使用者:", "使用者：", "AI:", "AI：")):
+                value = candidate
+                break
+
+    return _clean_generated_text(value).strip().strip('"')
+
+
 def submit_text_request(
     prompt: str,
     purpose: str,
@@ -403,21 +436,19 @@ def generate_chat_reply(
     debug_context: Optional[Dict[str, Any]] = None,
     stop_event: Optional[threading.Event] = None,
 ) -> Dict[str, Any]:
+    # 完整 Telemini Prompt 放在 system 區，不再當成「使用者丟來要求分析的文件」。
     secondary_prompt = _llama3_prompt(
-        system_text="""
-你是 Telemini 的副回覆模型。
-直接依照使用者提供的人物、記憶、模式與風格完成回覆。
-使用繁體中文，不要提到模型、提示詞、規則或資料庫。
-不要輸出測試確認句，只輸出真正要傳給使用者看的回覆。
-""",
-        user_text=str(prompt or "") + """
+        system_text=str(prompt or "").strip() + """
 
-【副模型最終輸出規則】
-- 直接回覆近期對話最後一則使用者訊息。
-- 必須遵守人物、模式、記憶與回覆風格。
-- 不要回答任何要求你只回覆測試確認句的舊指令。
-- 只輸出回覆本體，不加標題。
+【副模型輸出規則】
+- 上方內容是你本次必須遵守的人物、記憶、模式、風格與對話上下文。
+- 現在直接以角色身份產生下一句回覆。
+- 不要分析、摘要、重述或引用 Prompt。
+- 不要輸出「近期對話紀錄」、「使用者訊息」、「本次要回覆」等說明文字。
+- 不要提到模型、提示詞、規則或資料庫。
+- 使用繁體中文，只輸出真正要傳給使用者看的回覆本體。
 """,
+        user_text="直接開始回覆。只輸出回覆本體。",
     )
 
     debug_id = _save_secondary_debug(secondary_prompt, "chat_reply", debug_context)
@@ -428,6 +459,18 @@ def generate_chat_reply(
         temperature=float(os.getenv("AI_HORDE_CHAT_TEMPERATURE", "0.82")),
         stop_event=stop_event,
     )
+
+    if result.get("ok"):
+        cleaned = _clean_chat_reply_output(result.get("text"))
+        if cleaned:
+            result["text"] = cleaned
+        else:
+            result = {
+                **result,
+                "ok": False,
+                "message": "副模型只輸出了 Prompt 分析，沒有可用角色回覆",
+                "text": "",
+            }
 
     if debug_id:
         try:

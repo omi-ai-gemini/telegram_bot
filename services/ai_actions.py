@@ -8,7 +8,9 @@ from services.bot_router import get_bot_token
 from services.character import get_character_settings
 from services.chat_persona import get_chat_persona_settings
 from services.database import get_conn
-from services.gemini_service import GEMINI_BLOCKED, ask_gemini
+from services.gemini_service import GEMINI_BLOCKED
+from services.reply_model_router import generate_reply_by_mode
+from services.model_mode import MODE_MAIN, get_api_model_mode
 from services.memory import (
     add_chat,
     get_chat,
@@ -1200,8 +1202,10 @@ def process_pending_edit_message(user_id, bot_id, chat_id, user_text, user_messa
 def _load_generation_context(user_id, bot_id, chat_id):
     gemini_key = get_gemini_key(user_id)
     bot_token = get_bot_token(bot_id)
+    selected_mode = get_api_model_mode(user_id, bot_id, chat_id)
 
-    if not gemini_key or not bot_token:
+    # 副模型回覆不需要 Gemini Key；主模型模式才檢查 Gemini Key。
+    if not bot_token or (selected_mode == MODE_MAIN and not gemini_key):
         return None
 
     scope = "group" if _is_group_chat(chat_id) else "private"
@@ -1248,8 +1252,11 @@ def _generate_reply(context, history, user_text, include_thoughts=True, debug_co
         "generation_type": "ai_action",
     }
 
-    return ask_gemini(
-        gemini_key=context["gemini_key"],
+    return generate_reply_by_mode(
+        user_id=context.get("user_id"),
+        bot_id=context.get("bot_id"),
+        chat_id=context.get("chat_id"),
+        gemini_key=context.get("gemini_key"),
         history=history,
         user_text=user_text,
         emotion=context["emotion"],
@@ -1261,7 +1268,6 @@ def _generate_reply(context, history, user_text, include_thoughts=True, debug_co
         memory_context=context["memory_context"],
         time_context=context["time_context"],
         include_thoughts=include_thoughts,
-        return_meta=include_thoughts,
         debug_context=debug_context,
     )
 
@@ -1462,7 +1468,10 @@ def continue_ai_message(user_id, bot_id, chat_id, source_action_id=None):
     if action_id and telegram_message_id:
         update_action_telegram_message_id(action_id, telegram_message_id)
 
-    maintain_memory_after_reply(context["gemini_key"], bot_id, chat_id, user_id=user_id)
+    if context.get("gemini_key"):
+        maintain_memory_after_reply(context["gemini_key"], bot_id, chat_id, user_id=user_id)
+    else:
+        print("CONTINUE MEMORY MAINTENANCE SKIP: missing Gemini key", flush=True)
 
 
 

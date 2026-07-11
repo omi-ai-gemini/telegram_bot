@@ -5,15 +5,15 @@ from services.ai_actions import (
     update_action_telegram_message_id,
     send_blocked_reply_message,
 )
-from services.gemini_service import ask_gemini, GEMINI_BLOCKED
-from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.gemini_service import GEMINI_BLOCKED
+from services.aihorde_text_service import get_secondary_model_label
+from services.reply_model_router import generate_reply_by_mode
 from services.model_mode import (
     MODE_MAIN,
     MODE_SECONDARY,
     get_api_model_mode,
     set_api_model_mode,
 )
-from services.style import build_prompt
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
 from services.telegram_service import send_message, edit_message_text, delete_message
@@ -232,37 +232,6 @@ def _attach_reply_buttons_in_background(
 
     threading.Thread(target=worker, daemon=True).start()
 
-def _normalize_generation_result(result, provider):
-    if provider == MODE_MAIN:
-        if isinstance(result, dict):
-            return {
-                "text": result.get("text"),
-                "thoughts": result.get("thoughts", ""),
-                "thought_source": result.get("thought_source", "empty"),
-                "provider": MODE_MAIN,
-                "model": "Gemini",
-            }
-        return {
-            "text": result,
-            "thoughts": "",
-            "thought_source": "empty",
-            "provider": MODE_MAIN,
-            "model": "Gemini",
-        }
-
-    return {
-        "text": result.get("text") if isinstance(result, dict) else None,
-        "thoughts": "本次回覆由 AI Horde 副模型產生，沒有 Gemini 推理摘要。",
-        "thought_source": "generated",
-        "provider": MODE_SECONDARY,
-        "model": (result or {}).get("model") if isinstance(result, dict) else get_secondary_model_label(),
-        "error": (result or {}).get("message") if isinstance(result, dict) else "副模型沒有回傳結果",
-        "request_id": (result or {}).get("request_id") if isinstance(result, dict) else None,
-        "elapsed": (result or {}).get("elapsed") if isinstance(result, dict) else None,
-        "ok": bool((result or {}).get("ok")) if isinstance(result, dict) else False,
-    }
-
-
 def _generate_main_reply(
     gemini_key,
     settings,
@@ -274,17 +243,10 @@ def _generate_main_reply(
     source_user_chat_id,
     label,
 ):
-    if not gemini_key:
-        return {
-            "text": None,
-            "thoughts": "",
-            "thought_source": "empty",
-            "provider": MODE_MAIN,
-            "model": "Gemini",
-            "error": "Gemini API Key 尚未設定",
-        }
-
-    result = ask_gemini(
+    return generate_reply_by_mode(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
         gemini_key=gemini_key,
         history=settings["history"],
         user_text=user_text,
@@ -297,7 +259,7 @@ def _generate_main_reply(
         memory_context=settings["memory_context"],
         time_context=settings["time_context"],
         include_thoughts=True,
-        return_meta=True,
+        model_override=MODE_MAIN,
         debug_context={
             "user_id": user_id,
             "bot_id": bot_id,
@@ -307,7 +269,6 @@ def _generate_main_reply(
             "source_user_chat_id": source_user_chat_id,
         },
     )
-    return _normalize_generation_result(result, MODE_MAIN)
 
 
 def _generate_secondary_reply(
@@ -321,7 +282,11 @@ def _generate_secondary_reply(
     label,
     stop_event=None,
 ):
-    prompt = build_prompt(
+    return generate_reply_by_mode(
+        user_id=user_id,
+        bot_id=bot_id,
+        chat_id=chat_id,
+        gemini_key=None,
         history=settings["history"],
         user_text=user_text,
         emotion=emotion,
@@ -332,21 +297,18 @@ def _generate_secondary_reply(
         facts=settings["facts"],
         memory_context=settings["memory_context"],
         time_context=settings["time_context"],
-    )
-
-    result = generate_chat_reply(
-        prompt=prompt,
+        include_thoughts=True,
+        model_override=MODE_SECONDARY,
+        stop_event=stop_event,
         debug_context={
             "user_id": user_id,
             "bot_id": bot_id,
             "chat_id": chat_id,
-            "source": f"{label}_SECONDARY",
+            "source": label,
             "generation_type": "reply_secondary",
             "source_user_chat_id": source_user_chat_id,
         },
-        stop_event=stop_event,
     )
-    return _normalize_generation_result(result, MODE_SECONDARY)
 
 
 def _finalize_generated_reply(
@@ -418,61 +380,39 @@ def _send_generated_reply(
     label="AI",
     model_override=None,
 ):
-    """依目前 /modes_api 狀態，用 Gemini 或 AI Horde 副模型產生回覆。"""
+    """組好一次 Prompt，最後一個節點才決定送 Gemini 或 AI Horde。"""
     scope = "group" if _is_group_chat(chat_id) else "private"
     emotion = get_emotion(chat_id)
     settings = _get_generation_settings(bot_id, chat_id, user_id, scope)
-    selected_mode = model_override or get_api_model_mode(user_id, bot_id, chat_id)
 
-    print(
-        "MODEL ROUTE "
-        f"label={label} selected={selected_mode} user_id={user_id} bot_id={bot_id} chat_id={chat_id}",
-        flush=True,
-    )
-
-    if selected_mode == MODE_SECONDARY:
-        result = _generate_secondary_reply(
-            settings=settings,
-            user_text=user_text,
-            emotion=emotion,
-            user_id=user_id,
-            bot_id=bot_id,
-            chat_id=chat_id,
-            source_user_chat_id=source_user_chat_id,
-            label=label,
-        )
-        if not result.get("text"):
-            message = result.get("error") or "副模型沒有回傳可用文字"
-            print(f"{label} SECONDARY EMPTY/ERROR: {message}", flush=True)
-            _send_ai_message_with_retry(
-                bot_id,
-                chat_id,
-                f"副模型沒有產生可用回覆：{message}",
-                label=f"{label} SECONDARY",
-            )
-            return False
-        return _finalize_generated_reply(
-            result=result,
-            gemini_key=gemini_key,
-            bot_id=bot_id,
-            chat_id=chat_id,
-            user_id=user_id,
-            source_user_chat_id=source_user_chat_id,
-            settings=settings,
-            label=label,
-        )
-
-    result = _generate_main_reply(
-        gemini_key=gemini_key,
-        settings=settings,
-        user_text=user_text,
-        emotion=emotion,
+    result = generate_reply_by_mode(
         user_id=user_id,
         bot_id=bot_id,
         chat_id=chat_id,
-        source_user_chat_id=source_user_chat_id,
-        label=label,
+        gemini_key=gemini_key,
+        history=settings["history"],
+        user_text=user_text,
+        emotion=emotion,
+        mode=settings["mode"],
+        chat_persona_settings=settings["chat_persona_settings"],
+        character_settings=settings["character_settings"],
+        reply_style_settings=settings["reply_style_settings"],
+        facts=settings["facts"],
+        memory_context=settings["memory_context"],
+        time_context=settings["time_context"],
+        include_thoughts=True,
+        model_override=model_override,
+        debug_context={
+            "user_id": user_id,
+            "bot_id": bot_id,
+            "chat_id": chat_id,
+            "source": label,
+            "generation_type": "reply",
+            "source_user_chat_id": source_user_chat_id,
+        },
     )
+
+    provider = result.get("provider") or MODE_MAIN
 
     if result.get("text") == GEMINI_BLOCKED:
         print(f"{label} BLOCKED SEND: Gemini blocked chat reply", flush=True)
@@ -480,12 +420,17 @@ def _send_generated_reply(
         return False
 
     if not result.get("text"):
-        print(f"{label} SKIP SEND: Gemini returned empty reply", flush=True)
+        message = result.get("error") or (
+            "副模型沒有回傳可用文字"
+            if provider == MODE_SECONDARY
+            else "Gemini 沒有回傳可用文字"
+        )
+        print(f"{label} {provider.upper()} EMPTY/ERROR: {message}", flush=True)
         _send_ai_message_with_retry(
             bot_id,
             chat_id,
-            "Gemini 沒有回傳可用文字，請按安全阻擋按鈕或用 /reply 補一次。",
-            label=label,
+            f"{message}",
+            label=f"{label} {provider.upper()}",
         )
         return False
 

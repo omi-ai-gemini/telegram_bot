@@ -817,53 +817,33 @@ def ask_gemini_image_to_text(
 # =========================
 # 取得 Gemini 回覆
 # =========================
-def ask_gemini(
+def ask_gemini_prompt(
     gemini_key,
-    history,
-    user_text,
-    emotion,
-    mode="聊天模式",
-    chat_persona_settings=None,
-    character_settings=None,
-    reply_style_settings=None,
-    facts=None,
-    memory_context=None,
-    time_context=None,
+    prompt,
     include_thoughts=False,
     return_meta=False,
-    debug_context=None
+    debug_context=None,
+    prompt_meta=None,
 ):
-
-    # =========================
-    # 組 prompt
-    # =========================
-    prompt = build_prompt(
-        history=history,
-        user_text=user_text,
-        emotion=emotion,
-        mode=mode,
-        chat_persona_settings=chat_persona_settings,
-        character_settings=character_settings,
-        reply_style_settings=reply_style_settings,
-        facts=facts,
-        memory_context=memory_context,
-        time_context=time_context
-    )
+    """把已完成組裝的最終 Prompt 直接送進 Gemini。"""
+    prompt = str(prompt or "")
 
     # 只有需要 meta 的聊天流程才要求 JSON 雙欄位輸出。
-    # 摘要、舊流程或非 meta 呼叫不強制 JSON，避免影響其他功能。
     if return_meta:
         prompt = _with_structured_reply_instructions(prompt)
 
     # 不印 prompt 內容，避免解密後的明文進 Render log。
     print("DEBUG prompt built")
 
-    # =========================
-    # Prompt Debug：只保存到 DB，網頁查看，不丟聊天室 / Render log。
-    # =========================
     prompt_debug_id = None
     if debug_context:
         try:
+            meta = dict(prompt_meta or {})
+            meta.update({
+                "include_thoughts": bool(include_thoughts),
+                "return_meta": bool(return_meta),
+                "prebuilt_prompt": True,
+            })
             prompt_debug_id = save_prompt_debug_log(
                 prompt_text=prompt,
                 user_id=debug_context.get("user_id"),
@@ -874,20 +854,11 @@ def ask_gemini(
                 action_id=debug_context.get("action_id"),
                 source_user_chat_id=debug_context.get("source_user_chat_id"),
                 model=GEMINI_MODEL,
-                prompt_meta={
-                    "mode": mode,
-                    "include_thoughts": bool(include_thoughts),
-                    "return_meta": bool(return_meta),
-                    "history_count": len(history or []),
-                    "facts_count": len(facts or []),
-                },
+                prompt_meta=meta,
             )
         except Exception as exc:
             print("PROMPT DEBUG SAVE SKIPPED:", exc, flush=True)
 
-    # =========================
-    # 呼叫 Gemini
-    # =========================
     try:
         with genai.Client(api_key=gemini_key) as client:
             response = client.models.generate_content(
@@ -900,7 +871,6 @@ def ask_gemini(
             update_prompt_debug_log(prompt_debug_id, status="error", block_reason=str(exc)[:500])
         raise
 
-    # 不印 response 內容，避免 AI 回覆明文進 Render log。
     print("DEBUG gemini response received")
     finish_reason_name = _enum_name(_extract_finish_reason(response))
     print("GEMINI finish_reason:", finish_reason_name)
@@ -909,30 +879,25 @@ def ask_gemini(
     answer_text, thought_text = _extract_answer_and_thoughts(response)
     print(
         f"GEMINI extracted lengths: answer={len(answer_text or '')} thoughts={len(thought_text or '')}",
-        flush=True
+        flush=True,
     )
 
     if include_thoughts and not thought_text:
-        print(
-            "GEMINI thought summary empty: no thought part returned",
-            flush=True
-        )
+        print("GEMINI thought summary empty: no thought part returned", flush=True)
 
-    text = answer_text or _safe_response_text(response)
+    result_text = answer_text or _safe_response_text(response)
 
-    if text:
+    if result_text:
         if prompt_debug_id:
             update_prompt_debug_log(
                 prompt_debug_id,
                 status="ok",
                 finish_reason=finish_reason_name or "",
-                response_chars=len(text or ""),
+                response_chars=len(result_text or ""),
             )
-        if return_meta:
-            parsed = _parse_structured_reply(text)
 
-            # 優先使用 Gemini 官方 thought summary；
-            # 沒有官方 thought part 時，改用同次 JSON 產生的 reasoning_note。
+        if return_meta:
+            parsed = _parse_structured_reply(result_text)
             visible_reasoning = thought_text or parsed.get("reasoning_note", "")
             thought_source = "official" if thought_text else (
                 "generated" if parsed.get("reasoning_note") else "empty"
@@ -954,7 +919,7 @@ def ask_gemini(
                 structured=parsed.get("structured", False),
             )
 
-        return text
+        return result_text
 
     block_reason = get_gemini_block_reason(response)
 
@@ -979,7 +944,6 @@ def ask_gemini(
 
         return GEMINI_BLOCKED
 
-    # Gemini 沒有可用文字，但也沒有明確阻擋時，維持不傳假角色訊息。
     print("GEMINI empty reply: no text returned")
 
     if prompt_debug_id:
@@ -998,6 +962,50 @@ def ask_gemini(
         )
 
     return None
+
+
+def ask_gemini(
+    gemini_key,
+    history,
+    user_text,
+    emotion,
+    mode="聊天模式",
+    chat_persona_settings=None,
+    character_settings=None,
+    reply_style_settings=None,
+    facts=None,
+    memory_context=None,
+    time_context=None,
+    include_thoughts=False,
+    return_meta=False,
+    debug_context=None,
+):
+    """相容舊呼叫；先組 Prompt，再交給共用的 Gemini 送出節點。"""
+    prompt = build_prompt(
+        history=history,
+        user_text=user_text,
+        emotion=emotion,
+        mode=mode,
+        chat_persona_settings=chat_persona_settings,
+        character_settings=character_settings,
+        reply_style_settings=reply_style_settings,
+        facts=facts,
+        memory_context=memory_context,
+        time_context=time_context,
+    )
+
+    return ask_gemini_prompt(
+        gemini_key=gemini_key,
+        prompt=prompt,
+        include_thoughts=include_thoughts,
+        return_meta=return_meta,
+        debug_context=debug_context,
+        prompt_meta={
+            "mode": mode,
+            "history_count": len(history or []),
+            "facts_count": len(facts or []),
+        },
+    )
 
 
 # =========================

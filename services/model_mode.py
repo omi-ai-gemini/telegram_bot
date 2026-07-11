@@ -109,9 +109,9 @@ def handle_modes_api_command(
         chat_id,
         f"目前模型模式：{_mode_text(mode)}\n"
         + (
-            "後續一般回覆會直接走副模型；輸入 /modes_api main 可切回 Gemini。"
+            "後續一般回覆、重跑、接續與救援回覆都會走副模型；輸入 /modes_api main 可切回 Gemini。"
             if mode == MODE_SECONDARY
-            else "後續一般回覆會走 Gemini；安全阻擋按鈕仍可啟動主副模型競速。"
+            else "後續一般回覆、重跑、接續與救援回覆都會走 Gemini；安全阻擋按鈕仍可啟動主副模型競速。"
         ),
     )
     return {"ok": True, "mode": mode}

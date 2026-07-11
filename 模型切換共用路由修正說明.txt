@@ -1,0 +1,19 @@
+Telemini 模型切換共用路由修正
+
+本次修改：
+1. 新增 services/reply_model_router.py，作為所有聊天回覆唯一模型分流節點。
+2. 一般回覆、重跑、接續、/reply 補生、阻擋競速，全部先組同一份 Prompt，再於送出前依 /modes_api 決定 Gemini 或 AI Horde。
+3. 副模型不再把完整 Prompt 當成使用者要求分析的文件；完整 Prompt 改放 system 區，避免輸出「近期對話紀錄」「最後一則使用者訊息」等 Prompt 內容。
+4. 副模型結果增加 Prompt 洩漏清理。
+5. 切副模型後，即使沒有 Gemini Key，重跑與接續仍可使用副模型；記憶摘要需要 Gemini 時才略過。
+
+影響檔案：
+- services/reply_model_router.py
+- services/gemini_service.py
+- services/aihorde_text_service.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/model_mode.py
+
+驗證：
+python -m compileall -q .
