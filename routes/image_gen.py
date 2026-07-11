@@ -72,8 +72,10 @@ def image_generate_submit():
         return "找不到這輪對話，請回 Telegram 重新開啟生圖設定", 404
 
     form = request.form.to_dict()
+    raw_mode = str(form.get("generation_mode") or "text").strip()
+    # 舊表單相容：default=文生圖、custom=圖生圖。
+    generation_mode = {"default": "text", "custom": "image"}.get(raw_mode, raw_mode)
     gender = str(form.get("gender") or "").strip()
-    generation_mode = str(form.get("generation_mode") or "default").strip()
     prompt_mode = str(form.get("prompt_mode") or "tag").strip()
     source_choice = str(form.get("source_choice") or "ai").strip()
     fixed_tag = str(form.get("fixed_tag") or "").strip()
@@ -81,10 +83,10 @@ def image_generate_submit():
     custom_prompt = str(form.get("custom_prompt") or "").strip()
     reference_code = str(form.get("reference_code") or "").strip()
 
-    if gender not in {"male", "female"}:
-        return _render_generate(auth, context, error="性別為必填，請選擇男或女", form=form, status=400)
-    if generation_mode not in {"default", "custom"}:
+    if generation_mode not in {"text", "image"}:
         return _render_generate(auth, context, error="生圖模式錯誤", form=form, status=400)
+    if generation_mode == "text" and gender not in {"male", "female"}:
+        return _render_generate(auth, context, error="文生圖必須選擇人物性別", form=form, status=400)
     if prompt_mode not in {"tag", "custom"}:
         return _render_generate(auth, context, error="提示詞模式錯誤", form=form, status=400)
     if source_choice not in {"user", "ai"}:
@@ -93,37 +95,45 @@ def image_generate_submit():
     custom_upload = None
     reference_type = "system_prompt"
 
-    if generation_mode == "custom":
+    if generation_mode == "image":
         upload = request.files.get("source_image")
-        if not upload or not upload.filename:
-            return _render_generate(auth, context, error="自訂生圖必須上傳一張圖片", form=form, status=400)
-        mime_type = str(upload.mimetype or "").lower()
-        if mime_type not in ALLOWED_UPLOAD_MIMES:
-            return _render_generate(auth, context, error="只支援 JPG、PNG、WEBP", form=form, status=400)
-        raw = upload.read(MAX_UPLOAD_BYTES + 1)
-        if not raw or len(raw) > MAX_UPLOAD_BYTES:
-            return _render_generate(auth, context, error="圖片不可超過 12MB", form=form, status=400)
-        custom_upload = {"bytes": raw, "mime_type": mime_type}
-        reference_type = "custom_upload"
-        reference_code = ""
-    elif reference_code:
-        asset = get_image_asset(reference_code, auth["bot_id"], auth["chat_id"])
-        if not asset:
-            return _render_generate(auth, context, error="找不到指定的聊天室圖片代號或名稱", form=form, status=400)
-        reference_type = "chat_image"
-        reference_code = asset.get("image_code")
+
+        # 圖生圖可使用本次上傳圖或聊天室圖片代號；同時提供時以上傳圖優先。
+        if upload and upload.filename:
+            mime_type = str(upload.mimetype or "").lower()
+            if mime_type not in ALLOWED_UPLOAD_MIMES:
+                return _render_generate(auth, context, error="只支援 JPG、PNG、WEBP", form=form, status=400)
+            raw = upload.read(MAX_UPLOAD_BYTES + 1)
+            if not raw or len(raw) > MAX_UPLOAD_BYTES:
+                return _render_generate(auth, context, error="圖片不可超過 12MB", form=form, status=400)
+            custom_upload = {"bytes": raw, "mime_type": mime_type}
+            reference_type = "custom_upload"
+            reference_code = ""
+        elif reference_code:
+            asset = get_image_asset(reference_code, auth["bot_id"], auth["chat_id"])
+            if not asset:
+                return _render_generate(auth, context, error="找不到指定的聊天室圖片代號或名稱", form=form, status=400)
+            reference_type = "chat_image"
+            reference_code = asset.get("image_code")
+        else:
+            return _render_generate(
+                auth,
+                context,
+                error="圖生圖必須上傳圖片，或填入聊天室圖片代號／名稱",
+                form=form,
+                status=400,
+            )
 
     source_text = context.get("user_text") if source_choice == "user" else context.get("assistant_text")
     try:
         final_prompt = build_image_prompt(
             source_text=source_text,
             prompt_mode=prompt_mode,
+            generation_mode=generation_mode,
             gender=gender,
             fixed_tag=fixed_tag,
             supplement_prompt=supplement_prompt,
             custom_prompt=custom_prompt,
-            use_system_identity=(reference_type == "system_prompt"),
-            use_reference_image=(reference_type in {"custom_upload", "chat_image"}),
         )
     except ValueError as exc:
         return _render_generate(auth, context, error=str(exc), form=form, status=400)
@@ -133,7 +143,7 @@ def image_generate_submit():
         bot_id=auth["bot_id"],
         chat_id=auth["chat_id"],
         action_id=auth.get("action_id"),
-        gender=gender,
+        gender=gender or "reference",
         generation_mode=generation_mode,
         prompt_mode=prompt_mode,
         source_choice=source_choice,

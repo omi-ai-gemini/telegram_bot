@@ -10,7 +10,7 @@
     h1{margin:0 0 8px;font-size:26px}.desc{color:rgba(255,255,255,.72);line-height:1.7;font-size:14px;margin:0 0 18px}
     .notice,.error,.success{padding:13px 14px;border-radius:14px;margin:12px 0;line-height:1.6;font-size:14px}.notice{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.35);color:#fde68a}.error{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.35);color:#fecaca}.success{background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
     .section{margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12)}.section-title{font-weight:700;font-size:18px;margin-bottom:14px}.field{margin-bottom:16px}label{display:block;margin-bottom:8px;font-size:14px;color:rgba(255,255,255,.86)}
-    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:130px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
+    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:220px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
     .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none}
     button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
   </style>
@@ -18,27 +18,29 @@
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">送出後會在背景執行，不影響聊天室繼續對話。每位使用者最多同時保留 3 張排隊或生成中的圖片。</p>
-  <div class="notice">隱私提醒：圖片與提示詞會送往 AI Horde 的社群運算節點處理，不適合放入機密資料。網頁臨時上傳的圖片只供本次任務使用，不會加入 Telemini 圖片庫；任務送出後不會永久保存。</div>
+  <p class="desc">文生圖會生成自然相機攝影風格的人物畫面；圖生圖會以來源圖片為主，只修改提示詞明確要求的內容。任務會在背景執行，不影響聊天室繼續對話。</p>
+  <div class="notice">隱私提醒：圖片與提示詞會送往 AI Horde 的社群運算節點處理，不適合放入機密資料。臨時上傳圖片只供本次任務使用，不加入 Telemini 圖片庫。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
 
   <form method="post" enctype="multipart/form-data" id="genForm">
     <input type="hidden" name="token" value="{{ token }}">
 
-    <div class="section"><div class="section-title">1. 生圖來源</div>
-      <div class="field"><label>模式</label><div class="radio-row">
-        <label class="radio"><input type="radio" name="generation_mode" value="default" {% if form.get('generation_mode','default')!='custom' %}checked{% endif %}>預設生圖</label>
-        <label class="radio"><input type="radio" name="generation_mode" value="custom" {% if form.get('generation_mode')=='custom' %}checked{% endif %}>自訂上傳圖</label>
+    <div class="section"><div class="section-title">1. 生圖模式</div>
+      <div class="field"><div class="radio-row">
+        <label class="radio"><input type="radio" name="generation_mode" value="text" {% if form.get('generation_mode','text') not in ['image','custom'] %}checked{% endif %}><b>文生圖</b><div class="hint">使用固定人物身份描述，生成較自然、接近真實相機拍攝的畫面。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="image" {% if form.get('generation_mode') in ['image','custom'] %}checked{% endif %}><b>圖生圖</b><div class="hint">以來源圖為主，保留未指定修改的人物、構圖、背景、物品與文字區域。</div></label>
       </div></div>
-      <div class="field"><label>人物性別（必填）</label><select name="gender" required>
-        <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
-      </select><div class="hint">預設生圖會依性別套用固定人物身份提示詞。聊天室圖片代號或本次上傳圖會改用該圖片作為參考，不會再套用系統固定臉型。</div></div>
-      <div id="defaultFields">
-        <div class="field"><label>聊天室圖片代號或名稱（選填）</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><div class="hint">填入後會改用圖片庫中的指定圖片；不填就依性別使用固定人物身份提示詞。</div></div>
+
+      <div id="textModeFields">
+        <div class="field"><label>人物性別（文生圖必填）</label><select name="gender">
+          <option value="">請選擇</option><option value="male" {% if form.get('gender')=='male' %}selected{% endif %}>男</option><option value="female" {% if form.get('gender')=='female' %}selected{% endif %}>女</option>
+        </select><div class="hint">只有文生圖會套用固定男女身份描述；提示詞明確要求的新外觀仍優先。</div></div>
       </div>
-      <div id="customFields" class="hidden">
-        <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。這張圖不會加入圖片庫。</div></div>
+
+      <div id="imageModeFields" class="hidden">
+        <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。上傳圖與圖片代號同時填寫時，以上傳圖優先。</div></div>
+        <div class="field"><label>或使用聊天室圖片代號／名稱</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><div class="hint">圖生圖至少要提供其中一種來源圖。</div></div>
       </div>
     </div>
 
@@ -56,13 +58,13 @@
         <div class="field"><label>使用者訊息預覽</label><div class="preview">{{ context.get('user_text') or '沒有找到使用者訊息' }}</div></div>
         <div class="field"><label>AI 訊息預覽</label><div class="preview">{{ context.get('assistant_text') or '沒有找到 AI 訊息' }}</div></div>
         <div class="field"><label>固定標籤（單選）</label><select name="fixed_tag"><option value="">不使用固定標籤</option>{% for tag in fixed_tags %}<option value="{{ tag }}" {% if form.get('fixed_tag')==tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}</select></div>
-        <div class="field"><label>補充提示詞（選填）</label><textarea name="supplement_prompt" placeholder="固定標籤以外想補充的服裝、動作、場景或構圖">{{ form.get('supplement_prompt','') }}</textarea></div>
+        <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="例如：寬鬆白色襯衫、手持鑰匙、站在高級住宅客廳。這裡的明確要求會優先於前面的對話內容。">{{ form.get('supplement_prompt','') }}</textarea></div>
       </div>
 
       <div id="customPromptFields" class="hidden">
-        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成的圖片">{{ form.get('custom_prompt','') }}</textarea></div>
+        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成或修改的圖片；這段內容會作為最高優先要求。">{{ form.get('custom_prompt','') }}</textarea></div>
       </div>
-      <div class="hint">程式會直接組合固定身份、本輪訊息、標籤與補充提示詞，不呼叫 Gemini。補充提示詞與完全自訂提示詞會優先覆蓋預設髮型等可變外觀。</div>
+      <div class="hint">不再逐項拆髮型、衣服或場景。所有修改都使用同一條規則：最新且最明確的提示詞優先；圖生圖未提到的部分盡量保留原圖。</div>
     </div>
 
     <div class="section"><button type="submit" id="submitBtn">送出生圖任務</button><div class="countdown" id="countdown"></div></div>
@@ -74,8 +76,8 @@
   const promptInputs=[...document.querySelectorAll('input[name="prompt_mode"]')];
   function refresh(){
     const mode=document.querySelector('input[name="generation_mode"]:checked').value;
-    document.getElementById('defaultFields').classList.toggle('hidden',mode==='custom');
-    document.getElementById('customFields').classList.toggle('hidden',mode!=='custom');
+    document.getElementById('textModeFields').classList.toggle('hidden',mode!=='text');
+    document.getElementById('imageModeFields').classList.toggle('hidden',mode!=='image');
     const pm=document.querySelector('input[name="prompt_mode"]:checked').value;
     document.getElementById('tagFields').classList.toggle('hidden',pm==='custom');
     document.getElementById('customPromptFields').classList.toggle('hidden',pm!=='custom');

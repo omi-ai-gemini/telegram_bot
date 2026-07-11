@@ -1,0 +1,19 @@
+Telemini 文生圖／圖生圖雙模式改版檢查結果
+
+已通過：
+- 全專案 Python compileall
+- 文生圖 Prompt 優先順序測試
+- 圖生圖 Prompt 原圖保留規則測試
+- 補充提示詞同時置於最高優先區塊與 Prompt 結尾
+- 文生圖 payload 不含 source_image / source_processing
+- 圖生圖 payload 使用 source_processing=img2img
+- 圖生圖 denoising_strength=0.50
+- 1118×1497 來源圖等比例處理為 896×1152
+- 表單文生圖／圖生圖欄位與後端驗證一致
+- 執行路徑不再引用 inpainting / source_mask
+- 全專案未包含禁止使用的角色名字
+- ZIP 解壓完整性與解壓後編譯檢查
+
+未執行：
+- 未使用真實 AI Horde Key 送出線上任務
+- 未連線真實 Render、Telegram、Supabase 做端到端測試

@@ -10,6 +10,11 @@ AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
+# 圖生圖固定使用中等重繪強度：
+# - 比舊版 0.72 更能保留原圖人物、構圖與背景。
+# - 仍保留足夠幅度修改提示詞明確要求的衣物、物品或場景。
+IMG2IMG_DENOISING_STRENGTH = 0.50
+
 
 def _bool_env(name: str, default: bool = False) -> bool:
     value = os.getenv(name)
@@ -66,7 +71,6 @@ def submit_image_request(
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
 
-    # 尺寸只控制最終生成畫布；系統預設人物使用 txt2img。
     width = int(width)
     height = int(height)
     steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
@@ -93,11 +97,20 @@ def submit_image_request(
         "replacement_filter": False,
     }
 
-    # 玩家上傳或指定聊天室圖片時才送 img2img；系統預設生圖不附來源圖。
+    mode = "txt2img"
     if source_image_bytes:
+        mode = "img2img"
         payload["source_image"] = base64.b64encode(source_image_bytes).decode("ascii")
         payload["source_processing"] = "img2img"
-        payload["params"]["denoising_strength"] = 0.72
+        payload["params"]["denoising_strength"] = IMG2IMG_DENOISING_STRENGTH
+
+    print(
+        "AI HORDE SUBMIT PREPARED "
+        f"job_id={job_id} mode={mode} model={AI_HORDE_MODEL!r} "
+        f"size={width}x{height} steps={steps} "
+        f"denoise={payload['params'].get('denoising_strength')}",
+        flush=True,
+    )
 
     last_error = "AI Horde 送出失敗"
     for index, (slot, key) in enumerate(ordered):

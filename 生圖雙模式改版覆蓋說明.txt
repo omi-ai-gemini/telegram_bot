@@ -1,0 +1,28 @@
+Telemini 文生圖／圖生圖雙模式改版
+
+覆蓋檔案：
+- routes/image_gen.py
+- services/aihorde_service.py
+- services/image_jobs.py
+- services/image_prepare.py
+- services/image_prompt.py
+- templates/image_gen_form.html
+- requirements.txt
+- docs/文生圖與圖生圖雙模式更新說明.md
+
+模式：
+1. 文生圖
+   - 固定人物身份描述
+   - 自然相機生活感攝影
+   - 不傳系統基準圖
+
+2. 圖生圖
+   - 本次上傳圖或聊天室圖片代號
+   - 只修改最新提示詞明確要求的內容
+   - 未指定部分盡量保留原圖
+   - 重繪強度 0.50
+
+提示詞優先：
+補充提示詞／完全自訂提示詞 > 固定標籤 > 本輪對話
+
+部署後請讓 Render 重新 Build。

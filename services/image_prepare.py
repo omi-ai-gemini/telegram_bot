@@ -19,10 +19,10 @@ def prepare_img2img_source(
     width: int = OUTPUT_WIDTH,
     height: int = OUTPUT_HEIGHT,
 ) -> Dict[str, Any]:
-    """把參考圖等比例裁切到最終畫布，禁止直接拉伸變形。"""
+    """把來源圖等比例縮放與裁切到最終畫布，禁止直接拉伸人物。"""
     if _PIL_IMPORT_ERROR is not None:
         raise RuntimeError(
-            "自訂圖片處理缺少 Pillow，請確認 requirements.txt 已包含 Pillow==12.3.0"
+            "圖生圖來源處理缺少 Pillow，請確認 requirements.txt 已包含 Pillow==12.3.0"
         ) from _PIL_IMPORT_ERROR
 
     if not source_image_bytes:
@@ -32,12 +32,11 @@ def prepare_img2img_source(
         with Image.open(BytesIO(source_image_bytes)) as opened:
             image = ImageOps.exif_transpose(opened).convert("RGB")
             original_size = image.size
-            # ImageOps.fit 會先等比例縮放再中央裁切，不會把人物拉長或壓扁。
             fitted = ImageOps.fit(
                 image,
                 (int(width), int(height)),
                 method=Image.Resampling.LANCZOS,
-                centering=(0.5, 0.42),
+                centering=(0.5, 0.5),
             )
     except Exception as exc:
         raise ValueError("參考圖片無法讀取，請改用 JPG、PNG 或 WEBP") from exc

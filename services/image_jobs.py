@@ -325,8 +325,12 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             return
 
         if not job.get("horde_request_id"):
-            # 系統預設人物只使用固定身份提示詞，不傳送系統基準圖。
-            # 玩家自行上傳或指定聊天室圖片時，才使用 img2img。
+            # 文生圖不傳來源圖；圖生圖只讀玩家上傳或聊天室圖片。
+            # 舊版 system_reference 任務不再使用，避免重新進入遮罩流程。
+            if job.get("reference_type") == "system_reference":
+                _fail(job, "生圖流程已更新，請重新開啟生圖頁送出任務")
+                return
+
             reference = None
             if job.get("reference_type") in {"custom_upload", "chat_image"}:
                 reference = _resolve_reference(job, custom_upload)
