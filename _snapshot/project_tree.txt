@@ -1,4 +1,5 @@
 📄 __init__.py
+📄 AI_Horde尺寸與工作節點相容修正說明.txt
 📄 AI_Horde生圖外帶說明.txt
 📄 config.py
 📁 docs/
@@ -127,8 +128,10 @@
   📄 apply_blocked_retry_patch.py
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
+📄 副模型真實對話角色修正說明.txt
 📄 副模型競速與圖片Prompt覆蓋說明.txt
 📄 副模型競速與生圖流程檢查結果.txt
+📄 副模型降版說明.txt
 📄 固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt
 📄 圖片模型fallback覆蓋說明.txt
 📄 圖片等待與模型切換覆蓋說明.txt

@@ -12,7 +12,6 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
-from services.aihorde_text_service import organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -417,74 +416,26 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             )
 
             if prompt_status not in {"ready", "fallback"}:
+                # 降版規則：圖片 Prompt 不再呼叫副文字模型整理，直接使用原始 Prompt。
+                prompt = source_prompt
+                encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
                 _update_job(
                     job["id"],
-                    status="prompting",
-                    prompt_generation_status="running",
-                    started_at=datetime.utcnow(),
-                    heartbeat_at=datetime.utcnow(),
+                    final_prompt=encrypted_prompt,
+                    prompt_generation_status="ready",
+                    prompt_model="secondary_disabled",
+                    prompt_error=None,
+                    prompt_chars_before=len(source_prompt),
+                    prompt_chars_after=len(prompt),
                 )
                 print(
-                    "IMAGE PROMPT START "
-                    f"job_id={job['id']} mode={job.get('generation_mode')} "
-                    f"input_chars={len(source_prompt)}",
+                    "IMAGE PROMPT SECONDARY DISABLED "
+                    f"job_id={job['id']} input_chars={len(source_prompt)}",
                     flush=True,
                 )
-
-                organized = organize_image_prompt(
-                    draft_prompt=source_prompt,
-                    generation_mode=job.get("generation_mode"),
-                    debug_context={
-                        "user_id": job.get("user_id"),
-                        "bot_id": job.get("bot_id"),
-                        "chat_id": job.get("chat_id"),
-                        "source": "IMAGE_PROMPT_ORGANIZER",
-                        "generation_type": "image_prompt",
-                        "action_id": job.get("action_id"),
-                    },
-                )
-
-                if organized.get("ok") and _text(organized.get("text")):
-                    prompt = _text(organized.get("text"))
-                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
-                    _update_job(
-                        job["id"],
-                        final_prompt=encrypted_prompt,
-                        prompt_generation_status="ready",
-                        prompt_model=_text(organized.get("model"))[:250],
-                        prompt_error=None,
-                        prompt_chars_before=len(source_prompt),
-                        prompt_chars_after=len(prompt),
-                    )
-                    print(
-                        "IMAGE PROMPT DONE "
-                        f"job_id={job['id']} model={organized.get('model')} "
-                        f"output_chars={len(prompt)} elapsed={organized.get('elapsed')}",
-                        flush=True,
-                    )
-                    job["prompt_generation_status"] = "ready"
-                    job["prompt_model"] = organized.get("model")
-                    queue_status_text = "生圖任務已送出，正在加入排隊"
-                else:
-                    prompt = source_prompt
-                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
-                    error_text = _text(organized.get("message")) or "副模型未回傳可用提示詞"
-                    _update_job(
-                        job["id"],
-                        final_prompt=encrypted_prompt,
-                        prompt_generation_status="fallback",
-                        prompt_model=_text(organized.get("model"))[:250],
-                        prompt_error=error_text[:500],
-                        prompt_chars_before=len(source_prompt),
-                        prompt_chars_after=len(prompt),
-                    )
-                    print(
-                        "IMAGE PROMPT FALLBACK "
-                        f"job_id={job['id']} reason={error_text[:300]}",
-                        flush=True,
-                    )
-                    job["prompt_generation_status"] = "fallback"
-                    queue_status_text = "prompt生成失敗，已改用原始提示詞送出，正在加入排隊"
+                job["prompt_generation_status"] = "ready"
+                job["prompt_model"] = "secondary_disabled"
+                queue_status_text = "生圖任務已送出，正在加入排隊"
             elif not prompt:
                 prompt = source_prompt
 
@@ -544,8 +495,6 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             )
             job = _get_job(job["id"])
 
-        impossible_notice_sent = False
-
         while True:
             job = _get_job(job_id)
             if not job:
@@ -604,23 +553,8 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 return
 
             if check.get("is_possible") is False:
-                # AI Horde 的工作節點會動態上線／離線。is_possible=false 可能只是暫時狀態，
-                # 不應立刻把任務判定失敗；維持排隊直到節點上線或整體 20 分鐘逾時。
-                if not impossible_notice_sent:
-                    _edit_status_message(
-                        job,
-                        "目前暫無相容工作節點，已自動維持排隊等待節點上線",
-                    )
-                    print(
-                        "IMAGE WORKER TEMPORARILY UNAVAILABLE "
-                        f"job_id={job_id} request_id={job.get('horde_request_id')}",
-                        flush=True,
-                    )
-                    impossible_notice_sent = True
-
-                _update_job(job_id, heartbeat_at=datetime.utcnow())
-                time.sleep(POLL_SECONDS)
-                continue
+                _fail(job, "目前沒有可執行此模型與尺寸的工作節點")
+                return
 
             if check.get("done"):
                 status = get_image_result(job.get("horde_request_id"), job.get("api_slot"))

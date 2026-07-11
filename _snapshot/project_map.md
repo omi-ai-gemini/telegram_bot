@@ -13,6 +13,7 @@ C:\Projects\telemini
 ## 主要檔案列表
 
 - `__init__.py`
+- `AI_Horde尺寸與工作節點相容修正說明.txt`
 - `AI_Horde生圖外帶說明.txt`
 - `config.py`
 - `docs\AI_HORDE生圖功能更新說明.md`
@@ -131,8 +132,10 @@ C:\Projects\telemini
 - `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
+- `副模型真實對話角色修正說明.txt`
 - `副模型競速與圖片Prompt覆蓋說明.txt`
 - `副模型競速與生圖流程檢查結果.txt`
+- `副模型降版說明.txt`
 - `固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt`
 - `圖片模型fallback覆蓋說明.txt`
 - `圖片等待與模型切換覆蓋說明.txt`
@@ -409,6 +412,8 @@ C:\Projects\telemini
 - `get_secondary_model_label()`
 - `_clean_generated_text()`
 - `_llama3_prompt()`
+- `_secondary_system_text()`
+- `_llama3_chat_prompt()`
 - `_clean_chat_reply_output()`
 - `submit_text_request()`
 - `get_text_status()`
@@ -431,19 +436,13 @@ C:\Projects\telemini
 - `_send_ai_message_with_retry()`
 - `_get_generation_settings()`
 - `_attach_reply_buttons_in_background()`
-- `_generate_main_reply()`
-- `_generate_secondary_reply()`
 - `_finalize_generated_reply()`
 - `_send_generated_reply()`
 - `run_ai()`
-- `_delete_status_later()`
-- `run_blocked_reply_race()`
 - `run_blocked_reply_retry()`
+- `run_blocked_reply_race()`
 - `run_reply_recovery()`
 - `worker()`
-- `worker()`
-- `run_main_branch()`
-- `run_secondary_branch()`
 
 ### `services\character.py`
 - `_text_id()`
@@ -597,7 +596,7 @@ C:\Projects\telemini
 - `recover_active_image_jobs()`
 
 ### `services\image_prepare.py`
-- `_round_down_to_step()`
+- `_round_to_step()`
 - `_choose_dynamic_output_size()`
 - `prepare_img2img_source()`
 

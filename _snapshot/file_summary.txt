@@ -10,6 +10,35 @@
 
 ================================================================================
 
+# AI_Horde尺寸與工作節點相容修正說明.txt
+
+- 類型：.txt
+- 行數：17
+
+## preview
+```text
+Telemini AI Horde 尺寸與工作節點相容修正
+
+本次修正：
+1. 圖生圖不再只看總像素。
+2. 輸出畫布最長邊限制為 1024。
+3. 畫布最大長寬比限制為 2:1。
+4. 超長圖、超寬圖維持完整內容，使用淺灰色補邊，不裁切。
+5. 640×1472 來源圖會改成 512×1024 相容畫布，原圖內容等比例縮放後置中。
+6. AI Horde 回傳 is_possible=false 時，不再立刻宣告失敗。
+7. 任務會維持排隊，等待相容工作節點上線；仍受原本 20 分鐘總逾時限制。
+
+修改檔案：
+- services/image_prepare.py
+- services/image_jobs.py
+
+驗證：
+python -m compileall -q .
+```
+
+
+================================================================================
+
 # AI_Horde生圖外帶說明.txt
 
 - 類型：.txt
@@ -2476,7 +2505,7 @@ python -m compileall -q .
 # handlers\call_handler.py
 
 - 類型：.py
-- 行數：874
+- 行數：875
 
 ## imports
 - services.ai_actions.get_ai_thought_url
@@ -2485,7 +2514,7 @@ python -m compileall -q .
 - services.ai_actions.run_repair_blocked_summary_in_thread
 - services.ai_actions.run_reply_ai_message_in_thread
 - services.ai_actions.start_edit_ai_message
-- services.call_ai.run_blocked_reply_race
+- services.call_ai.run_blocked_reply_retry
 - services.call_ai.run_reply_recovery
 - services.character.delete_character_settings
 - services.character.get_script_opening_status
@@ -2529,7 +2558,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
-from services.call_ai import run_reply_recovery, run_blocked_reply_race
+from services.call_ai import run_reply_recovery, run_blocked_reply_retry
 from services.memory_view import handle_memory_view_callback
 from services.image_jobs import cancel_job_for_user
 from services.commands import (
@@ -2601,7 +2630,7 @@ def _send_script_opening(bot_id, chat_id):
 
     mark_script_opening_sent(
 ...
-... 已省略 794 行
+... 已省略 795 行
 ```
 
 
@@ -4101,7 +4130,6 @@ def answer_callback_query(callback_query_id, text=None, show_alert=False):
 - services.memory_summary.repair_blocked_summary_attempt
 - services.memory_summary.summarize_pending_memory
 - services.model_mode.MODE_MAIN
-- services.model_mode.get_api_model_mode
 - services.reply_model_router.generate_reply_by_mode
 - services.reply_style.get_reply_style_settings
 - services.reply_style.normalize_style_type
@@ -4179,7 +4207,7 @@ from services.chat_persona import get_chat_persona_settings
 from services.database import get_conn
 from services.gemini_service import GEMINI_BLOCKED
 from services.reply_model_router import generate_reply_by_mode
-from services.model_mode import MODE_MAIN, get_api_model_mode
+from services.model_mode import MODE_MAIN
 from services.memory import (
     add_chat,
     get_chat,
@@ -4373,7 +4401,7 @@ def submit_image_request(
 # services\aihorde_text_service.py
 
 - 類型：.py
-- 行數：561
+- 行數：650
 
 ## imports
 - os
@@ -4396,6 +4424,8 @@ def submit_image_request(
 - get_secondary_model_label
 - _clean_generated_text
 - _llama3_prompt
+- _secondary_system_text
+- _llama3_chat_prompt
 - _clean_chat_reply_output
 - submit_text_request
 - get_text_status
@@ -4488,7 +4518,7 @@ def get_secondary_model_label() -> str:
 
 def _clean_generated_text(text: Any) -> str:
 ...
-... 已省略 481 行
+... 已省略 570 行
 ```
 
 
@@ -4604,10 +4634,9 @@ def bot_exists(bot_id: str) -> bool:
 # services\call_ai.py
 
 - 類型：.py
-- 行數：848
+- 行數：628
 
 ## imports
-- queue
 - services.ai_actions.build_ai_action_keyboard
 - services.ai_actions.cache_ai_thought_summary
 - services.ai_actions.create_ai_message_action
@@ -4631,7 +4660,6 @@ def bot_exists(bot_id: str) -> bool:
 - services.model_mode.MODE_MAIN
 - services.model_mode.MODE_SECONDARY
 - services.model_mode.get_api_model_mode
-- services.model_mode.set_api_model_mode
 - services.reply_model_router.generate_reply_by_mode
 - services.reply_style.get_reply_style_settings
 - services.telegram_service.delete_message
@@ -4649,19 +4677,13 @@ def bot_exists(bot_id: str) -> bool:
 - _send_ai_message_with_retry
 - _get_generation_settings
 - _attach_reply_buttons_in_background
-- _generate_main_reply
-- _generate_secondary_reply
 - _finalize_generated_reply
 - _send_generated_reply
 - run_ai
-- _delete_status_later
-- run_blocked_reply_race
 - run_blocked_reply_retry
+- run_blocked_reply_race
 - run_reply_recovery
 - worker
-- worker
-- run_main_branch
-- run_secondary_branch
 
 ## preview
 ```text
@@ -4679,7 +4701,6 @@ from services.model_mode import (
     MODE_MAIN,
     MODE_SECONDARY,
     get_api_model_mode,
-    set_api_model_mode,
 )
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
@@ -4690,7 +4711,6 @@ from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
 from services.time_context import get_current_time_context
-import queue
 import threading
 import time
 
@@ -4745,8 +4765,10 @@ def _send_ai_message_with_retry(bot_id, chat_id, text, reply_markup=None, label=
     sent = send_message(bot_id, chat_id, text, reply_markup=reply_markup)
     telegram_message_id = _extract_telegram_message_id(sent)
 
+    print(
+        f"{label} SEND RESULT ok={bool(telegram_message_id)} "
 ...
-... 已省略 768 行
+... 已省略 548 行
 ```
 
 
@@ -5944,7 +5966,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：712
+- 行數：663
 
 ## imports
 - datetime.datetime
@@ -5955,7 +5977,6 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.aihorde_service.download_generated_image
 - services.aihorde_service.get_image_result
 - services.aihorde_service.submit_image_request
-- services.aihorde_text_service.organize_image_prompt
 - services.crypto_env.aad_for
 - services.crypto_env.decrypt_text
 - services.crypto_env.encrypt_text
@@ -6015,7 +6036,6 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
-from services.aihorde_text_service import organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -6081,8 +6101,9 @@ def _count_active(user_id: Any) -> int:
         conn.close()
 
 
+def create_image_job(
 ...
-... 已省略 632 行
+... 已省略 583 行
 ```
 
 
@@ -6091,7 +6112,7 @@ def _count_active(user_id: Any) -> int:
 # services\image_prepare.py
 
 - 類型：.py
-- 行數：101
+- 行數：120
 
 ## imports
 - PIL.Image
@@ -6103,7 +6124,7 @@ def _count_active(user_id: Any) -> int:
 - typing.Tuple
 
 ## functions
-- _round_down_to_step
+- _round_to_step
 - _choose_dynamic_output_size
 - prepare_img2img_source
 
@@ -6125,38 +6146,55 @@ except ImportError as exc:
 OUTPUT_WIDTH = 896
 OUTPUT_HEIGHT = 1152
 MAX_SAFE_PIXELS = 1024 * 1024
-MIN_DIMENSION = 256
+MAX_OUTPUT_SIDE = 1024
+MIN_OUTPUT_SIDE = 512
+MAX_CANVAS_ASPECT_RATIO = 2.0
 DIMENSION_STEP = 64
 PAD_COLOR = (240, 240, 240)
 
 
-def _round_down_to_step(value: float, step: int = DIMENSION_STEP, minimum: int = MIN_DIMENSION) -> int:
-    rounded = int(value) // int(step) * int(step)
-    return max(int(minimum), rounded)
+def _round_to_step(value: float, step: int = DIMENSION_STEP) -> int:
+    """四捨五入到最接近的 64 倍數。"""
+    return max(int(step), int((float(value) + (step / 2)) // step) * int(step))
 
 
 def _choose_dynamic_output_size(original_width: int, original_height: int) -> Tuple[int, int]:
-    """依原圖比例，挑選不超過安全像素量的最大 64 倍數尺寸。"""
+    """
+    挑選 AI Horde 工作節點較容易接受的圖生圖畫布。
+
+    規則：
+    - 最長邊不超過 1024。
+    - 畫布長寬比不超過 2:1；超長圖改用補邊，不裁切原圖。
+    - 寬高維持 64 的倍數。
+    - 總像素不超過 1024×1024。
+    """
     if original_width <= 0 or original_height <= 0:
-        return OUTPUT_WIDTH, OUTPUT_HEIGHT
+        return 768, 1024
 
-    ratio = float(original_width) / float(original_height)
-    target_height = sqrt(MAX_SAFE_PIXELS / ratio)
-    target_width = target_height * ratio
+    original_ratio = float(original_width) / float(original_height)
+    min_ratio = 1.0 / MAX_CANVAS_ASPECT_RATIO
+    canvas_ratio = max(min_ratio, min(MAX_CANVAS_ASPECT_RATIO, original_ratio))
 
-    width = _round_down_to_step(target_width)
-    height = _round_down_to_step(target_height)
+    if canvas_ratio >= 1.0:
+        width = MAX_OUTPUT_SIDE
+        height = _round_to_step(width / canvas_ratio)
+    else:
+        height = MAX_OUTPUT_SIDE
+        width = _round_to_step(height * canvas_ratio)
 
-    # 若四捨五入後仍超過總像素，就持續往下收。
-    while width * height > MAX_SAFE_PIXELS and width > DIMENSION_STEP and height > DIMENSION_STEP:
-        if width >= height:
+    width = max(MIN_OUTPUT_SIDE, min(MAX_OUTPUT_SIDE, width))
+    height = max(MIN_OUTPUT_SIDE, min(MAX_OUTPUT_SIDE, height))
+
+    # 保險：若因取整超過安全像素，逐步縮短較長的一邊。
+    while width * height > MAX_SAFE_PIXELS:
+        if width >= height and width > MIN_OUTPUT_SIDE:
             width -= DIMENSION_STEP
-        else:
+        elif height > MIN_OUTPUT_SIDE:
             height -= DIMENSION_STEP
+        else:
+            break
 
-    width = max(DIMENSION_STEP, width)
-    height = max(DIMENSION_STEP, height)
-    return width, height
+    return int(width), int(height)
 
 
 def prepare_img2img_source(
@@ -6166,31 +6204,14 @@ def prepare_img2img_source(
 ) -> Dict[str, Any]:
     """
     來源圖預處理：
-    - 保留完整比例
-    - 依原圖比例自動挑選安全輸出尺寸
+    - 保留完整原圖內容
+    - 使用最長邊 1024、最大 2:1 的相容畫布
     - 等比例縮放，不裁切
-    - 用淺灰色補邊，方便模型後續改寫
+    - 超長或超寬圖片使用淺灰色補邊
     """
     if _PIL_IMPORT_ERROR is not None:
-        raise RuntimeError(
-            "圖生圖來源處理缺少 Pillow，請確認 requirements.txt 已包含 Pillow==12.3.0"
-        ) from _PIL_IMPORT_ERROR
-
-    if not source_image_bytes:
-        raise ValueError("參考圖片內容為空")
-
-    try:
-        with Image.open(BytesIO(source_image_bytes)) as opened:
-            image = ImageOps.exif_transpose(opened).convert("RGB")
-            original_size = image.size
-            dynamic_width, dynamic_height = _choose_dynamic_output_size(*original_size)
-
-            contained = ImageOps.contain(
-                image,
-                (int(dynamic_width), int(dynamic_height)),
-                method=Image.Resampling.LANCZOS,
 ...
-... 已省略 21 行
+... 已省略 40 行
 ```
 
 
@@ -7525,7 +7546,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\reply_model_router.py
 
 - 類型：.py
-- 行數：132
+- 行數：134
 
 ## imports
 - services.aihorde_text_service.generate_chat_reply
@@ -7627,7 +7648,7 @@ def generate_reply_by_mode(
         user_text=user_text,
         emotion=emotion,
 ...
-... 已省略 52 行
+... 已省略 54 行
 ```
 
 
@@ -10751,6 +10772,39 @@ def should_ignore(path: Path) -> bool:
 
 ================================================================================
 
+# 副模型真實對話角色修正說明.txt
+
+- 類型：.txt
+- 行數：21
+
+## preview
+```text
+Telemini 副模型真實對話角色修正
+
+問題：
+上一版雖然阻止副模型輸出「近期對話紀錄」等 Prompt 文字，
+但仍把整份對話塞在 system 區，真正的 user 區只放「直接開始回覆」。
+副模型因此沒有把最新一句視為真正的使用者訊息，容易退回客服、助理或說明文語氣。
+
+本次修正：
+1. system 區只保留規則、人物、記憶、模式與回覆樣式。
+2. 近期對話改用 Llama 3 原生 user / assistant 角色依序送入。
+3. 最新使用者訊息會保留為真正的 user role。
+4. 移除假的「直接開始回覆。只輸出回覆本體。」使用者訊息。
+5. 補強避免客服、秘書、房仲、管家式回覆，但人物設定明確要求時仍可使用。
+6. 一般回覆、重跑、接續、/reply 與競速都共用此副模型輸入結構。
+
+修改檔案：
+- services/aihorde_text_service.py
+- services/reply_model_router.py
+
+驗證：
+python -m compileall -q .
+```
+
+
+================================================================================
+
 # 副模型競速與圖片Prompt覆蓋說明.txt
 
 - 類型：.txt
@@ -10848,6 +10902,43 @@ SECONDARY TEXT DONE
 IMAGE PROMPT START
 IMAGE PROMPT DONE
 IMAGE PROMPT FALLBACK
+```
+
+
+================================================================================
+
+# 副模型降版說明.txt
+
+- 類型：.txt
+- 行數：25
+
+## preview
+```text
+Telemini 副模型降版
+
+本版只保留：
+- /modes_api secondary 後，一般新文字訊息使用 AI Horde 副模型。
+- /modes_api main 切回 Gemini。
+
+已停用副模型連線：
+- 安全阻擋後的主副模型競速。
+- 重跑按鈕使用副模型。
+- 接續按鈕使用副模型。
+- /reply 救援使用副模型。
+- 生圖 Prompt 使用副文字模型整理。
+
+目前行為：
+- 一般新訊息：依 /modes_api 決定主模型或副模型。
+- 重跑／接續／救援／安全阻擋重試：固定 Gemini。
+- 舊 blocked_reply_race callback 保留相容，但只會轉成 Gemini 單次重試，不會競速，也不會自動切換副模型。
+- 生圖直接使用原始 Prompt，不再呼叫副文字模型。
+
+修改檔案：
+- services/ai_actions.py
+- services/call_ai.py
+- services/model_mode.py
+- services/image_jobs.py
+- handlers/call_handler.py
 ```
 
 

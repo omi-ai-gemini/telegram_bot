@@ -12,7 +12,6 @@ from services.model_mode import (
     MODE_MAIN,
     MODE_SECONDARY,
     get_api_model_mode,
-    set_api_model_mode,
 )
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
@@ -23,7 +22,6 @@ from services.reply_style import get_reply_style_settings
 from services.user_notice import send_once_user_notice
 from services.memory_summary import get_memory_context, maintain_memory_after_reply
 from services.time_context import get_current_time_context
-import queue
 import threading
 import time
 
@@ -232,84 +230,6 @@ def _attach_reply_buttons_in_background(
 
     threading.Thread(target=worker, daemon=True).start()
 
-def _generate_main_reply(
-    gemini_key,
-    settings,
-    user_text,
-    emotion,
-    user_id,
-    bot_id,
-    chat_id,
-    source_user_chat_id,
-    label,
-):
-    return generate_reply_by_mode(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        gemini_key=gemini_key,
-        history=settings["history"],
-        user_text=user_text,
-        emotion=emotion,
-        mode=settings["mode"],
-        chat_persona_settings=settings["chat_persona_settings"],
-        character_settings=settings["character_settings"],
-        reply_style_settings=settings["reply_style_settings"],
-        facts=settings["facts"],
-        memory_context=settings["memory_context"],
-        time_context=settings["time_context"],
-        include_thoughts=True,
-        model_override=MODE_MAIN,
-        debug_context={
-            "user_id": user_id,
-            "bot_id": bot_id,
-            "chat_id": chat_id,
-            "source": label,
-            "generation_type": "reply",
-            "source_user_chat_id": source_user_chat_id,
-        },
-    )
-
-
-def _generate_secondary_reply(
-    settings,
-    user_text,
-    emotion,
-    user_id,
-    bot_id,
-    chat_id,
-    source_user_chat_id,
-    label,
-    stop_event=None,
-):
-    return generate_reply_by_mode(
-        user_id=user_id,
-        bot_id=bot_id,
-        chat_id=chat_id,
-        gemini_key=None,
-        history=settings["history"],
-        user_text=user_text,
-        emotion=emotion,
-        mode=settings["mode"],
-        chat_persona_settings=settings["chat_persona_settings"],
-        character_settings=settings["character_settings"],
-        reply_style_settings=settings["reply_style_settings"],
-        facts=settings["facts"],
-        memory_context=settings["memory_context"],
-        time_context=settings["time_context"],
-        include_thoughts=True,
-        model_override=MODE_SECONDARY,
-        stop_event=stop_event,
-        debug_context={
-            "user_id": user_id,
-            "bot_id": bot_id,
-            "chat_id": chat_id,
-            "source": label,
-            "generation_type": "reply_secondary",
-            "source_user_chat_id": source_user_chat_id,
-        },
-    )
-
 
 def _finalize_generated_reply(
     result,
@@ -497,222 +417,83 @@ def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message
 
 
 # =========================
-# 安全阻擋提示按鈕：直接用最後一筆 user 記憶補生回覆
+# 安全阻擋提示按鈕：主模型單次重試
+# - 不切換模型模式
+# - 不啟動主副模型競速
+# - 舊 run_blocked_reply_race 名稱只保留相容
 # =========================
-def _delete_status_later(bot_id, chat_id, message_id, delay=4):
-    if not message_id:
-        return
-
-    def worker():
-        time.sleep(delay)
-        try:
-            delete_message(bot_id, chat_id, message_id)
-        except Exception as exc:
-            print("MODEL RACE STATUS DELETE ERROR:", exc, flush=True)
-
-    threading.Thread(target=worker, daemon=True).start()
-
-
-def run_blocked_reply_race(user_id: int, bot_id: str, chat_id: int):
-    """
-    安全阻擋按鈕專用：
-    1. 將後續一般回覆模式切成副模型。
-    2. 本次同時送 Gemini 與 AI Horde。
-    3. 第一個有效回覆勝出，副模型輸掉時會嘗試取消 Horde 任務。
-    """
-    race_started = time.monotonic()
-    status_message_id = None
-
+def run_blocked_reply_retry(user_id: int, bot_id: str, chat_id: int):
     try:
         bot_token = get_bot_token(bot_id)
         gemini_key = get_gemini_key(user_id)
-        if not bot_token:
-            send_message(bot_id, chat_id, "找不到 Telegram Bot Token，無法執行競速。")
-            return
 
-        set_api_model_mode(user_id, bot_id, chat_id, MODE_SECONDARY)
+        if not bot_token or not gemini_key:
+            send_message(
+                bot_id,
+                chat_id,
+                f"設定資訊:\nchat_id={chat_id}\nbot_id={bot_id}\nuser_id={user_id}",
+            )
+            return
 
         recent_rows = list_recent_chat_memory(
             bot_id=bot_id,
             chat_id=chat_id,
-            limit=5,
+            limit=20,
             user_id=user_id,
         )
         if not recent_rows:
             _send_ai_message_with_retry(
                 bot_id,
                 chat_id,
-                "目前沒有短期記憶可競速重跑。",
-                label="MODEL RACE",
+                "目前沒有短期記憶可重新回覆。",
+                label="BLOCKED RETRY",
             )
             return
 
-        last = recent_rows[0]
-        last_role = str(last.get("role") or "").strip()
-        last_text = str(last.get("text") or "").strip()
-        last_id = last.get("id")
-        if last_role != "user" or not last_text:
+        last_user = next(
+            (
+                row for row in recent_rows
+                if str(row.get("role") or "").strip() == "user"
+                and str(row.get("text") or "").strip()
+            ),
+            None,
+        )
+        if not last_user:
             _send_ai_message_with_retry(
                 bot_id,
                 chat_id,
-                "最後一筆短期記憶不是有效的使用者訊息，無法競速重跑。",
-                label="MODEL RACE",
+                "找不到最後一則使用者訊息，無法重新回覆。",
+                label="BLOCKED RETRY",
             )
             return
 
-        status_sent = send_message(
-            bot_id,
-            chat_id,
-            "已切換為副模型，主副模型競速中。",
-        )
-        status_message_id = _extract_telegram_message_id(status_sent)
-
-        scope = "group" if _is_group_chat(chat_id) else "private"
-        emotion = get_emotion(chat_id)
-        settings = _get_generation_settings(bot_id, chat_id, user_id, scope)
-        results = queue.Queue()
-        stop_event = threading.Event()
-
         print(
-            "MODEL RACE START "
-            f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} source_user_chat_id={last_id} "
-            f"gemini_enabled={bool(gemini_key)} secondary_models={get_secondary_model_label()}",
+            f"BLOCKED RETRY MAIN ONLY source_user_chat_id={last_user.get('id')}",
             flush=True,
         )
-
-        def run_main_branch():
-            branch_started = time.monotonic()
-            try:
-                result = _generate_main_reply(
-                    gemini_key=gemini_key,
-                    settings=settings,
-                    user_text="",
-                    emotion=emotion,
-                    user_id=user_id,
-                    bot_id=bot_id,
-                    chat_id=chat_id,
-                    source_user_chat_id=last_id,
-                    label="BLOCKED_RACE_MAIN",
-                )
-                results.put((MODE_MAIN, result, time.monotonic() - branch_started))
-            except Exception as exc:
-                results.put((MODE_MAIN, {"text": None, "error": str(exc), "provider": MODE_MAIN}, time.monotonic() - branch_started))
-
-        def run_secondary_branch():
-            branch_started = time.monotonic()
-            try:
-                result = _generate_secondary_reply(
-                    settings=settings,
-                    user_text="",
-                    emotion=emotion,
-                    user_id=user_id,
-                    bot_id=bot_id,
-                    chat_id=chat_id,
-                    source_user_chat_id=last_id,
-                    label="BLOCKED_RACE_SECONDARY",
-                    stop_event=stop_event,
-                )
-                results.put((MODE_SECONDARY, result, time.monotonic() - branch_started))
-            except Exception as exc:
-                results.put((MODE_SECONDARY, {"text": None, "error": str(exc), "provider": MODE_SECONDARY}, time.monotonic() - branch_started))
-
-        branches = 1
-        if gemini_key:
-            branches += 1
-            threading.Thread(target=run_main_branch, daemon=True).start()
-        threading.Thread(target=run_secondary_branch, daemon=True).start()
-
-        failures = []
-        winner = None
-        deadline = time.monotonic() + 165
-
-        for _ in range(branches):
-            remaining = max(0.1, deadline - time.monotonic())
-            try:
-                provider, result, branch_elapsed = results.get(timeout=remaining)
-            except queue.Empty:
-                failures.append("主副模型競速超時")
-                break
-
-            text = str(result.get("text") or "").strip()
-            valid = bool(text) and text != GEMINI_BLOCKED
-            print(
-                "MODEL RACE BRANCH RESULT "
-                f"provider={provider} valid={valid} blocked={text == GEMINI_BLOCKED} "
-                f"response_chars={len(text)} elapsed={branch_elapsed:.2f} "
-                f"error={str(result.get('error') or '')[:200]}",
-                flush=True,
-            )
-
-            if valid:
-                winner = result
-                stop_event.set()
-                break
-
-            failures.append(
-                f"{provider}: " + (
-                    "安全阻擋" if text == GEMINI_BLOCKED else str(result.get("error") or "沒有可用文字")
-                )
-            )
-
-        if not winner:
-            if status_message_id:
-                edit_message_text(
-                    bot_id,
-                    chat_id,
-                    status_message_id,
-                    "主副模型都沒有產生可用回覆。",
-                )
-            _send_ai_message_with_retry(
-                bot_id,
-                chat_id,
-                "競速失敗：" + "；".join(failures)[:800],
-                label="MODEL RACE",
-            )
-            return
-
-        provider = winner.get("provider") or MODE_SECONDARY
-        elapsed = time.monotonic() - race_started
-        print(
-            "MODEL RACE WINNER "
-            f"provider={provider} model={winner.get('model')} elapsed={elapsed:.2f}",
-            flush=True,
-        )
-
-        if status_message_id:
-            edit_message_text(
-                bot_id,
-                chat_id,
-                status_message_id,
-                f"競速完成，採用{'副模型' if provider == MODE_SECONDARY else '主模型'}回覆。",
-            )
-            _delete_status_later(bot_id, chat_id, status_message_id)
-
-        _finalize_generated_reply(
-            result=winner,
+        _send_generated_reply(
             gemini_key=gemini_key,
             bot_id=bot_id,
             chat_id=chat_id,
             user_id=user_id,
-            source_user_chat_id=last_id,
-            settings=settings,
-            label="MODEL RACE",
+            user_text="",
+            source_user_chat_id=last_user.get("id"),
+            label="BLOCKED RETRY",
+            model_override=MODE_MAIN,
         )
 
     except Exception as exc:
-        print("MODEL RACE ERROR:", exc, flush=True)
+        print("BLOCKED RETRY ERROR:", exc, flush=True)
         try:
-            if status_message_id:
-                edit_message_text(bot_id, chat_id, status_message_id, "主副模型競速發生錯誤。")
-            else:
-                send_message(bot_id, chat_id, "主副模型競速發生錯誤，請查看 Render log。")
+            send_message(bot_id, chat_id, "重新回覆發生錯誤，請查看 Render log。")
         except Exception:
             pass
 
 
-# 舊名稱保留相容，實際行為已改為切副模型並競速。
-def run_blocked_reply_retry(user_id: int, bot_id: str, chat_id: int):
-    return run_blocked_reply_race(user_id, bot_id, chat_id)
+def run_blocked_reply_race(user_id: int, bot_id: str, chat_id: int):
+    """舊 callback 相容入口；競速已停用，改走 Gemini 主模型單次重試。"""
+    print("MODEL RACE DISABLED: fallback to main-only retry", flush=True)
+    return run_blocked_reply_retry(user_id, bot_id, chat_id)
 
 
 # =========================
@@ -729,8 +510,7 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
         gemini_key = get_gemini_key(user_id)
         bot_token = get_bot_token(bot_id)
 
-        selected_mode = get_api_model_mode(user_id, bot_id, chat_id)
-        if not bot_token or (selected_mode == MODE_MAIN and not gemini_key):
+        if not bot_token or not gemini_key:
             send_message(
                 bot_id,
                 chat_id,
@@ -829,7 +609,7 @@ def run_reply_recovery(user_id: int, bot_id: str, chat_id: int):
                 user_text="",
                 source_user_chat_id=last_id,
                 label="REPLY GENERATE",
-                model_override=selected_mode,
+                model_override=MODE_MAIN,
             )
             return
 

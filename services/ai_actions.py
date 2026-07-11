@@ -10,7 +10,7 @@ from services.chat_persona import get_chat_persona_settings
 from services.database import get_conn
 from services.gemini_service import GEMINI_BLOCKED
 from services.reply_model_router import generate_reply_by_mode
-from services.model_mode import MODE_MAIN, get_api_model_mode
+from services.model_mode import MODE_MAIN
 from services.memory import (
     add_chat,
     get_chat,
@@ -212,8 +212,8 @@ def build_blocked_reply_keyboard(action_type="reply", action_id=None):
         callback_data = f"blocked_ai_continue:{action_id or 'none'}"
         text = "🗣️ 重新接續"
     else:
-        callback_data = "blocked_reply_race"
-        text = "⚡ 副模型競速"
+        callback_data = "blocked_reply_debug"
+        text = "🗣️ 重新回覆"
 
     return {
         "inline_keyboard": [
@@ -1202,10 +1202,9 @@ def process_pending_edit_message(user_id, bot_id, chat_id, user_text, user_messa
 def _load_generation_context(user_id, bot_id, chat_id):
     gemini_key = get_gemini_key(user_id)
     bot_token = get_bot_token(bot_id)
-    selected_mode = get_api_model_mode(user_id, bot_id, chat_id)
 
-    # 副模型回覆不需要 Gemini Key；主模型模式才檢查 Gemini Key。
-    if not bot_token or (selected_mode == MODE_MAIN and not gemini_key):
+    # 降版規則：按鈕功能固定走 Gemini，不讀 /modes_api。
+    if not bot_token or not gemini_key:
         return None
 
     scope = "group" if _is_group_chat(chat_id) else "private"
@@ -1268,6 +1267,7 @@ def _generate_reply(context, history, user_text, include_thoughts=True, debug_co
         memory_context=context["memory_context"],
         time_context=context["time_context"],
         include_thoughts=include_thoughts,
+        model_override=MODE_MAIN,
         debug_context=debug_context,
     )
 
