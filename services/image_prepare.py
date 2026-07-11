@@ -14,38 +14,55 @@ except ImportError as exc:
 OUTPUT_WIDTH = 896
 OUTPUT_HEIGHT = 1152
 MAX_SAFE_PIXELS = 1024 * 1024
-MIN_DIMENSION = 256
+MAX_OUTPUT_SIDE = 1024
+MIN_OUTPUT_SIDE = 512
+MAX_CANVAS_ASPECT_RATIO = 2.0
 DIMENSION_STEP = 64
 PAD_COLOR = (240, 240, 240)
 
 
-def _round_down_to_step(value: float, step: int = DIMENSION_STEP, minimum: int = MIN_DIMENSION) -> int:
-    rounded = int(value) // int(step) * int(step)
-    return max(int(minimum), rounded)
+def _round_to_step(value: float, step: int = DIMENSION_STEP) -> int:
+    """四捨五入到最接近的 64 倍數。"""
+    return max(int(step), int((float(value) + (step / 2)) // step) * int(step))
 
 
 def _choose_dynamic_output_size(original_width: int, original_height: int) -> Tuple[int, int]:
-    """依原圖比例，挑選不超過安全像素量的最大 64 倍數尺寸。"""
+    """
+    挑選 AI Horde 工作節點較容易接受的圖生圖畫布。
+
+    規則：
+    - 最長邊不超過 1024。
+    - 畫布長寬比不超過 2:1；超長圖改用補邊，不裁切原圖。
+    - 寬高維持 64 的倍數。
+    - 總像素不超過 1024×1024。
+    """
     if original_width <= 0 or original_height <= 0:
-        return OUTPUT_WIDTH, OUTPUT_HEIGHT
+        return 768, 1024
 
-    ratio = float(original_width) / float(original_height)
-    target_height = sqrt(MAX_SAFE_PIXELS / ratio)
-    target_width = target_height * ratio
+    original_ratio = float(original_width) / float(original_height)
+    min_ratio = 1.0 / MAX_CANVAS_ASPECT_RATIO
+    canvas_ratio = max(min_ratio, min(MAX_CANVAS_ASPECT_RATIO, original_ratio))
 
-    width = _round_down_to_step(target_width)
-    height = _round_down_to_step(target_height)
+    if canvas_ratio >= 1.0:
+        width = MAX_OUTPUT_SIDE
+        height = _round_to_step(width / canvas_ratio)
+    else:
+        height = MAX_OUTPUT_SIDE
+        width = _round_to_step(height * canvas_ratio)
 
-    # 若四捨五入後仍超過總像素，就持續往下收。
-    while width * height > MAX_SAFE_PIXELS and width > DIMENSION_STEP and height > DIMENSION_STEP:
-        if width >= height:
+    width = max(MIN_OUTPUT_SIDE, min(MAX_OUTPUT_SIDE, width))
+    height = max(MIN_OUTPUT_SIDE, min(MAX_OUTPUT_SIDE, height))
+
+    # 保險：若因取整超過安全像素，逐步縮短較長的一邊。
+    while width * height > MAX_SAFE_PIXELS:
+        if width >= height and width > MIN_OUTPUT_SIDE:
             width -= DIMENSION_STEP
-        else:
+        elif height > MIN_OUTPUT_SIDE:
             height -= DIMENSION_STEP
+        else:
+            break
 
-    width = max(DIMENSION_STEP, width)
-    height = max(DIMENSION_STEP, height)
-    return width, height
+    return int(width), int(height)
 
 
 def prepare_img2img_source(
@@ -55,10 +72,10 @@ def prepare_img2img_source(
 ) -> Dict[str, Any]:
     """
     來源圖預處理：
-    - 保留完整比例
-    - 依原圖比例自動挑選安全輸出尺寸
+    - 保留完整原圖內容
+    - 使用最長邊 1024、最大 2:1 的相容畫布
     - 等比例縮放，不裁切
-    - 用淺灰色補邊，方便模型後續改寫
+    - 超長或超寬圖片使用淺灰色補邊
     """
     if _PIL_IMPORT_ERROR is not None:
         raise RuntimeError(
@@ -98,4 +115,6 @@ def prepare_img2img_source(
         "content_size": contained.size,
         "pad_color": PAD_COLOR,
         "max_safe_pixels": MAX_SAFE_PIXELS,
+        "max_output_side": MAX_OUTPUT_SIDE,
+        "max_canvas_aspect_ratio": MAX_CANVAS_ASPECT_RATIO,
     }

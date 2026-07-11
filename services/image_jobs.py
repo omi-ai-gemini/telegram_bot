@@ -544,6 +544,8 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             )
             job = _get_job(job["id"])
 
+        impossible_notice_sent = False
+
         while True:
             job = _get_job(job_id)
             if not job:
@@ -602,8 +604,23 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 return
 
             if check.get("is_possible") is False:
-                _fail(job, "目前沒有可執行此模型與尺寸的工作節點")
-                return
+                # AI Horde 的工作節點會動態上線／離線。is_possible=false 可能只是暫時狀態，
+                # 不應立刻把任務判定失敗；維持排隊直到節點上線或整體 20 分鐘逾時。
+                if not impossible_notice_sent:
+                    _edit_status_message(
+                        job,
+                        "目前暫無相容工作節點，已自動維持排隊等待節點上線",
+                    )
+                    print(
+                        "IMAGE WORKER TEMPORARILY UNAVAILABLE "
+                        f"job_id={job_id} request_id={job.get('horde_request_id')}",
+                        flush=True,
+                    )
+                    impossible_notice_sent = True
+
+                _update_job(job_id, heartbeat_at=datetime.utcnow())
+                time.sleep(POLL_SECONDS)
+                continue
 
             if check.get("done"):
                 status = get_image_result(job.get("horde_request_id"), job.get("api_slot"))
