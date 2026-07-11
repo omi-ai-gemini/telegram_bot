@@ -56,11 +56,13 @@ Treat the newest explicit request as the highest-priority visual instruction. Wh
 
 
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image as the visual reference and perform an actual image edit. The newest explicit request is a required modification, not an optional description. The requested change must be clearly and visibly completed in the generated result. Do not return the source image unchanged, do not merely resize it, and do not apply only a weak texture or color shift when the request asks for a different garment, object, action, pose, or scene.
+Use the supplied source image as the identity and visual reference, then perform a real image edit. The newest explicit request is the target result and must be completed clearly. Do not return the source image unchanged, do not merely resize it, and do not hide behind tiny texture changes when the request asks for different clothing, pose, action, framing, visible body area, object, or scene.
 
-Preserve the same recognizable person, facial identity, body proportions, photographic feeling, and all unaffected visual regions as closely as possible. Preserve any person, pose, camera angle, crop, lighting, background, object, sign, and visible text only when the newest request does not ask to change that part. When the newest request conflicts with the source image, the request overrides the source only for the mentioned part. For example, a requested garment must replace the original garment visibly rather than being blended into it.
+Preserve the same recognizable person, facial identity, and overall character as closely as possible, together with any visual parts that are not asked to change. However, if the newest request implies a larger edit, you are allowed and expected to change pose, body position, hand position, camera distance, crop, framing, viewpoint, background, room, bed, furniture, objects, lighting, and scene composition as needed to satisfy the request. Do not preserve the original pose, crop, or background when they block the requested result.
 
-Do not beautify, redesign, restyle, or replace the person without an explicit request. Keep a realistic camera-photo look with natural skin texture and believable lighting. Existing signs or readable text should remain visually unchanged whenever they are outside the requested edit.
+Apply the requested clothing change as a real wardrobe replacement. Apply the requested scene change as a real scene change. Apply the requested pose or action as a real pose or action change. Preserve existing signs or readable text only when they are outside the requested edit and do not conflict with the requested result.
+
+Do not beautify, redesign, restyle, or replace the person without an explicit request. Keep a realistic camera-photo look with natural skin texture and believable lighting.
 """.strip()
 
 
@@ -212,6 +214,12 @@ def build_image_prompt(
         parts.append(
             "EDIT COMPLETION CHECK: the requested edit must be unmistakably visible. "
             "Returning the source unchanged or only resized is a failed result."
+        )
+        parts.append(
+            "MAJOR EDIT POLICY: if the newest request asks for a different pose, different clothing, "
+            "different visible body area, wider framing, different room, different bed, or different scene, "
+            "you must change those parts decisively even when that requires changing the original pose, crop, "
+            "camera framing, or background. Preserve identity, but do not let preservation block the requested edit."
         )
 
     # 最高優先需求在結尾再次強調，避免長對話吃掉補充或完全自訂提示詞。

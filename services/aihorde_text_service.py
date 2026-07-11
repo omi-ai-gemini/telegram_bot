@@ -466,7 +466,7 @@ Rules:
 - Resolve wording into visible image details instead of story narration.
 - Do not remove adult sensual details that are explicitly requested.
 - Do not add new people, new objects, or new story events.
-- For img2img, clearly state what must change while preserving the source person's recognizable identity unless the request says otherwise.
+- For img2img, preserve the source person's recognizable identity, but if the request asks for a different pose, clothing, framing, background, room, bed, or scene, write the prompt so those changes are executed decisively instead of preserving the original composition.
 - Return only the final English positive prompt.
 - No explanation, no title, no markdown, no negative prompt.
 

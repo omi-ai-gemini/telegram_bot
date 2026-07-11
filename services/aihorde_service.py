@@ -17,7 +17,7 @@ TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "4"))
 IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "8"))
 try:
     IMG2IMG_DENOISING_STRENGTH = float(
-        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.72")
+        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.80")
     )
 except Exception:
     IMG2IMG_DENOISING_STRENGTH = 0.72
@@ -81,7 +81,7 @@ def submit_image_request(
 
     width = int(width)
     height = int(height)
-    allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
+    allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", True)
     mode = "img2img" if source_image_bytes else "txt2img"
     steps = IMG2IMG_STEPS if mode == "img2img" else TXT2IMG_STEPS
 

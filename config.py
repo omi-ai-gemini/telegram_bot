@@ -75,7 +75,7 @@ SERVICE_CENTER_ADMIN_IDS = os.getenv("SERVICE_CENTER_ADMIN_IDS", "")
 AI_HORDE_API_KEY_1 = os.getenv("AI_HORDE_API_KEY_1")
 AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
-AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "false")
+AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "true")
 # =========================
 # AI Horde 副文字模型
 # =========================
