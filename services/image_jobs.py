@@ -1,5 +1,3 @@
-import mimetypes
-import os
 import secrets
 import threading
 import time
@@ -15,7 +13,7 @@ from services.aihorde_service import (
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.database import get_conn
-from services.image_inpaint import prepare_inpainting_assets
+from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
 from services.telegram_service import send_message, send_photo_bytes
 
@@ -62,31 +60,6 @@ def _decrypt_prompt(job_id: int, value: str) -> str:
         return ""
 
 
-def _reference_path(gender: str) -> Optional[str]:
-    project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    reference_dir = os.path.join(project_root, "static", "image_reference")
-    env_name = "AI_HORDE_REFERENCE_MALE_PATH" if gender == "male" else "AI_HORDE_REFERENCE_FEMALE_PATH"
-    explicit = _text(os.getenv(env_name))
-    if explicit and os.path.isfile(explicit):
-        return explicit
-
-    stem = "male_reference" if gender == "male" else "female_reference"
-    for ext in (".png", ".jpg", ".jpeg", ".webp"):
-        path = os.path.join(reference_dir, stem + ext)
-        if os.path.isfile(path):
-            return path
-    return None
-
-
-def _read_system_reference(gender: str) -> Optional[Dict[str, Any]]:
-    path = _reference_path(gender)
-    if not path:
-        return None
-    with open(path, "rb") as file:
-        return {
-            "bytes": file.read(),
-            "mime_type": mimetypes.guess_type(path)[0] or "image/png",
-        }
 
 
 def _count_active(user_id: Any) -> int:
@@ -314,7 +287,7 @@ def _resolve_reference(job: Dict[str, Any], custom_upload: Optional[Dict[str, An
         return custom_upload
     if job.get("reference_type") == "chat_image":
         return download_image_asset(job.get("reference_code"), job["bot_id"], job["chat_id"])
-    return _read_system_reference(job.get("gender"))
+    return None
 
 
 def _save_generated_telegram_photo(job: Dict[str, Any], result: Dict[str, Any]) -> bool:
@@ -352,16 +325,17 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             return
 
         if not job.get("horde_request_id"):
-            reference = _resolve_reference(job, custom_upload)
-            if not reference or not reference.get("bytes"):
-                if job.get("reference_type") == "custom_upload":
-                    _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出")
-                elif job.get("reference_type") == "chat_image":
-                    _fail(job, "找不到指定的聊天室圖片，可能已被刪除")
-                else:
-                    gender_label = "男" if job.get("gender") == "male" else "女"
-                    _fail(job, f"系統{gender_label}基準圖尚未放入 static/image_reference")
-                return
+            # 系統預設人物只使用固定身份提示詞，不傳送系統基準圖。
+            # 玩家自行上傳或指定聊天室圖片時，才使用 img2img。
+            reference = None
+            if job.get("reference_type") in {"custom_upload", "chat_image"}:
+                reference = _resolve_reference(job, custom_upload)
+                if not reference or not reference.get("bytes"):
+                    if job.get("reference_type") == "custom_upload":
+                        _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出")
+                    else:
+                        _fail(job, "找不到指定的聊天室圖片，可能已被刪除")
+                    return
 
             prompt = _decrypt_prompt(job["id"], job.get("final_prompt"))
             if not prompt:
@@ -369,28 +343,36 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 return
 
             _update_job(job["id"], status="submitting", started_at=datetime.utcnow(), heartbeat_at=datetime.utcnow())
-            try:
-                inpaint = prepare_inpainting_assets(reference["bytes"])
-            except ValueError as exc:
-                _fail(job, str(exc))
-                return
 
+            prepared_reference = None
+            if reference:
+                try:
+                    prepared_reference = prepare_img2img_source(
+                        reference.get("bytes") or b"",
+                        width=OUTPUT_WIDTH,
+                        height=OUTPUT_HEIGHT,
+                    )
+                except (RuntimeError, ValueError) as exc:
+                    _fail(job, str(exc))
+                    return
+
+            mode = "img2img" if prepared_reference else "txt2img"
             print(
-                "IMAGE INPAINT PREPARED "
-                f"job_id={job['id']} original={inpaint.get('original_size')} "
-                f"fitted={inpaint.get('fitted_size')} offset={inpaint.get('fitted_offset')} "
-                f"output={inpaint.get('width')}x{inpaint.get('height')}",
+                "IMAGE REQUEST PREPARED "
+                f"job_id={job['id']} mode={mode} "
+                f"output={OUTPUT_WIDTH}x{OUTPUT_HEIGHT} "
+                f"reference_type={job.get('reference_type')} "
+                f"original_size={(prepared_reference or {}).get('original_size')}",
                 flush=True,
             )
 
             submitted = submit_image_request(
                 job_id=job["id"],
                 prompt=prompt,
-                source_image_bytes=inpaint["source_image_bytes"],
-                source_mime_type=inpaint["source_mime_type"],
-                source_mask_bytes=inpaint["source_mask_bytes"],
-                width=inpaint["width"],
-                height=inpaint["height"],
+                source_image_bytes=(prepared_reference or {}).get("bytes") or b"",
+                source_mime_type=(prepared_reference or {}).get("mime_type") or "image/png",
+                width=OUTPUT_WIDTH,
+                height=OUTPUT_HEIGHT,
             )
             if not submitted.get("ok"):
                 _fail(job, submitted.get("message") or "AI Horde 拒絕任務")

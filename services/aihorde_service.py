@@ -54,9 +54,8 @@ def _error_message(payload: Dict[str, Any], status_code: int) -> str:
 def submit_image_request(
     job_id: int,
     prompt: str,
-    source_image_bytes: bytes,
+    source_image_bytes: bytes = b"",
     source_mime_type: str = "image/png",
-    source_mask_bytes: bytes = b"",
     width: int = 896,
     height: int = 1152,
 ) -> Dict[str, Any]:
@@ -67,13 +66,10 @@ def submit_image_request(
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
 
-    # 尺寸由程式固定為最終畫布；不再用環境變數改變，也不拉伸基準圖。
+    # 尺寸只控制最終生成畫布；系統預設人物使用 txt2img。
     width = int(width)
     height = int(height)
     steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
-
-    if not source_mask_bytes:
-        return {"ok": False, "message": "缺少人物重繪遮罩，無法送出 inpainting 任務"}
     allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
 
     payload = {
@@ -87,9 +83,6 @@ def submit_image_request(
             "n": 1,
         },
         "models": [AI_HORDE_MODEL],
-        "source_image": base64.b64encode(source_image_bytes).decode("ascii"),
-        "source_mask": base64.b64encode(source_mask_bytes).decode("ascii"),
-        "source_processing": "inpainting",
         "nsfw": allow_nsfw,
         "censor_nsfw": not allow_nsfw,
         "trusted_workers": False,
@@ -99,6 +92,12 @@ def submit_image_request(
         "shared": False,
         "replacement_filter": False,
     }
+
+    # 玩家上傳或指定聊天室圖片時才送 img2img；系統預設生圖不附來源圖。
+    if source_image_bytes:
+        payload["source_image"] = base64.b64encode(source_image_bytes).decode("ascii")
+        payload["source_processing"] = "img2img"
+        payload["params"]["denoising_strength"] = 0.72
 
     last_error = "AI Horde 送出失敗"
     for index, (slot, key) in enumerate(ordered):

@@ -1,20 +1,6 @@
-Telemini 系統基準圖放置位置
+此資料夾為舊版基準圖流程保留。
 
-請把寫實風男、女基準圖分別放成：
-- male_reference.png
-- female_reference.png
+目前「預設生圖」不再讀取 male_reference / female_reference，
+而是由 services/image_prompt.py 內的固定男女身份提示詞進行 txt2img。
 
-也支援 jpg / jpeg / webp；檔名主體必須是：
-- male_reference
-- female_reference
-
-預設資料夾：static/image_reference/
-
-若要把檔案放到其他位置，可在 Render 設定：
-AI_HORDE_REFERENCE_MALE_PATH=/完整路徑/男圖.png
-AI_HORDE_REFERENCE_FEMALE_PATH=/完整路徑/女圖.png
-
-遮罩生圖規則：
-- 基準圖不需要先改成輸出尺寸。
-- 程式會保持原始長寬比例，等比例置中到 896×1152 最終畫布。
-- 程式會動態建立 inpainting 遮罩，不會把人物直接拉長或壓寬。
+玩家指定聊天室圖片代號或臨時上傳圖片時，才會使用 img2img。

@@ -90,20 +90,8 @@ def image_generate_submit():
     if source_choice not in {"user", "ai"}:
         return _render_generate(auth, context, error="本輪訊息來源錯誤", form=form, status=400)
 
-    source_text = context.get("user_text") if source_choice == "user" else context.get("assistant_text")
-    try:
-        final_prompt = build_image_prompt(
-            source_text=source_text,
-            prompt_mode=prompt_mode,
-            fixed_tag=fixed_tag,
-            supplement_prompt=supplement_prompt,
-            custom_prompt=custom_prompt,
-        )
-    except ValueError as exc:
-        return _render_generate(auth, context, error=str(exc), form=form, status=400)
-
     custom_upload = None
-    reference_type = "system_reference"
+    reference_type = "system_prompt"
 
     if generation_mode == "custom":
         upload = request.files.get("source_image")
@@ -124,6 +112,21 @@ def image_generate_submit():
             return _render_generate(auth, context, error="找不到指定的聊天室圖片代號或名稱", form=form, status=400)
         reference_type = "chat_image"
         reference_code = asset.get("image_code")
+
+    source_text = context.get("user_text") if source_choice == "user" else context.get("assistant_text")
+    try:
+        final_prompt = build_image_prompt(
+            source_text=source_text,
+            prompt_mode=prompt_mode,
+            gender=gender,
+            fixed_tag=fixed_tag,
+            supplement_prompt=supplement_prompt,
+            custom_prompt=custom_prompt,
+            use_system_identity=(reference_type == "system_prompt"),
+            use_reference_image=(reference_type in {"custom_upload", "chat_image"}),
+        )
+    except ValueError as exc:
+        return _render_generate(auth, context, error=str(exc), form=form, status=400)
 
     created = create_image_job(
         user_id=auth["user_id"],
