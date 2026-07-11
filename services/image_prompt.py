@@ -3,50 +3,70 @@ from typing import Dict, List
 
 
 FIXED_TAGS: Dict[str, str] = {
-    "浴衣": "wearing a traditional Japanese yukata with a natural obi and realistic fabric folds",
-    "睡衣": "wearing simple realistic home sleepwear with natural fabric folds",
-    "禮服": "wearing formal evening clothing with realistic tailoring and fabric texture",
+    "浴衣": (
+        "clearly wearing a complete traditional Japanese yukata, with the robe, sleeves, "
+        "obi sash, and realistic fabric folds visibly shown in the frame"
+    ),
+    "睡衣": (
+        "clearly wearing comfortable home sleepwear, with the pajama outfit and soft relaxed "
+        "fabric visibly shown in the frame"
+    ),
+    "禮服": (
+        "clearly wearing formal evening clothing suitable for a banquet or formal event, "
+        "with the complete outfit visibly shown in the frame"
+    ),
 }
 
 
-# 文生圖只固定人物身份基礎與攝影風格。
-# 髮型、服裝、動作、物品、場景等都不是程式逐項判斷，
-# 而是交給同一套「最新明確需求優先」規則處理。
+# 文生圖只固定人物身份基礎，不逐項解析髮型、服裝、動作、物品或場景。
+# 所有更新都交給共用的「最新明確要求優先」規則。
 TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     "female": [
-        "one naturally attractive adult East Asian woman in her twenties",
-        "soft oval face with realistic slight facial asymmetry",
+        "one adult East Asian woman in her twenties",
+        "naturally attractive but realistic everyday appearance",
+        "soft oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes with natural double eyelids",
         "small straight nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "slim naturally proportioned body",
-        "long natural black hair with light bangs as the default only when no newer request changes it",
-        "maintain a consistent recognizable facial identity across images",
+        "natural black hair as the default only when no newer request changes it",
+        "keep a recognizable character identity without turning the image into a face portrait",
     ],
     "male": [
-        "one naturally attractive adult East Asian man in his twenties",
-        "balanced masculine oval face with realistic slight facial asymmetry",
+        "one adult East Asian man in his twenties",
+        "naturally attractive but realistic everyday appearance",
+        "balanced masculine oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes",
         "straight natural nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "lean naturally proportioned body",
-        "short natural black hair as the default only when no newer request changes it",
-        "maintain a consistent recognizable facial identity across images",
+        "natural short black hair as the default only when no newer request changes it",
+        "keep a recognizable character identity without turning the image into a face portrait",
     ],
 }
 
 
 TEXT_TO_IMAGE_GLOBAL_RULE = """
-Create a real camera lifestyle photograph rather than AI artwork, CGI, illustration, beauty-filter portrait, or studio-perfect commercial rendering. Use natural camera exposure, believable dynamic range, realistic skin texture, subtle pores, slight facial asymmetry, natural hair strands, ordinary environmental details, and physically believable light and shadow. Keep the person attractive but human and naturally photographed. Choose a framing that clearly shows the requested clothing, action, object, and scene instead of automatically using a close-up face portrait. Treat the newest explicit request as the highest priority. When any earlier context conflicts with the newest request, follow only the newest request. Do not add unrelated redesigns.
+Create a candid environmental lifestyle photograph taken with a real camera. The image must tell the requested scene instead of defaulting to a posed beauty portrait. Unless the newest request explicitly asks for a close-up, use a medium-wide, three-quarter-body, or full-body composition. Keep enough camera distance to show the requested clothing, posture, action, hand interaction, object, and surrounding environment clearly. When a location or scene is mentioned, the environment must occupy a meaningful part of the frame and remain recognizable rather than becoming a generic blurred backdrop.
+
+Avoid centered head-and-shoulders portraits, face-only framing, studio headshots, glamour photography, beauty-advertisement poses, empty blurred backgrounds, and automatic looking-at-camera poses. Use natural camera exposure, believable dynamic range, realistic skin texture, subtle pores, slight facial asymmetry, natural hair strands, ordinary environmental details, and physically believable light and shadow. Keep the person attractive but human and naturally photographed, not CGI, illustration, or an over-retouched AI beauty image.
+
+Treat the newest explicit request as the highest-priority visual instruction. When earlier context conflicts with the newest request, ignore the conflicting earlier detail. Do not add unrelated redesigns. Do not render dialogue, captions, subtitles, watermarks, or newly invented written text.
 """.strip()
 
 
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image as the visual ground truth. Preserve the same person, recognizable facial identity, body proportions, photographic style, camera angle, crop, pose, lighting, background, objects, signs, and every other visible element that the newest request does not explicitly ask to change. Change only what the newest explicit request asks to change, and keep all unrelated parts as close to the source image as possible. Do not beautify, redesign, restyle, or replace the person without an explicit request. Existing readable signs or text belong to the source image and should remain visually unchanged unless the newest request explicitly asks to edit them. When the newest request conflicts with earlier context or the source image, the newest request wins only for the mentioned part.
+Use the supplied source image as the visual reference and perform an actual image edit. The newest explicit request is a required modification, not an optional description. The requested change must be clearly and visibly completed in the generated result. Do not return the source image unchanged, do not merely resize it, and do not apply only a weak texture or color shift when the request asks for a different garment, object, action, pose, or scene.
+
+Preserve the same recognizable person, facial identity, body proportions, photographic feeling, and all unaffected visual regions as closely as possible. Preserve any person, pose, camera angle, crop, lighting, background, object, sign, and visible text only when the newest request does not ask to change that part. When the newest request conflicts with the source image, the request overrides the source only for the mentioned part. For example, a requested garment must replace the original garment visibly rather than being blended into it.
+
+Do not beautify, redesign, restyle, or replace the person without an explicit request. Keep a realistic camera-photo look with natural skin texture and believable lighting. Existing signs or readable text should remain visually unchanged whenever they are outside the requested edit.
 """.strip()
 
 
 TEXT_NEGATIVE_PROMPT = (
+    "close-up portrait, face-only portrait, headshot, studio portrait, glamour portrait, "
+    "beauty advertisement, centered face, blurred empty background, automatic looking at camera, "
     "AI generated look, CGI, 3d render, illustration, anime, doll-like face, plastic skin, "
     "beauty filter, excessive retouching, over-smoothed skin, perfect synthetic skin, "
     "unrealistic eyes, fake studio glow, text, subtitles, speech bubbles, watermark, logo, "
@@ -55,6 +75,7 @@ TEXT_NEGATIVE_PROMPT = (
 )
 
 IMAGE_NEGATIVE_PROMPT = (
+    "unchanged source image, resize-only result, no requested edit, weak edit, "
     "different person, face replacement, identity drift, unrelated redesign, unrequested changes, "
     "beautification, plastic skin, beauty filter, altered unrequested background, "
     "garbled existing signage, changed existing text, duplicate person, extra limbs, "
@@ -75,11 +96,15 @@ def _fixed_tag_prompt(tag: str, gender: str) -> str:
     if tag not in FIXED_TAGS:
         raise ValueError("固定標籤不存在")
     if tag == "禮服" and gender == "male":
-        return "wearing a fitted formal evening suit with realistic tailoring and fabric texture"
+        return (
+            "clearly wearing a complete fitted formal evening suit, including a visible suit jacket "
+            "and matching formal trousers, suitable for a banquet or formal evening event"
+        )
     if tag == "禮服" and gender == "female":
-        return "wearing a formal evening gown with realistic tailoring and fabric texture"
-    if tag == "禮服":
-        return "wearing formal evening clothing with realistic tailoring and fabric texture"
+        return (
+            "clearly wearing a complete formal evening gown, with the long elegant gown visibly shown, "
+            "suitable for a banquet or formal evening event"
+        )
     return FIXED_TAGS[tag]
 
 
@@ -91,7 +116,7 @@ def _request_sections(
     supplement_prompt: str,
     custom_prompt: str,
 ) -> Dict[str, str]:
-    """建立通用優先級區塊，不逐項拆髮型、服裝、場景或物品。"""
+    """建立共用優先級，不按髮型、衣服、場景等類別逐項拆規則。"""
     prompt_mode = _clean(prompt_mode, 30)
 
     if prompt_mode == "custom":
@@ -112,7 +137,6 @@ def _request_sections(
     tag_prompt = _fixed_tag_prompt(fixed_tag, gender)
 
     # 優先順序：補充提示詞 > 固定標籤 > 本輪對話。
-    # 不解析需求屬於髮型、衣服或場景，所有修改共用同一套概念。
     if supplement:
         priority = supplement
         secondary = tag_prompt
@@ -160,17 +184,17 @@ def build_image_prompt(
     parts: List[str] = []
 
     if generation_mode == "text":
-        parts.append("MODE: REAL-CAMERA TEXT-TO-IMAGE")
+        parts.append("MODE: ENVIRONMENTAL REAL-CAMERA TEXT-TO-IMAGE")
         parts.append(TEXT_TO_IMAGE_GLOBAL_RULE)
         parts.append("CHARACTER IDENTITY: " + ", ".join(TEXT_IDENTITY_PROFILES[gender]))
         negative = TEXT_NEGATIVE_PROMPT
     else:
-        parts.append("MODE: SOURCE-PRESERVING IMAGE-TO-IMAGE EDIT")
+        parts.append("MODE: REQUIRED SOURCE-IMAGE EDIT")
         parts.append(IMAGE_TO_IMAGE_GLOBAL_RULE)
         negative = IMAGE_NEGATIVE_PROMPT
 
     if sections["priority"]:
-        parts.append("HIGHEST PRIORITY NEWEST REQUEST: " + sections["priority"])
+        parts.append("HIGHEST PRIORITY REQUIRED RESULT: " + sections["priority"])
     if sections["secondary"]:
         parts.append("SECONDARY REQUEST, ONLY WHEN IT DOES NOT CONFLICT: " + sections["secondary"])
     if sections["context"]:
@@ -179,13 +203,19 @@ def build_image_prompt(
             + sections["context"]
         )
 
-    parts.append(
-        "FINAL PRIORITY CHECK: apply the HIGHEST PRIORITY NEWEST REQUEST clearly and visibly; "
-        "ignore every conflicting earlier detail. Do not render dialogue, captions, or new written text."
-    )
+    if generation_mode == "text":
+        parts.append(
+            "COMPOSITION CHECK: do not use a close-up or headshot unless explicitly requested. "
+            "Show the character together with the requested clothing, action, object, and environment."
+        )
+    else:
+        parts.append(
+            "EDIT COMPLETION CHECK: the requested edit must be unmistakably visible. "
+            "Returning the source unchanged or only resized is a failed result."
+        )
 
-    # 把最高優先需求再次放在結尾，降低長對話吃掉補充提示詞的情況。
+    # 最高優先需求在結尾再次強調，避免長對話吃掉補充或完全自訂提示詞。
     if sections["priority"]:
-        parts.append("REQUIRED VISIBLE RESULT: " + sections["priority"])
+        parts.append("MANDATORY FINAL VISUAL RESULT: " + sections["priority"])
 
     return "\n\n".join(parts) + " ### " + negative

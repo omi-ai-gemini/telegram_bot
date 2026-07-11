@@ -40,11 +40,13 @@ C:\Projects\telemini
 - `docs\SMALL_UPDATE_MEMORY_VIEW_README.md`
 - `docs\TEST_LAB_README.md`
 - `docs\THOUGHT_WEB_VIEW_README.md`
+- `docs\固定身份提示詞生圖更新說明.md`
 - `docs\圖片等待函式匯入錯誤修正說明.md`
 - `docs\圖片等待與模型切換修正說明.md`
 - `docs\圖片解析上限與無回應提示更新說明.md`
 - `docs\圖片解析模型fallback更新說明.md`
 - `docs\媒體輸入更新說明.md`
+- `docs\文生圖與圖生圖雙模式更新說明.md`
 - `docs\服務中心公告推播更新說明.md`
 - `docs\服務中心更新說明.md`
 - `handlers\__init__.py`
@@ -81,6 +83,7 @@ C:\Projects\telemini
 - `services\image_auth.py`
 - `services\image_inpaint.py`
 - `services\image_jobs.py`
+- `services\image_prepare.py`
 - `services\image_prompt.py`
 - `services\image_store.py`
 - `services\media_ai.py`
@@ -128,6 +131,7 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `tools\python.txt`
+- `固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt`
 - `圖片模型fallback覆蓋說明.txt`
 - `圖片等待與模型切換覆蓋說明.txt`
 - `媒體輸入覆蓋說明.txt`
@@ -136,6 +140,9 @@ C:\Projects\telemini
 - `服務中心管理員判定修復說明.txt`
 - `模式-使用說明.txt`
 - `生圖功能檢查結果.txt`
+- `生圖改版相容性檢查結果.txt`
+- `生圖雙模式改版檢查結果.txt`
+- `生圖雙模式改版覆蓋說明.txt`
 - `補丁覆蓋說明.txt`
 - `覆蓋方式.txt`
 - `覆蓋說明.txt`
@@ -546,21 +553,12 @@ C:\Projects\telemini
 - `create_image_token()`
 - `verify_image_token()`
 
-### `services\image_inpaint.py`
-- `_require_pillow()`
-- `_border_color()`
-- `_png_bytes()`
-- `_identity_anchor_mask()`
-- `prepare_inpainting_assets()`
-
 ### `services\image_jobs.py`
 - `_text()`
 - `_extract_message_id()`
 - `_cancel_markup()`
 - `_encrypt_prompt()`
 - `_decrypt_prompt()`
-- `_reference_path()`
-- `_read_system_reference()`
 - `_count_active()`
 - `create_image_job()`
 - `_get_job()`
@@ -578,8 +576,13 @@ C:\Projects\telemini
 - `cancel_job_for_user()`
 - `recover_active_image_jobs()`
 
+### `services\image_prepare.py`
+- `prepare_img2img_source()`
+
 ### `services\image_prompt.py`
 - `_clean()`
+- `_fixed_tag_prompt()`
+- `_request_sections()`
 - `build_image_prompt()`
 
 ### `services\image_store.py`

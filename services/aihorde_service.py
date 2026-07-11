@@ -10,10 +10,18 @@ AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
-# 圖生圖固定使用中等重繪強度：
-# - 比舊版 0.72 更能保留原圖人物、構圖與背景。
-# - 仍保留足夠幅度修改提示詞明確要求的衣物、物品或場景。
-IMG2IMG_DENOISING_STRENGTH = 0.50
+# Flux Schnell 雙模式參數：
+# - 文生圖維持 4 steps，保留速度與大量 worker 相容性。
+# - 圖生圖提高到 8 steps 與 0.72 重繪強度，避免只縮放原圖直接退回。
+TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "4"))
+IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "8"))
+try:
+    IMG2IMG_DENOISING_STRENGTH = float(
+        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.72")
+    )
+except Exception:
+    IMG2IMG_DENOISING_STRENGTH = 0.72
+IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -73,8 +81,9 @@ def submit_image_request(
 
     width = int(width)
     height = int(height)
-    steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
     allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
+    mode = "img2img" if source_image_bytes else "txt2img"
+    steps = IMG2IMG_STEPS if mode == "img2img" else TXT2IMG_STEPS
 
     payload = {
         "prompt": str(prompt or ""),
@@ -97,9 +106,7 @@ def submit_image_request(
         "replacement_filter": False,
     }
 
-    mode = "txt2img"
     if source_image_bytes:
-        mode = "img2img"
         payload["source_image"] = base64.b64encode(source_image_bytes).decode("ascii")
         payload["source_processing"] = "img2img"
         payload["params"]["denoising_strength"] = IMG2IMG_DENOISING_STRENGTH

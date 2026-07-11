@@ -28,11 +28,13 @@
   📄 SMALL_UPDATE_MEMORY_VIEW_README.md
   📄 TEST_LAB_README.md
   📄 THOUGHT_WEB_VIEW_README.md
+  📄 固定身份提示詞生圖更新說明.md
   📄 圖片等待函式匯入錯誤修正說明.md
   📄 圖片等待與模型切換修正說明.md
   📄 圖片解析上限與無回應提示更新說明.md
   📄 圖片解析模型fallback更新說明.md
   📄 媒體輸入更新說明.md
+  📄 文生圖與圖生圖雙模式更新說明.md
   📄 服務中心公告推播更新說明.md
   📄 服務中心更新說明.md
 📁 handlers/
@@ -73,6 +75,7 @@
   📄 image_auth.py
   📄 image_inpaint.py
   📄 image_jobs.py
+  📄 image_prepare.py
   📄 image_prompt.py
   📄 image_store.py
   📄 media_ai.py
@@ -126,6 +129,7 @@
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
   📄 python.txt
+📄 固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt
 📄 圖片模型fallback覆蓋說明.txt
 📄 圖片等待與模型切換覆蓋說明.txt
 📄 媒體輸入覆蓋說明.txt
@@ -134,6 +138,9 @@
 📄 服務中心管理員判定修復說明.txt
 📄 模式-使用說明.txt
 📄 生圖功能檢查結果.txt
+📄 生圖改版相容性檢查結果.txt
+📄 生圖雙模式改版檢查結果.txt
+📄 生圖雙模式改版覆蓋說明.txt
 📄 補丁覆蓋說明.txt
 📄 覆蓋方式.txt
 📄 覆蓋說明.txt
