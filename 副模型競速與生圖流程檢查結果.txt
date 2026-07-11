@@ -1,0 +1,30 @@
+Telemini 副模型競速與生圖流程檢查結果
+
+已完成：
+1. 全專案 Python compileall 編譯檢查。
+2. AI Horde 文字 async payload／輪詢／結果解析 mock 測試。
+3. 圖片 Prompt 整理保留原負面提示詞 mock 測試。
+4. Gemini 安全阻擋、AI Horde 副模型勝出的競速 mock 測試。
+5. 競速 Prompt 不重複加入最後一則使用者訊息檢查。
+6. 生圖狀態順序檢查：先 prompt生成中，圖片 API 接受任務後才改為排隊訊息。
+7. 生圖完成／失敗／取消會更新同一則狀態訊息並移除取消按鈕。
+8. 禁用字串掃描。
+
+未執行：
+- 未使用你的正式 AI Horde Key、Gemini Key、Telegram Bot、Supabase 與 Render 做真實端到端連線測試。
+- AI Horde 工作節點與排隊狀態會隨時間改變，正式部署後請依 Render Log 確認模型是否被工作節點接受。
+
+重要 Log：
+MODEL MODE COMMAND
+MODEL MODE SET
+MODEL ROUTE
+MODEL RACE START
+MODEL RACE BRANCH RESULT
+MODEL RACE WINNER
+SECONDARY TEXT SUBMIT PREPARED
+SECONDARY TEXT SUBMIT OK
+SECONDARY TEXT STATUS
+SECONDARY TEXT DONE
+IMAGE PROMPT START
+IMAGE PROMPT DONE
+IMAGE PROMPT FALLBACK

@@ -12,13 +12,14 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
+from services.aihorde_text_service import organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
-from services.telegram_service import send_message, send_photo_bytes
+from services.telegram_service import send_message, send_photo_bytes, edit_message_text
 
 
-ACTIVE_STATUSES = ("created", "submitting", "queued", "processing")
+ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
 JOB_TIMEOUT_SECONDS = 20 * 60
 POLL_SECONDS = 4
@@ -42,19 +43,19 @@ def _cancel_markup(job_id: int):
     }
 
 
-def _encrypt_prompt(job_id: int, prompt: str) -> str:
+def _encrypt_prompt(job_id: int, prompt: str, field: str = "final_prompt") -> str:
     try:
-        return encrypt_text(prompt, aad=aad_for("image_generation_jobs", "final_prompt", job_id))
+        return encrypt_text(prompt, aad=aad_for("image_generation_jobs", field, job_id))
     except Exception as exc:
-        print("IMAGE PROMPT ENCRYPT ERROR:", exc, flush=True)
+        print(f"IMAGE PROMPT ENCRYPT ERROR field={field}:", exc, flush=True)
         return prompt
 
 
-def _decrypt_prompt(job_id: int, value: str) -> str:
+def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str:
     if not is_encrypted(value):
         return _text(value)
     try:
-        return decrypt_text(value, aad=aad_for("image_generation_jobs", "final_prompt", job_id))
+        return decrypt_text(value, aad=aad_for("image_generation_jobs", field, job_id))
     except Exception as exc:
         print("IMAGE PROMPT DECRYPT ERROR:", exc, flush=True)
         return ""
@@ -130,9 +131,17 @@ def create_image_job(
             conn.rollback()
             return {"ok": False, "message": "無法建立生圖任務"}
         job_id = int(row[0])
+        encrypted_source_prompt = _encrypt_prompt(job_id, final_prompt, field="source_prompt")
+        encrypted_final_prompt = _encrypt_prompt(job_id, final_prompt, field="final_prompt")
         cursor.execute(
-            "UPDATE image_generation_jobs SET final_prompt=%s WHERE id=%s",
-            (_encrypt_prompt(job_id, final_prompt), job_id),
+            """
+            UPDATE image_generation_jobs
+            SET source_prompt=%s, final_prompt=%s,
+                prompt_generation_status='pending',
+                prompt_chars_before=%s
+            WHERE id=%s
+            """,
+            (encrypted_source_prompt, encrypted_final_prompt, len(str(final_prompt or "")), job_id),
         )
         conn.commit()
     except Exception as exc:
@@ -142,12 +151,18 @@ def create_image_job(
     finally:
         conn.close()
 
-    send_message(
+    status_sent = send_message(
         bot_id,
         chat_id,
-        "生圖任務已送出，正在加入排隊。",
+        "prompt生成中",
         reply_markup=_cancel_markup(job_id),
     )
+    status_message_id = _extract_message_id(status_sent)
+    if status_message_id:
+        _update_job(job_id, status_message_id=status_message_id)
+    else:
+        print(f"IMAGE PROMPT STATUS SEND FAILED job_id={job_id}", flush=True)
+
     run_image_job_in_thread(job_id, custom_upload=custom_upload)
     return {"ok": True, "job_id": job_id}
 
@@ -160,7 +175,9 @@ def _get_job(job_id: int) -> Optional[Dict[str, Any]]:
             SELECT id, bot_id, chat_id, user_id, action_id, gender,
                    generation_mode, prompt_mode, source_choice, fixed_tag,
                    reference_type, reference_code, has_custom_upload,
-                   final_prompt, status, horde_request_id, api_slot,
+                   source_prompt, final_prompt, prompt_generation_status,
+                   prompt_model, prompt_error, prompt_chars_before, prompt_chars_after,
+                   status_message_id, status, horde_request_id, api_slot,
                    wait_time, queue_position, cancel_requested,
                    queued_notified, processing_notified,
                    created_at, started_at, completed_at, error_message
@@ -173,7 +190,9 @@ def _get_job(job_id: int) -> Optional[Dict[str, Any]]:
             "id", "bot_id", "chat_id", "user_id", "action_id", "gender",
             "generation_mode", "prompt_mode", "source_choice", "fixed_tag",
             "reference_type", "reference_code", "has_custom_upload",
-            "final_prompt", "status", "horde_request_id", "api_slot",
+            "source_prompt", "final_prompt", "prompt_generation_status",
+            "prompt_model", "prompt_error", "prompt_chars_before", "prompt_chars_after",
+            "status_message_id", "status", "horde_request_id", "api_slot",
             "wait_time", "queue_position", "cancel_requested",
             "queued_notified", "processing_notified",
             "created_at", "started_at", "completed_at", "error_message",
@@ -212,6 +231,8 @@ def _update_job(job_id: int, **values):
         "status", "horde_request_id", "api_slot", "wait_time", "queue_position",
         "cancel_requested", "queued_notified", "processing_notified", "error_message",
         "started_at", "completed_at", "heartbeat_at", "worker_token",
+        "status_message_id", "prompt_generation_status", "prompt_model", "prompt_error",
+        "prompt_chars_before", "prompt_chars_after", "final_prompt",
     }
     values = {k: v for k, v in values.items() if k in allowed}
     if not values:
@@ -259,6 +280,39 @@ def _queue_text(check: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _edit_status_message(
+    job: Dict[str, Any],
+    text: str,
+    allow_cancel: bool = True,
+) -> Optional[int]:
+    message_id = job.get("status_message_id")
+    reply_markup = _cancel_markup(job["id"]) if allow_cancel else {"inline_keyboard": []}
+    edited = None
+    if message_id:
+        edited = edit_message_text(
+            job["bot_id"],
+            job["chat_id"],
+            message_id,
+            text,
+            reply_markup=reply_markup,
+        )
+
+    if edited:
+        return message_id
+
+    sent = send_message(
+        job["bot_id"],
+        job["chat_id"],
+        text,
+        reply_markup=reply_markup,
+    )
+    new_message_id = _extract_message_id(sent)
+    if new_message_id:
+        _update_job(job["id"], status_message_id=new_message_id)
+        job["status_message_id"] = new_message_id
+    return new_message_id
+
+
 def _fail(job: Dict[str, Any], message: str):
     _update_job(
         job["id"],
@@ -267,7 +321,11 @@ def _fail(job: Dict[str, Any], message: str):
         completed_at=datetime.utcnow(),
         worker_token=None,
     )
-    send_message(job["bot_id"], job["chat_id"], f"生圖失敗：{_text(message) or '未知錯誤'}")
+    _edit_status_message(
+        job,
+        f"生圖失敗：{_text(message) or '未知錯誤'}",
+        allow_cancel=False,
+    )
 
 
 def _cancel(job: Dict[str, Any]):
@@ -279,7 +337,7 @@ def _cancel(job: Dict[str, Any]):
         completed_at=datetime.utcnow(),
         worker_token=None,
     )
-    send_message(job["bot_id"], job["chat_id"], "生圖已取消")
+    _edit_status_message(job, "生圖已取消", allow_cancel=False)
 
 
 def _resolve_reference(job: Dict[str, Any], custom_upload: Optional[Dict[str, Any]]):
@@ -341,12 +399,100 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                         _fail(job, "找不到指定的聊天室圖片，可能已被刪除")
                     return
 
-            prompt = _decrypt_prompt(job["id"], job.get("final_prompt"))
-            if not prompt:
+            source_prompt = _decrypt_prompt(
+                job["id"],
+                job.get("source_prompt") or job.get("final_prompt"),
+                field="source_prompt" if job.get("source_prompt") else "final_prompt",
+            )
+            if not source_prompt:
                 _fail(job, "生圖提示詞讀取失敗")
                 return
 
-            _update_job(job["id"], status="submitting", started_at=datetime.utcnow(), heartbeat_at=datetime.utcnow())
+            prompt_status = _text(job.get("prompt_generation_status")) or "pending"
+            prompt = _decrypt_prompt(job["id"], job.get("final_prompt"), field="final_prompt")
+            queue_status_text = (
+                "prompt生成失敗，已改用原始提示詞送出，正在加入排隊"
+                if prompt_status == "fallback"
+                else "生圖任務已送出，正在加入排隊"
+            )
+
+            if prompt_status not in {"ready", "fallback"}:
+                _update_job(
+                    job["id"],
+                    status="prompting",
+                    prompt_generation_status="running",
+                    started_at=datetime.utcnow(),
+                    heartbeat_at=datetime.utcnow(),
+                )
+                print(
+                    "IMAGE PROMPT START "
+                    f"job_id={job['id']} mode={job.get('generation_mode')} "
+                    f"input_chars={len(source_prompt)}",
+                    flush=True,
+                )
+
+                organized = organize_image_prompt(
+                    draft_prompt=source_prompt,
+                    generation_mode=job.get("generation_mode"),
+                    debug_context={
+                        "user_id": job.get("user_id"),
+                        "bot_id": job.get("bot_id"),
+                        "chat_id": job.get("chat_id"),
+                        "source": "IMAGE_PROMPT_ORGANIZER",
+                        "generation_type": "image_prompt",
+                        "action_id": job.get("action_id"),
+                    },
+                )
+
+                if organized.get("ok") and _text(organized.get("text")):
+                    prompt = _text(organized.get("text"))
+                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
+                    _update_job(
+                        job["id"],
+                        final_prompt=encrypted_prompt,
+                        prompt_generation_status="ready",
+                        prompt_model=_text(organized.get("model"))[:250],
+                        prompt_error=None,
+                        prompt_chars_before=len(source_prompt),
+                        prompt_chars_after=len(prompt),
+                    )
+                    print(
+                        "IMAGE PROMPT DONE "
+                        f"job_id={job['id']} model={organized.get('model')} "
+                        f"output_chars={len(prompt)} elapsed={organized.get('elapsed')}",
+                        flush=True,
+                    )
+                    job["prompt_generation_status"] = "ready"
+                    job["prompt_model"] = organized.get("model")
+                    queue_status_text = "生圖任務已送出，正在加入排隊"
+                else:
+                    prompt = source_prompt
+                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
+                    error_text = _text(organized.get("message")) or "副模型未回傳可用提示詞"
+                    _update_job(
+                        job["id"],
+                        final_prompt=encrypted_prompt,
+                        prompt_generation_status="fallback",
+                        prompt_model=_text(organized.get("model"))[:250],
+                        prompt_error=error_text[:500],
+                        prompt_chars_before=len(source_prompt),
+                        prompt_chars_after=len(prompt),
+                    )
+                    print(
+                        "IMAGE PROMPT FALLBACK "
+                        f"job_id={job['id']} reason={error_text[:300]}",
+                        flush=True,
+                    )
+                    job["prompt_generation_status"] = "fallback"
+                    queue_status_text = "prompt生成失敗，已改用原始提示詞送出，正在加入排隊"
+            elif not prompt:
+                prompt = source_prompt
+
+            if not prompt:
+                _fail(job, "生圖提示詞整理後為空")
+                return
+
+            _update_job(job["id"], status="submitting", heartbeat_at=datetime.utcnow())
 
             prepared_reference = None
             if reference:
@@ -381,6 +527,8 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
             if not submitted.get("ok"):
                 _fail(job, submitted.get("message") or "AI Horde 拒絕任務")
                 return
+
+            _edit_status_message(job, queue_status_text)
 
             _update_job(
                 job["id"],
@@ -487,6 +635,7 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                     completed_at=datetime.utcnow(),
                     worker_token=None,
                 )
+                _edit_status_message(job, "生圖完成", allow_cancel=False)
                 return
 
             time.sleep(POLL_SECONDS)

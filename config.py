@@ -76,3 +76,18 @@ AI_HORDE_API_KEY_1 = os.getenv("AI_HORDE_API_KEY_1")
 AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "false")
+# =========================
+# AI Horde 副文字模型
+# =========================
+# 多個模型以逗號分隔；AI Horde 會由可用工作節點先接單。
+AI_HORDE_TEXT_MODELS = os.getenv(
+    "AI_HORDE_TEXT_MODELS",
+    "koboldcpp/L3-8B-Stheno-v3.2,koboldcpp/mini-magnum-12b-v1.1",
+)
+AI_HORDE_TEXT_TIMEOUT_SECONDS = _env_int("AI_HORDE_TEXT_TIMEOUT_SECONDS", 150)
+AI_HORDE_TEXT_POLL_SECONDS = _env_int("AI_HORDE_TEXT_POLL_SECONDS", 2)
+AI_HORDE_TEXT_MAX_CONTEXT = _env_int("AI_HORDE_TEXT_MAX_CONTEXT", 16384)
+AI_HORDE_CHAT_MAX_LENGTH = _env_int("AI_HORDE_CHAT_MAX_LENGTH", 320)
+AI_HORDE_IMAGE_PROMPT_MAX_LENGTH = _env_int("AI_HORDE_IMAGE_PROMPT_MAX_LENGTH", 360)
+AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS = _env_int("AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS", 120)
+

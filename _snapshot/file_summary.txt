@@ -2160,6 +2160,46 @@ python -m py_compile main.py config.py services/telegram_service.py services/gem
 
 ================================================================================
 
+# docs\文生圖構圖與圖生圖修改力度更新說明.md
+
+- 類型：.md
+- 行數：28
+
+## preview
+```text
+# 文生圖構圖與圖生圖修改力度更新
+
+## 文生圖
+
+- 模型維持 `Flux.1-Schnell fp8 (Compact)`。
+- 預設改成環境敘事生活攝影，不再把頭肩肖像當成安全預設。
+- 未明確要求特寫時，優先使用中遠景、四分之三身或全身構圖。
+- 場景、服裝、動作、物品與手部互動必須能在畫面中看見。
+- 負面提示詞新增 headshot、face-only portrait、studio portrait、glamour portrait 等肖像照傾向。
+- 文生圖維持 4 steps，避免增加整體等待時間。
+
+## 圖生圖
+
+- 模型同樣維持 `Flux.1-Schnell fp8 (Compact)`，不切換冷門模型。
+- 全域規則明確要求：修改內容是必須完成的任務，不可只縮放原圖後退回。
+- 未指定區域仍要求盡量保留，指定區域必須明顯替換或改變。
+- 重繪強度由 `0.50` 提高為 `0.72`。
+- 圖生圖 steps 由 `4` 提高為 `8`，文生圖不受影響。
+
+## 可選環境變數
+
+```text
+AI_HORDE_TXT2IMG_STEPS=4
+AI_HORDE_IMG2IMG_STEPS=8
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+```
+
+不設定時會使用上述預設值。
+```
+
+
+================================================================================
+
 # docs\文生圖與圖生圖雙模式更新說明.md
 
 - 類型：.md
@@ -4189,7 +4229,7 @@ CONTINUE_USER_TEXT = """
 # services\aihorde_service.py
 
 - 類型：.py
-- 行數：216
+- 行數：223
 
 ## imports
 - base64
@@ -4227,10 +4267,18 @@ AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
-# 圖生圖固定使用中等重繪強度：
-# - 比舊版 0.72 更能保留原圖人物、構圖與背景。
-# - 仍保留足夠幅度修改提示詞明確要求的衣物、物品或場景。
-IMG2IMG_DENOISING_STRENGTH = 0.50
+# Flux Schnell 雙模式參數：
+# - 文生圖維持 4 steps，保留速度與大量 worker 相容性。
+# - 圖生圖提高到 8 steps 與 0.72 重繪強度，避免只縮放原圖直接退回。
+TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "4"))
+IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "8"))
+try:
+    IMG2IMG_DENOISING_STRENGTH = float(
+        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.72")
+    )
+except Exception:
+    IMG2IMG_DENOISING_STRENGTH = 0.72
+IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -4287,16 +4335,8 @@ def submit_image_request(
 
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
-
-    width = int(width)
-    height = int(height)
-    steps = int(os.getenv("AI_HORDE_IMAGE_STEPS", "4"))
-    allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", False)
-
-    payload = {
-        "prompt": str(prompt or ""),
 ...
-... 已省略 136 行
+... 已省略 143 行
 ```
 
 
@@ -5974,7 +6014,7 @@ def prepare_img2img_source(
 # services\image_prompt.py
 
 - 類型：.py
-- 行數：191
+- 行數：221
 
 ## imports
 - re
@@ -5994,50 +6034,70 @@ from typing import Dict, List
 
 
 FIXED_TAGS: Dict[str, str] = {
-    "浴衣": "wearing a traditional Japanese yukata with a natural obi and realistic fabric folds",
-    "睡衣": "wearing simple realistic home sleepwear with natural fabric folds",
-    "禮服": "wearing formal evening clothing with realistic tailoring and fabric texture",
+    "浴衣": (
+        "clearly wearing a complete traditional Japanese yukata, with the robe, sleeves, "
+        "obi sash, and realistic fabric folds visibly shown in the frame"
+    ),
+    "睡衣": (
+        "clearly wearing comfortable home sleepwear, with the pajama outfit and soft relaxed "
+        "fabric visibly shown in the frame"
+    ),
+    "禮服": (
+        "clearly wearing formal evening clothing suitable for a banquet or formal event, "
+        "with the complete outfit visibly shown in the frame"
+    ),
 }
 
 
-# 文生圖只固定人物身份基礎與攝影風格。
-# 髮型、服裝、動作、物品、場景等都不是程式逐項判斷，
-# 而是交給同一套「最新明確需求優先」規則處理。
+# 文生圖只固定人物身份基礎，不逐項解析髮型、服裝、動作、物品或場景。
+# 所有更新都交給共用的「最新明確要求優先」規則。
 TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     "female": [
-        "one naturally attractive adult East Asian woman in her twenties",
-        "soft oval face with realistic slight facial asymmetry",
+        "one adult East Asian woman in her twenties",
+        "naturally attractive but realistic everyday appearance",
+        "soft oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes with natural double eyelids",
         "small straight nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "slim naturally proportioned body",
-        "long natural black hair with light bangs as the default only when no newer request changes it",
-        "maintain a consistent recognizable facial identity across images",
+        "natural black hair as the default only when no newer request changes it",
+        "keep a recognizable character identity without turning the image into a face portrait",
     ],
     "male": [
-        "one naturally attractive adult East Asian man in his twenties",
-        "balanced masculine oval face with realistic slight facial asymmetry",
+        "one adult East Asian man in his twenties",
+        "naturally attractive but realistic everyday appearance",
+        "balanced masculine oval face with slight natural asymmetry",
         "dark brown almond-shaped eyes",
         "straight natural nose and naturally shaped lips",
         "realistic light skin with visible natural texture and subtle imperfections",
         "lean naturally proportioned body",
-        "short natural black hair as the default only when no newer request changes it",
-        "maintain a consistent recognizable facial identity across images",
+        "natural short black hair as the default only when no newer request changes it",
+        "keep a recognizable character identity without turning the image into a face portrait",
     ],
 }
 
 
 TEXT_TO_IMAGE_GLOBAL_RULE = """
-Create a real camera lifestyle photograph rather than AI artwork, CGI, illustration, beauty-filter portrait, or studio-perfect commercial rendering. Use natural camera exposure, believable dynamic range, realistic skin texture, subtle pores, slight facial asymmetry, natural hair strands, ordinary environmental details, and physically believable light and shadow. Keep the person attractive but human and naturally photographed. Choose a framing that clearly shows the requested clothing, action, object, and scene instead of automatically using a close-up face portrait. Treat the newest explicit request as the highest priority. When any earlier context conflicts with the newest request, follow only the newest request. Do not add unrelated redesigns.
+Create a candid environmental lifestyle photograph taken with a real camera. The image must tell the requested scene instead of defaulting to a posed beauty portrait. Unless the newest request explicitly asks for a close-up, use a medium-wide, three-quarter-body, or full-body composition. Keep enough camera distance to show the requested clothing, posture, action, hand interaction, object, and surrounding environment clearly. When a location or scene is mentioned, the environment must occupy a meaningful part of the frame and remain recognizable rather than becoming a generic blurred backdrop.
+
+Avoid centered head-and-shoulders portraits, face-only framing, studio headshots, glamour photography, beauty-advertisement poses, empty blurred backgrounds, and automatic looking-at-camera poses. Use natural camera exposure, believable dynamic range, realistic skin texture, subtle pores, slight facial asymmetry, natural hair strands, ordinary environmental details, and physically believable light and shadow. Keep the person attractive but human and naturally photographed, not CGI, illustration, or an over-retouched AI beauty image.
+
+Treat the newest explicit request as the highest-priority visual instruction. When earlier context conflicts with the newest request, ignore the conflicting earlier detail. Do not add unrelated redesigns. Do not render dialogue, captions, subtitles, watermarks, or newly invented written text.
 """.strip()
 
 
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image as the visual ground truth. Preserve the same person, recognizable facial identity, body proportions, photographic style, camera angle, crop, pose, lighting, background, objects, signs, and every other visible element that the newest request does not explicitly ask to change. Change only what the newest explicit request asks to change, and keep all unrelated parts as close to the source image as possible. Do not beautify, redesign, restyle, or replace the person without an explicit request. Existing readable signs or text belong to the source image and should remain visually unchanged unless the newest request explicitly asks to edit them. When the newest request conflicts with earlier context or the source image, the newest request wins only for the mentioned part.
+Use the supplied source image as the visual reference and perform an actual image edit. The newest explicit request is a required modification, not an optional description. The requested change must be clearly and visibly completed in the generated result. Do not return the source image unchanged, do not merely resize it, and do not apply only a weak texture or color shift when the request asks for a different garment, object, action, pose, or scene.
+
+Preserve the same recognizable person, facial identity, body proportions, photographic feeling, and all unaffected visual regions as closely as possible. Preserve any person, pose, camera angle, crop, lighting, background, object, sign, and visible text only when the newest request does not ask to change that part. When the newest request conflicts with the source image, the request overrides the source only for the mentioned part. For example, a requested garment must replace the original garment visibly rather than being blended into it.
+
+Do not beautify, redesign, restyle, or replace the person without an explicit request. Keep a realistic camera-photo look with natural skin texture and believable lighting. Existing signs or readable text should remain visually unchanged whenever they are outside the requested edit.
 """.strip()
 
 
 TEXT_NEGATIVE_PROMPT = (
+    "close-up portrait, face-only portrait, headshot, studio portrait, glamour portrait, "
+    "beauty advertisement, centered face, blurred empty background, automatic looking at camera, "
     "AI generated look, CGI, 3d render, illustration, anime, doll-like face, plastic skin, "
     "beauty filter, excessive retouching, over-smoothed skin, perfect synthetic skin, "
     "unrealistic eyes, fake studio glow, text, subtitles, speech bubbles, watermark, logo, "
@@ -6046,31 +6106,11 @@ TEXT_NEGATIVE_PROMPT = (
 )
 
 IMAGE_NEGATIVE_PROMPT = (
+    "unchanged source image, resize-only result, no requested edit, weak edit, "
     "different person, face replacement, identity drift, unrelated redesign, unrequested changes, "
     "beautification, plastic skin, beauty filter, altered unrequested background, "
-    "garbled existing signage, changed existing text, duplicate person, extra limbs, "
-    "extra fingers, malformed hands, distorted face, stretched body, compressed body, blurry"
-)
-
-
-def _clean(value, max_len=5000):
-    text = str(value or "").replace("\x00", " ")
-    text = re.sub(r"\s+", " ", text).strip()
-    return text[:max_len]
-
-
-def _fixed_tag_prompt(tag: str, gender: str) -> str:
-    tag = _clean(tag, 50)
-    if not tag:
-        return ""
-    if tag not in FIXED_TAGS:
-        raise ValueError("固定標籤不存在")
-    if tag == "禮服" and gender == "male":
-        return "wearing a fitted formal evening suit with realistic tailoring and fabric texture"
-    if tag == "禮服" and gender == "female":
-        return "wearing a formal evening gown with realistic tailoring and fabric texture"
 ...
-... 已省略 111 行
+... 已省略 141 行
 ```
 
 
@@ -10760,6 +10800,45 @@ Telemini 文生圖／圖生圖雙模式改版
 補充提示詞／完全自訂提示詞 > 固定標籤 > 本輪對話
 
 部署後請讓 Render 重新 Build。
+```
+
+
+================================================================================
+
+# 生圖雙模式本次覆蓋說明.txt
+
+- 類型：.txt
+- 行數：27
+
+## preview
+```text
+Telemini 生圖雙模式本次覆蓋說明
+
+本包以使用者最新上傳的 telemini(4).zip 為底修改。
+
+修改檔案：
+- services/image_prompt.py
+- services/aihorde_service.py
+- docs/文生圖構圖與圖生圖修改力度更新說明.md
+
+本次修正：
+1. 文生圖維持 Flux.1-Schnell fp8 (Compact) 與 4 steps。
+2. 文生圖預設改為環境敘事生活攝影；未明確要求特寫時，避免頭肩肖像與純臉部構圖。
+3. 圖生圖維持 Flux Schnell，不切換冷門模型。
+4. 圖生圖明確禁止只縮放原圖後退回；自訂修改必須明顯完成。
+5. 圖生圖改為 8 steps、denoising_strength=0.72。
+6. 完全自訂提示詞或補充提示詞仍為最高優先，並在 Prompt 結尾再次驗收。
+
+可選環境變數：
+AI_HORDE_TXT2IMG_STEPS=4
+AI_HORDE_IMG2IMG_STEPS=8
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+
+不設定環境變數時，程式會直接使用以上預設值。
+
+部署：
+- 覆蓋後 git add / commit / push。
+- Render 重新部署即可；requirements.txt 未改，不需要因本包額外安裝套件。
 ```
 
 

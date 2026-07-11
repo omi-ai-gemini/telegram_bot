@@ -9,6 +9,7 @@ from services.memory_view import send_memory_view_menu
 from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
+from services.model_mode import handle_modes_api_command
 from test_lab.service import handle_test_lab_message
 
 
@@ -69,6 +70,15 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 
     if text in ["/reply", "/回覆"]:
         run_reply_recovery(user_id, bot_id, chat_id)
+        return
+
+    if text == "/modes_api" or text.startswith("/modes_api "):
+        handle_modes_api_command(
+            user_id=user_id,
+            bot_id=bot_id,
+            chat_id=chat_id,
+            command_text=text,
+        )
         return
 
     if text in ["/prompt_debug", "/prompt", "/提示除錯"]:

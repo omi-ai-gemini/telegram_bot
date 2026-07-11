@@ -210,8 +210,8 @@ def build_blocked_reply_keyboard(action_type="reply", action_id=None):
         callback_data = f"blocked_ai_continue:{action_id or 'none'}"
         text = "🗣️ 重新接續"
     else:
-        callback_data = "blocked_reply_debug"
-        text = "🗣️ 嘗試重跑回覆"
+        callback_data = "blocked_reply_race"
+        text = "⚡ 副模型競速"
 
     return {
         "inline_keyboard": [

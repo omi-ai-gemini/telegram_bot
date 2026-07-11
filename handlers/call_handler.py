@@ -7,7 +7,7 @@ from services.ai_actions import (
     run_repair_blocked_summary_in_thread,
     start_edit_ai_message,
 )
-from services.call_ai import run_reply_recovery, run_blocked_reply_retry
+from services.call_ai import run_reply_recovery, run_blocked_reply_race
 from services.memory_view import handle_memory_view_callback
 from services.image_jobs import cancel_job_for_user
 from services.commands import (
@@ -314,15 +314,15 @@ def handle_ui(user_id, bot_id, chat_id, message_id, user_text, callback_id):
     # - 不走一般 🔁 重跑，避免刪除 AI 訊息
     # - 直接用短期記憶最後一筆 user 重新生成一則 assistant 回覆
     # =========================
-    if user_text == "blocked_reply_debug":
+    if user_text in {"blocked_reply_race", "blocked_reply_debug"}:
         answer_callback_query(
             bot_id,
             callback_id,
-            text="正在用最後一筆使用者訊息重跑"
+            text="已切換副模型，主副模型競速中"
         )
 
         threading.Thread(
-            target=run_blocked_reply_retry,
+            target=run_blocked_reply_race,
             args=(user_id, bot_id, chat_id),
             daemon=True,
         ).start()

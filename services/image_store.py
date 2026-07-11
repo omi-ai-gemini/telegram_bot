@@ -51,7 +51,14 @@ def init_image_tables() -> None:
             reference_type TEXT NOT NULL,
             reference_code TEXT,
             has_custom_upload BOOLEAN DEFAULT FALSE,
+            source_prompt TEXT,
             final_prompt TEXT,
+            prompt_generation_status TEXT DEFAULT 'pending',
+            prompt_model TEXT,
+            prompt_error TEXT,
+            prompt_chars_before INTEGER,
+            prompt_chars_after INTEGER,
+            status_message_id INTEGER,
             status TEXT NOT NULL DEFAULT 'created',
             horde_request_id TEXT,
             api_slot INTEGER,
@@ -69,6 +76,13 @@ def init_image_tables() -> None:
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """)
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS source_prompt TEXT")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_generation_status TEXT DEFAULT 'pending'")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_model TEXT")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_error TEXT")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_chars_before INTEGER")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_chars_after INTEGER")
+        cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS status_message_id INTEGER")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_user_active ON image_generation_jobs (user_id, status, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_recovery ON image_generation_jobs (status, heartbeat_at, created_at)")
         conn.commit()

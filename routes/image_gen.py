@@ -159,7 +159,7 @@ def image_generate_submit():
     return _render_generate(
         auth,
         context,
-        success="生圖任務已送出，請回 Telegram 查看排隊狀態。",
+        success="prompt生成中，請回 Telegram 查看狀態。",
         job_id=created.get("job_id"),
         form=form,
     )
