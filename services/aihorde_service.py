@@ -7,6 +7,9 @@ import requests
 
 AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2").rstrip("/")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
+# 遮罩局部修改使用獨立 inpainting 模型，避免拿 Flux 一般圖生圖硬做遮罩。
+# AI Horde 工作節點可用模型會浮動，因此保留環境變數覆蓋能力。
+AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Deliberate Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
@@ -22,6 +25,18 @@ try:
 except Exception:
     IMG2IMG_DENOISING_STRENGTH = 0.72
 IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
+INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "20"))
+try:
+    INPAINT_CFG_SCALE = float(os.getenv("AI_HORDE_INPAINT_CFG_SCALE", "7"))
+except Exception:
+    INPAINT_CFG_SCALE = 7.0
+try:
+    INPAINT_DENOISING_STRENGTH = float(
+        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.80")
+    )
+except Exception:
+    INPAINT_DENOISING_STRENGTH = 0.80
+INPAINT_DENOISING_STRENGTH = max(0.05, min(1.0, INPAINT_DENOISING_STRENGTH))
 
 
 def _bool_env(name: str, default: bool = False) -> bool:
@@ -69,6 +84,8 @@ def submit_image_request(
     prompt: str,
     source_image_bytes: bytes = b"",
     source_mime_type: str = "image/png",
+    source_mask_bytes: bytes = b"",
+    source_mask_mime_type: str = "image/png",
     width: int = 896,
     height: int = 1152,
 ) -> Dict[str, Any]:
@@ -82,20 +99,30 @@ def submit_image_request(
     width = int(width)
     height = int(height)
     allow_nsfw = _bool_env("AI_HORDE_ALLOW_NSFW", True)
-    mode = "img2img" if source_image_bytes else "txt2img"
-    steps = IMG2IMG_STEPS if mode == "img2img" else TXT2IMG_STEPS
+    has_source = bool(source_image_bytes)
+    has_mask = bool(source_image_bytes and source_mask_bytes)
+    mode = "inpainting" if has_mask else ("img2img" if has_source else "txt2img")
+
+    if mode == "inpainting":
+        model_name = AI_HORDE_INPAINT_MODEL
+        steps = INPAINT_STEPS
+        cfg_scale = INPAINT_CFG_SCALE
+    else:
+        model_name = AI_HORDE_MODEL
+        steps = IMG2IMG_STEPS if mode == "img2img" else TXT2IMG_STEPS
+        cfg_scale = 1
 
     payload = {
         "prompt": str(prompt or ""),
         "params": {
             "sampler_name": "k_euler",
-            "cfg_scale": 1,
+            "cfg_scale": cfg_scale,
             "steps": steps,
             "width": width,
             "height": height,
             "n": 1,
         },
-        "models": [AI_HORDE_MODEL],
+        "models": [model_name],
         "nsfw": allow_nsfw,
         "censor_nsfw": not allow_nsfw,
         "trusted_workers": False,
@@ -108,14 +135,19 @@ def submit_image_request(
 
     if source_image_bytes:
         payload["source_image"] = base64.b64encode(source_image_bytes).decode("ascii")
-        payload["source_processing"] = "img2img"
-        payload["params"]["denoising_strength"] = IMG2IMG_DENOISING_STRENGTH
+        if has_mask:
+            payload["source_mask"] = base64.b64encode(source_mask_bytes).decode("ascii")
+            payload["source_processing"] = "inpainting"
+            payload["params"]["denoising_strength"] = INPAINT_DENOISING_STRENGTH
+        else:
+            payload["source_processing"] = "img2img"
+            payload["params"]["denoising_strength"] = IMG2IMG_DENOISING_STRENGTH
 
     print(
         "AI HORDE SUBMIT PREPARED "
-        f"job_id={job_id} mode={mode} model={AI_HORDE_MODEL!r} "
-        f"size={width}x{height} steps={steps} "
-        f"denoise={payload['params'].get('denoising_strength')}",
+        f"job_id={job_id} mode={mode} model={model_name!r} "
+        f"size={width}x{height} steps={steps} cfg={cfg_scale} "
+        f"has_mask={has_mask} denoise={payload['params'].get('denoising_strength')}",
         flush=True,
     )
 

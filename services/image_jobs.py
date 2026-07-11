@@ -91,6 +91,7 @@ def create_image_job(
     reference_type: str,
     reference_code: Optional[str] = None,
     custom_upload: Optional[Dict[str, Any]] = None,
+    custom_mask: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     conn = get_conn()
     try:
@@ -162,7 +163,11 @@ def create_image_job(
     else:
         print(f"IMAGE PROMPT STATUS SEND FAILED job_id={job_id}", flush=True)
 
-    run_image_job_in_thread(job_id, custom_upload=custom_upload)
+    run_image_job_in_thread(
+        job_id,
+        custom_upload=custom_upload,
+        custom_mask=custom_mask,
+    )
     return {"ok": True, "job_id": job_id}
 
 
@@ -367,7 +372,11 @@ def _save_generated_telegram_photo(job: Dict[str, Any], result: Dict[str, Any]) 
     return bool(saved)
 
 
-def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = None):
+def process_image_job(
+    job_id: int,
+    custom_upload: Optional[Dict[str, Any]] = None,
+    custom_mask: Optional[Dict[str, Any]] = None,
+):
     worker_token = secrets.token_urlsafe(12)
     if not _claim_job(job_id, worker_token):
         return
@@ -396,6 +405,11 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                         _fail(job, "本次臨時上傳圖片已失效，請重新開啟生圖頁送出")
                     else:
                         _fail(job, "找不到指定的聊天室圖片，可能已被刪除")
+                    return
+
+            if job.get("generation_mode") == "mask":
+                if not custom_mask or not custom_mask.get("bytes"):
+                    _fail(job, "遮罩資料已失效，請重新開啟生圖頁並重新圈選修改區域")
                     return
 
             source_prompt = _decrypt_prompt(
@@ -452,12 +466,18 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                         reference.get("bytes") or b"",
                         width=OUTPUT_WIDTH,
                         height=OUTPUT_HEIGHT,
+                        source_mask_bytes=(custom_mask or {}).get("bytes") or b""
+                        if job.get("generation_mode") == "mask"
+                        else b"",
                     )
                 except (RuntimeError, ValueError) as exc:
                     _fail(job, str(exc))
                     return
 
-            mode = "img2img" if prepared_reference else "txt2img"
+            if prepared_reference and prepared_reference.get("mask_bytes"):
+                mode = "inpainting"
+            else:
+                mode = "img2img" if prepared_reference else "txt2img"
             request_size = (prepared_reference or {}).get("output_size") or (OUTPUT_WIDTH, OUTPUT_HEIGHT)
             request_width, request_height = int(request_size[0]), int(request_size[1])
 
@@ -468,7 +488,9 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 f"reference_type={job.get('reference_type')} "
                 f"original_size={(prepared_reference or {}).get('original_size')} "
                 f"content_size={(prepared_reference or {}).get('content_size')} "
-                f"pad_color={(prepared_reference or {}).get('pad_color')}",
+                f"pad_color={(prepared_reference or {}).get('pad_color')} "
+                f"mask_coverage={(prepared_reference or {}).get('mask_coverage')} "
+                f"mask_blur={(prepared_reference or {}).get('mask_blur_radius')}",
                 flush=True,
             )
 
@@ -477,6 +499,8 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
                 prompt=prompt,
                 source_image_bytes=(prepared_reference or {}).get("bytes") or b"",
                 source_mime_type=(prepared_reference or {}).get("mime_type") or "image/png",
+                source_mask_bytes=(prepared_reference or {}).get("mask_bytes") or b"",
+                source_mask_mime_type=(prepared_reference or {}).get("mask_mime_type") or "image/png",
                 width=request_width,
                 height=request_height,
             )
@@ -601,10 +625,14 @@ def process_image_job(job_id: int, custom_upload: Optional[Dict[str, Any]] = Non
         _fail(current, "生圖流程發生未預期錯誤，請查看 Render log")
 
 
-def run_image_job_in_thread(job_id: int, custom_upload: Optional[Dict[str, Any]] = None):
+def run_image_job_in_thread(
+    job_id: int,
+    custom_upload: Optional[Dict[str, Any]] = None,
+    custom_mask: Optional[Dict[str, Any]] = None,
+):
     threading.Thread(
         target=process_image_job,
-        args=(int(job_id), custom_upload),
+        args=(int(job_id), custom_upload, custom_mask),
         daemon=True,
     ).start()
 

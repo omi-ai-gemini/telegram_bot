@@ -1,3 +1,5 @@
+import base64
+import binascii
 from datetime import datetime
 
 from flask import Blueprint, Response, jsonify, render_template, request
@@ -17,7 +19,32 @@ from services.image_store import (
 
 image_gen_bp = Blueprint("image_gen", __name__)
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
+MAX_MASK_BYTES = 4 * 1024 * 1024
 ALLOWED_UPLOAD_MIMES = {"image/jpeg", "image/png", "image/webp"}
+
+
+
+def _decode_mask_data_url(value):
+    text = str(value or "").strip()
+    if not text:
+        return None
+
+    if text.startswith("data:"):
+        header, separator, encoded = text.partition(",")
+        if not separator or "base64" not in header.lower() or not header.lower().startswith("data:image/png"):
+            raise ValueError("遮罩格式錯誤，請重新圈選")
+    else:
+        encoded = text
+
+    try:
+        raw = base64.b64decode(encoded, validate=True)
+    except (ValueError, binascii.Error) as exc:
+        raise ValueError("遮罩資料損壞，請重新圈選") from exc
+
+    if not raw or len(raw) > MAX_MASK_BYTES:
+        raise ValueError("遮罩資料過大，請縮小圖片後重新圈選")
+
+    return {"bytes": raw, "mime_type": "image/png"}
 
 
 def _token():
@@ -71,7 +98,10 @@ def image_generate_submit():
     if not context:
         return "找不到這輪對話，請回 Telegram 重新開啟生圖設定", 404
 
+    mask_data_url = request.form.get("mask_data_url", "")
     form = request.form.to_dict()
+    # 遮罩 base64 不回填 HTML，避免驗證錯誤時把數 MB 字串塞回頁面。
+    form.pop("mask_data_url", None)
     raw_mode = str(form.get("generation_mode") or "text").strip()
     # 舊表單相容：default=文生圖、custom=圖生圖。
     generation_mode = {"default": "text", "custom": "image"}.get(raw_mode, raw_mode)
@@ -83,7 +113,7 @@ def image_generate_submit():
     custom_prompt = str(form.get("custom_prompt") or "").strip()
     reference_code = str(form.get("reference_code") or "").strip()
 
-    if generation_mode not in {"text", "image"}:
+    if generation_mode not in {"text", "image", "mask"}:
         return _render_generate(auth, context, error="生圖模式錯誤", form=form, status=400)
     if generation_mode == "text" and gender not in {"male", "female"}:
         return _render_generate(auth, context, error="文生圖必須選擇人物性別", form=form, status=400)
@@ -93,12 +123,13 @@ def image_generate_submit():
         return _render_generate(auth, context, error="本輪訊息來源錯誤", form=form, status=400)
 
     custom_upload = None
+    custom_mask = None
     reference_type = "system_prompt"
 
-    if generation_mode == "image":
+    if generation_mode in {"image", "mask"}:
         upload = request.files.get("source_image")
 
-        # 圖生圖可使用本次上傳圖或聊天室圖片代號；同時提供時以上傳圖優先。
+        # 圖生圖／遮罩修改可使用本次上傳圖或聊天室圖片代號；同時提供時以上傳圖優先。
         if upload and upload.filename:
             mime_type = str(upload.mimetype or "").lower()
             if mime_type not in ALLOWED_UPLOAD_MIMES:
@@ -119,10 +150,25 @@ def image_generate_submit():
             return _render_generate(
                 auth,
                 context,
-                error="圖生圖必須上傳圖片，或填入聊天室圖片代號／名稱",
+                error=("遮罩修改" if generation_mode == "mask" else "圖生圖")
+                + "必須上傳圖片，或填入聊天室圖片代號／名稱",
                 form=form,
                 status=400,
             )
+
+        if generation_mode == "mask":
+            try:
+                custom_mask = _decode_mask_data_url(mask_data_url)
+            except ValueError as exc:
+                return _render_generate(auth, context, error=str(exc), form=form, status=400)
+            if not custom_mask:
+                return _render_generate(
+                    auth,
+                    context,
+                    error="請先載入來源圖片，並在圖片上塗抹要修改的區域",
+                    form=form,
+                    status=400,
+                )
 
     source_text = context.get("user_text") if source_choice == "user" else context.get("assistant_text")
     try:
@@ -152,6 +198,7 @@ def image_generate_submit():
         reference_type=reference_type,
         reference_code=reference_code or None,
         custom_upload=custom_upload,
+        custom_mask=custom_mask,
     )
     if not created.get("ok"):
         return _render_generate(auth, context, error=created.get("message") or "任務建立失敗", form=form, status=400)

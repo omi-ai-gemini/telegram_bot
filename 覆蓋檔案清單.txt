@@ -1,0 +1,8 @@
+routes/image_gen.py
+services/aihorde_service.py
+services/image_jobs.py
+services/image_prepare.py
+services/image_prompt.py
+templates/image_gen_form.html
+遮罩局部修改外帶說明.txt
+覆蓋檔案清單.txt

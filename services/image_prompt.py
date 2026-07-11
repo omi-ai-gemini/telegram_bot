@@ -66,6 +66,15 @@ Do not beautify, redesign, restyle, or replace the person without an explicit re
 """.strip()
 
 
+MASK_TO_IMAGE_GLOBAL_RULE = """
+Use the supplied source image together with its edit mask. White or light mask pixels are the only regions that may be regenerated. Black mask pixels are protected and must remain visually unchanged as much as the inpainting pipeline allows.
+
+Complete the newest explicit request clearly inside the masked region. Use nearby unmasked pixels for identity, lighting, perspective, texture, anatomy, and scene continuity. Do not redesign the whole image, do not move the camera, and do not alter protected faces, bodies, objects, signs, or background areas unless those pixels are inside the editable mask.
+
+Blend the edited area naturally across the soft mask boundary. Preserve the same person and surrounding scene. The result must look like a local photo edit, not a newly generated replacement image.
+""".strip()
+
+
 TEXT_NEGATIVE_PROMPT = (
     "close-up portrait, face-only portrait, headshot, studio portrait, glamour portrait, "
     "beauty advertisement, centered face, blurred empty background, automatic looking at camera, "
@@ -82,6 +91,13 @@ IMAGE_NEGATIVE_PROMPT = (
     "beautification, plastic skin, beauty filter, altered unrequested background, "
     "garbled existing signage, changed existing text, duplicate person, extra limbs, "
     "extra fingers, malformed hands, distorted face, stretched body, compressed body, blurry"
+)
+
+MASK_NEGATIVE_PROMPT = (
+    "changes outside mask, altered protected region, full image redraw, different person, "
+    "identity drift, moved camera, changed composition, changed unmasked background, "
+    "hard mask seam, visible cutout edge, mismatched lighting, mismatched color, blurry boundary, "
+    "duplicate person, extra limbs, extra fingers, malformed hands, distorted face"
 )
 
 
@@ -169,7 +185,7 @@ def build_image_prompt(
     generation_mode = _clean(generation_mode, 30)
     gender = _clean(gender, 20)
 
-    if generation_mode not in {"text", "image"}:
+    if generation_mode not in {"text", "image", "mask"}:
         raise ValueError("生圖模式錯誤")
     if generation_mode == "text" and gender not in TEXT_IDENTITY_PROFILES:
         raise ValueError("文生圖必須選擇人物性別")
@@ -190,10 +206,14 @@ def build_image_prompt(
         parts.append(TEXT_TO_IMAGE_GLOBAL_RULE)
         parts.append("CHARACTER IDENTITY: " + ", ".join(TEXT_IDENTITY_PROFILES[gender]))
         negative = TEXT_NEGATIVE_PROMPT
-    else:
+    elif generation_mode == "image":
         parts.append("MODE: REQUIRED SOURCE-IMAGE EDIT")
         parts.append(IMAGE_TO_IMAGE_GLOBAL_RULE)
         negative = IMAGE_NEGATIVE_PROMPT
+    else:
+        parts.append("MODE: MASKED LOCAL INPAINT EDIT")
+        parts.append(MASK_TO_IMAGE_GLOBAL_RULE)
+        negative = MASK_NEGATIVE_PROMPT
 
     if sections["priority"]:
         parts.append("HIGHEST PRIORITY REQUIRED RESULT: " + sections["priority"])
@@ -210,7 +230,7 @@ def build_image_prompt(
             "COMPOSITION CHECK: do not use a close-up or headshot unless explicitly requested. "
             "Show the character together with the requested clothing, action, object, and environment."
         )
-    else:
+    elif generation_mode == "image":
         parts.append(
             "EDIT COMPLETION CHECK: the requested edit must be unmistakably visible. "
             "Returning the source unchanged or only resized is a failed result."
@@ -220,6 +240,11 @@ def build_image_prompt(
             "different visible body area, wider framing, different room, different bed, or different scene, "
             "you must change those parts decisively even when that requires changing the original pose, crop, "
             "camera framing, or background. Preserve identity, but do not let preservation block the requested edit."
+        )
+    else:
+        parts.append(
+            "MASK COMPLETION CHECK: make the requested change clearly visible inside the white mask, "
+            "while keeping black protected areas unchanged. Do not expand the edit beyond the mask."
         )
 
     # 最高優先需求在結尾再次強調，避免長對話吃掉補充或完全自訂提示詞。

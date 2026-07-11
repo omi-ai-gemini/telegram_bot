@@ -5,31 +5,35 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Telemini 生圖設定</title>
   <style>
-    *{box-sizing:border-box} body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#fff}
-    .page{max-width:720px;margin:0 auto}.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
+    *{box-sizing:border-box}body{margin:0;padding:20px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#0f172a;color:#fff}
+    .page{max-width:760px;margin:0 auto}.card{background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.14);border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.35)}
     h1{margin:0 0 8px;font-size:26px}.desc{color:rgba(255,255,255,.72);line-height:1.7;font-size:14px;margin:0 0 18px}
     .notice,.error,.success{padding:13px 14px;border-radius:14px;margin:12px 0;line-height:1.6;font-size:14px}.notice{background:rgba(245,158,11,.13);border:1px solid rgba(245,158,11,.35);color:#fde68a}.error{background:rgba(239,68,68,.13);border:1px solid rgba(239,68,68,.35);color:#fecaca}.success{background:rgba(34,197,94,.13);border:1px solid rgba(34,197,94,.35);color:#bbf7d0}
     .section{margin-top:22px;padding-top:18px;border-top:1px solid rgba(255,255,255,.12)}.section-title{font-weight:700;font-size:18px;margin-bottom:14px}.field{margin-bottom:16px}label{display:block;margin-bottom:8px;font-size:14px;color:rgba(255,255,255,.86)}
-    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:220px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
-    .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none}
+    input,select,textarea{width:100%;padding:12px 13px;border-radius:12px;border:1px solid rgba(255,255,255,.18);background:#111827;color:#fff;font-size:15px}textarea{min-height:110px;resize:vertical}.radio-row{display:flex;gap:10px;flex-wrap:wrap}.radio{flex:1;min-width:210px;border:1px solid rgba(255,255,255,.15);border-radius:12px;padding:11px;background:rgba(255,255,255,.04)}.radio input{width:auto;margin-right:7px}
+    .preview{background:rgba(0,0,0,.18);border-radius:14px;padding:12px;margin-top:8px;font-size:13px;line-height:1.6;color:rgba(255,255,255,.76);white-space:pre-wrap;max-height:150px;overflow:auto}.hint{font-size:12px;color:rgba(255,255,255,.58);line-height:1.6;margin-top:6px}.hidden{display:none!important}
     button{width:100%;padding:14px;border:0;border-radius:14px;background:#2563eb;color:white;font-weight:700;font-size:16px;cursor:pointer}button:disabled{opacity:.45;cursor:not-allowed}.countdown{text-align:center;color:#93c5fd;font-size:13px;margin:14px 0 0}.job{font-weight:700}
+    .secondary-btn{background:#334155;padding:11px 13px;font-size:14px}.tool-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}.tool-grid button{padding:10px 8px;font-size:13px}.tool-grid button.active{background:#dc2626}.mask-wrap{border:1px solid rgba(255,255,255,.2);background:#020617;border-radius:15px;padding:8px;overflow:hidden}.mask-canvas{display:block;width:100%;height:auto;max-height:72vh;object-fit:contain;border-radius:10px;touch-action:none;cursor:crosshair;background:#111827}.mask-status{font-size:13px;line-height:1.6;padding:10px 12px;border-radius:12px;background:rgba(37,99,235,.12);color:#bfdbfe;margin:10px 0}.range-row{display:flex;align-items:center;gap:12px}.range-row input{padding:0}.range-value{min-width:54px;text-align:right;font-size:13px;color:#cbd5e1}.source-actions{display:flex;gap:8px}.source-actions input{flex:1}.source-actions button{width:auto;white-space:nowrap}
+    @media(max-width:560px){body{padding:10px}.card{padding:16px}.radio{min-width:100%}.tool-grid{grid-template-columns:repeat(2,1fr)}.source-actions{display:block}.source-actions button{width:100%;margin-top:8px}}
   </style>
 </head>
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">文生圖會生成自然相機攝影風格的人物畫面；圖生圖會以來源圖片為主，只修改提示詞明確要求的內容。任務會在背景執行，不影響聊天室繼續對話。</p>
-  <div class="notice">隱私提醒：圖片與提示詞會送往 AI Horde 的社群運算節點處理，不適合放入機密資料。臨時上傳圖片只供本次任務使用，不加入 Telemini 圖片庫。</div>
+  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。任務會在背景執行，不影響聊天室繼續對話。</p>
+  <div class="notice">隱私提醒：圖片、遮罩與提示詞會送往 AI Horde 社群運算節點。遮罩模式需要支援 inpainting 的工作節點，排隊時間可能比一般生圖長。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
 
   <form method="post" enctype="multipart/form-data" id="genForm">
     <input type="hidden" name="token" value="{{ token }}">
+    <input type="hidden" name="mask_data_url" id="maskDataInput" value="">
 
     <div class="section"><div class="section-title">1. 生圖模式</div>
       <div class="field"><div class="radio-row">
-        <label class="radio"><input type="radio" name="generation_mode" value="text" {% if form.get('generation_mode','text') not in ['image','custom'] %}checked{% endif %}><b>文生圖</b><div class="hint">使用固定人物身份描述，生成較自然、接近真實相機拍攝的畫面。</div></label>
-        <label class="radio"><input type="radio" name="generation_mode" value="image" {% if form.get('generation_mode') in ['image','custom'] %}checked{% endif %}><b>圖生圖</b><div class="hint">以來源圖為主，保留未指定修改的人物、構圖、背景、物品與文字區域。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="text" {% if form.get('generation_mode','text') not in ['image','custom','mask'] %}checked{% endif %}><b>文生圖</b><div class="hint">使用固定人物身份描述，從文字生成完整畫面。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="image" {% if form.get('generation_mode') in ['image','custom'] %}checked{% endif %}><b>整體圖生圖</b><div class="hint">整張圖片都可以被模型重繪，適合大幅改姿勢、構圖或場景。</div></label>
+        <label class="radio"><input type="radio" name="generation_mode" value="mask" {% if form.get('generation_mode')=='mask' %}checked{% endif %}><b>局部遮罩修改</b><div class="hint">只有塗紅區域交給 AI 修改，其他區域盡量保留。</div></label>
       </div></div>
 
       <div id="textModeFields">
@@ -39,8 +43,22 @@
       </div>
 
       <div id="imageModeFields" class="hidden">
-        <div class="field"><label>本次臨時上傳圖片</label><input type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。上傳圖與圖片代號同時填寫時，以上傳圖優先。</div></div>
-        <div class="field"><label>或使用聊天室圖片代號／名稱</label><input name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><div class="hint">圖生圖至少要提供其中一種來源圖。</div></div>
+        <div class="field"><label>本次臨時上傳圖片</label><input id="sourceImageInput" type="file" name="source_image" accept="image/jpeg,image/png,image/webp"><div class="hint">JPG／PNG／WEBP，最多 12MB。上傳圖與圖片代號同時填寫時，以上傳圖優先。</div></div>
+        <div class="field"><label>或使用聊天室圖片代號／名稱</label><div class="source-actions"><input id="referenceCode" name="reference_code" value="{{ form.get('reference_code','') }}" placeholder="例如 48372615 或 角色正面"><button type="button" class="secondary-btn" id="loadReferenceBtn">載入圖片</button></div><div class="hint">整體圖生圖或遮罩模式至少要提供其中一種來源圖。</div></div>
+      </div>
+
+      <div id="maskEditorFields" class="hidden">
+        <div class="mask-status" id="maskStatus">請先選擇上傳圖片，或輸入聊天室圖片代號後按「載入圖片」。紅色區域代表 AI 可以修改。</div>
+        <div class="field"><label>筆刷大小</label><div class="range-row"><input id="brushSize" type="range" min="8" max="160" value="52"><span class="range-value" id="brushSizeValue">52 px</span></div></div>
+        <div class="tool-grid">
+          <button type="button" class="active" id="paintBtn">🖌️ 塗修改區</button>
+          <button type="button" class="secondary-btn" id="eraseBtn">🧽 擦除</button>
+          <button type="button" class="secondary-btn" id="undoBtn">↩️ 復原</button>
+          <button type="button" class="secondary-btn" id="clearBtn">🗑️ 清空</button>
+          <button type="button" class="secondary-btn" id="invertBtn">◐ 反轉遮罩</button>
+        </div>
+        <div id="maskCanvasWrap" class="mask-wrap hidden"><canvas id="maskCanvas" class="mask-canvas"></canvas></div>
+        <div class="hint">塗紅＝允許修改；未塗＝保護。換背景時可先塗人物，再按「反轉遮罩」，就會改成背景可修改、人物保護。</div>
       </div>
     </div>
 
@@ -58,13 +76,13 @@
         <div class="field"><label>使用者訊息預覽</label><div class="preview">{{ context.get('user_text') or '沒有找到使用者訊息' }}</div></div>
         <div class="field"><label>AI 訊息預覽</label><div class="preview">{{ context.get('assistant_text') or '沒有找到 AI 訊息' }}</div></div>
         <div class="field"><label>固定標籤（單選）</label><select name="fixed_tag"><option value="">不使用固定標籤</option>{% for tag in fixed_tags %}<option value="{{ tag }}" {% if form.get('fixed_tag')==tag %}selected{% endif %}>{{ tag }}</option>{% endfor %}</select></div>
-        <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="例如：寬鬆白色襯衫、手持鑰匙、站在高級住宅客廳。這裡的明確要求會優先於前面的對話內容。">{{ form.get('supplement_prompt','') }}</textarea></div>
+        <div class="field"><label>補充提示詞（最高優先，選填）</label><textarea name="supplement_prompt" placeholder="遮罩模式請直接描述紅色區域要變成什麼，例如：把紅色區域的衣服改成寬鬆白襯衫。">{{ form.get('supplement_prompt','') }}</textarea></div>
       </div>
 
       <div id="customPromptFields" class="hidden">
-        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成或修改的圖片；這段內容會作為最高優先要求。">{{ form.get('custom_prompt','') }}</textarea></div>
+        <div class="field"><label>完全自訂提示詞</label><textarea name="custom_prompt" placeholder="完整描述要生成或修改的內容；遮罩模式只會套用在塗紅區域。">{{ form.get('custom_prompt','') }}</textarea></div>
       </div>
-      <div class="hint">不再逐項拆髮型、衣服或場景。所有修改都使用同一條規則：最新且最明確的提示詞優先；圖生圖未提到的部分盡量保留原圖。</div>
+      <div class="hint">遮罩模式下，提示詞只描述圈選區域的目標結果。未圈選區域會當成保護區，不需要在提示詞反覆要求保留。</div>
     </div>
 
     <div class="section"><button type="submit" id="submitBtn">送出生圖任務</button><div class="countdown" id="countdown"></div></div>
@@ -72,17 +90,260 @@
 </div></div>
 <script>
   const exp={{ expires_at|int }}*1000;
+  const token={{ token|tojson }};
+  const form=document.getElementById('genForm');
   const modeInputs=[...document.querySelectorAll('input[name="generation_mode"]')];
   const promptInputs=[...document.querySelectorAll('input[name="prompt_mode"]')];
+  const sourceInput=document.getElementById('sourceImageInput');
+  const referenceCode=document.getElementById('referenceCode');
+  const loadReferenceBtn=document.getElementById('loadReferenceBtn');
+  const maskDataInput=document.getElementById('maskDataInput');
+  const canvas=document.getElementById('maskCanvas');
+  const ctx=canvas.getContext('2d');
+  const maskCanvas=document.createElement('canvas');
+  const maskCtx=maskCanvas.getContext('2d',{willReadFrequently:true});
+  const overlayCanvas=document.createElement('canvas');
+  const overlayCtx=overlayCanvas.getContext('2d');
+  const canvasWrap=document.getElementById('maskCanvasWrap');
+  const maskStatus=document.getElementById('maskStatus');
+  const brushSize=document.getElementById('brushSize');
+  const brushSizeValue=document.getElementById('brushSizeValue');
+  const paintBtn=document.getElementById('paintBtn');
+  const eraseBtn=document.getElementById('eraseBtn');
+  const undoBtn=document.getElementById('undoBtn');
+  const clearBtn=document.getElementById('clearBtn');
+  const invertBtn=document.getElementById('invertBtn');
+
+  let baseImage=null;
+  let loadedSourceKey='';
+  let loadedSourceType='';
+  let drawing=false;
+  let tool='paint';
+  let lastPoint=null;
+  let history=[];
+  let maskTouched=false;
+  let objectUrl='';
+
+  function currentMode(){return document.querySelector('input[name="generation_mode"]:checked').value;}
   function refresh(){
-    const mode=document.querySelector('input[name="generation_mode"]:checked').value;
+    const mode=currentMode();
     document.getElementById('textModeFields').classList.toggle('hidden',mode!=='text');
-    document.getElementById('imageModeFields').classList.toggle('hidden',mode!=='image');
+    document.getElementById('imageModeFields').classList.toggle('hidden',!['image','mask'].includes(mode));
+    document.getElementById('maskEditorFields').classList.toggle('hidden',mode!=='mask');
+    loadReferenceBtn.classList.toggle('hidden',mode!=='mask');
     const pm=document.querySelector('input[name="prompt_mode"]:checked').value;
     document.getElementById('tagFields').classList.toggle('hidden',pm==='custom');
     document.getElementById('customPromptFields').classList.toggle('hidden',pm!=='custom');
+    if(mode!=='mask') maskDataInput.value='';
   }
-  modeInputs.forEach(x=>x.addEventListener('change',refresh));promptInputs.forEach(x=>x.addEventListener('change',refresh));refresh();
-  function tick(){const left=Math.max(0,Math.floor((exp-Date.now())/1000));const m=Math.floor(left/60),s=left%60;document.getElementById('countdown').textContent=left?`連結剩餘 ${m}:${String(s).padStart(2,'0')}`:'連結已失效，請回 Telegram 重新開啟';document.getElementById('submitBtn').disabled=!left;}tick();setInterval(tick,1000);
+  modeInputs.forEach(x=>x.addEventListener('change',refresh));
+  promptInputs.forEach(x=>x.addEventListener('change',refresh));
+  refresh();
+
+  function setTool(next){
+    tool=next;
+    paintBtn.classList.toggle('active',tool==='paint');
+    paintBtn.classList.toggle('secondary-btn',tool!=='paint');
+    eraseBtn.classList.toggle('active',tool==='erase');
+    eraseBtn.classList.toggle('secondary-btn',tool!=='erase');
+  }
+  paintBtn.addEventListener('click',()=>setTool('paint'));
+  eraseBtn.addEventListener('click',()=>setTool('erase'));
+  brushSize.addEventListener('input',()=>brushSizeValue.textContent=`${brushSize.value} px`);
+
+  function resetMask(clearHistory=true){
+    if(!maskCanvas.width)return;
+    maskCtx.save();
+    maskCtx.globalCompositeOperation='source-over';
+    maskCtx.fillStyle='#000';
+    maskCtx.fillRect(0,0,maskCanvas.width,maskCanvas.height);
+    maskCtx.restore();
+    if(clearHistory)history=[];
+    maskTouched=false;
+    redraw();
+  }
+
+  function redraw(){
+    if(!baseImage||!canvas.width)return;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(baseImage,0,0,canvas.width,canvas.height);
+
+    overlayCtx.clearRect(0,0,overlayCanvas.width,overlayCanvas.height);
+    overlayCtx.save();
+    overlayCtx.fillStyle='rgba(239,68,68,.62)';
+    overlayCtx.fillRect(0,0,overlayCanvas.width,overlayCanvas.height);
+    overlayCtx.globalCompositeOperation='destination-in';
+    overlayCtx.drawImage(maskCanvas,0,0);
+    overlayCtx.restore();
+    ctx.drawImage(overlayCanvas,0,0);
+  }
+
+  function setupImage(img,key,type){
+    const maxSide=1280;
+    const naturalW=img.naturalWidth||img.width;
+    const naturalH=img.naturalHeight||img.height;
+    if(!naturalW||!naturalH){maskStatus.textContent='圖片讀取失敗，請換一張圖片。';return;}
+    const scale=Math.min(1,maxSide/Math.max(naturalW,naturalH));
+    const w=Math.max(1,Math.round(naturalW*scale));
+    const h=Math.max(1,Math.round(naturalH*scale));
+    canvas.width=maskCanvas.width=overlayCanvas.width=w;
+    canvas.height=maskCanvas.height=overlayCanvas.height=h;
+    baseImage=img;
+    loadedSourceKey=key;
+    loadedSourceType=type;
+    canvasWrap.classList.remove('hidden');
+    resetMask();
+    maskStatus.textContent=`圖片已載入（${naturalW}×${naturalH}）。請把要修改的區域塗成紅色。`;
+  }
+
+  function loadImageUrl(url,key,type){
+    const img=new Image();
+    img.onload=()=>setupImage(img,key,type);
+    img.onerror=()=>{maskStatus.textContent='圖片載入失敗，請確認圖片代號或重新上傳。';};
+    img.src=url;
+  }
+
+  sourceInput.addEventListener('change',()=>{
+    const file=sourceInput.files&&sourceInput.files[0];
+    if(!file)return;
+    if(objectUrl)URL.revokeObjectURL(objectUrl);
+    objectUrl=URL.createObjectURL(file);
+    loadImageUrl(objectUrl,`${file.name}:${file.size}:${file.lastModified}`,'upload');
+  });
+
+  loadReferenceBtn.addEventListener('click',()=>{
+    if(sourceInput.files&&sourceInput.files[0]){
+      maskStatus.textContent='目前以上傳圖片為優先；要使用聊天室圖片請先清除上傳檔案。';
+      return;
+    }
+    const code=referenceCode.value.trim();
+    if(!code){maskStatus.textContent='請先輸入聊天室圖片代號或名稱。';return;}
+    const url=`/setting/images/preview/${encodeURIComponent(code)}?token=${encodeURIComponent(token)}`;
+    loadImageUrl(url,code,'reference');
+  });
+
+  function pointFromEvent(event){
+    const rect=canvas.getBoundingClientRect();
+    return {
+      x:(event.clientX-rect.left)*(canvas.width/rect.width),
+      y:(event.clientY-rect.top)*(canvas.height/rect.height),
+      scale:canvas.width/rect.width
+    };
+  }
+
+  function saveHistory(){
+    if(!maskCanvas.width)return;
+    history.push(maskCanvas.toDataURL('image/png'));
+    if(history.length>12)history.shift();
+  }
+
+  function drawSegment(from,to){
+    const width=Number(brushSize.value)*to.scale;
+    maskCtx.save();
+    maskCtx.globalCompositeOperation='source-over';
+    maskCtx.strokeStyle=tool==='paint'?'#fff':'#000';
+    maskCtx.fillStyle=tool==='paint'?'#fff':'#000';
+    maskCtx.lineWidth=width;
+    maskCtx.lineCap='round';
+    maskCtx.lineJoin='round';
+    maskCtx.beginPath();
+    maskCtx.moveTo(from.x,from.y);
+    maskCtx.lineTo(to.x,to.y);
+    maskCtx.stroke();
+    maskCtx.beginPath();
+    maskCtx.arc(to.x,to.y,width/2,0,Math.PI*2);
+    maskCtx.fill();
+    maskCtx.restore();
+    maskTouched=true;
+    redraw();
+  }
+
+  canvas.addEventListener('pointerdown',event=>{
+    if(!baseImage)return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
+    saveHistory();
+    drawing=true;
+    lastPoint=pointFromEvent(event);
+    drawSegment(lastPoint,lastPoint);
+  });
+  canvas.addEventListener('pointermove',event=>{
+    if(!drawing)return;
+    event.preventDefault();
+    const next=pointFromEvent(event);
+    drawSegment(lastPoint,next);
+    lastPoint=next;
+  });
+  function stopDrawing(event){
+    if(!drawing)return;
+    drawing=false;
+    lastPoint=null;
+    try{canvas.releasePointerCapture(event.pointerId);}catch(_){ }
+  }
+  canvas.addEventListener('pointerup',stopDrawing);
+  canvas.addEventListener('pointercancel',stopDrawing);
+
+  undoBtn.addEventListener('click',()=>{
+    const previous=history.pop();
+    if(!previous)return;
+    const img=new Image();
+    img.onload=()=>{
+      maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
+      maskCtx.drawImage(img,0,0,maskCanvas.width,maskCanvas.height);
+      maskTouched=true;
+      redraw();
+    };
+    img.src=previous;
+  });
+  clearBtn.addEventListener('click',()=>{saveHistory();resetMask(false);});
+  invertBtn.addEventListener('click',()=>{
+    if(!maskCanvas.width)return;
+    saveHistory();
+    const data=maskCtx.getImageData(0,0,maskCanvas.width,maskCanvas.height);
+    for(let i=0;i<data.data.length;i+=4){
+      const value=255-data.data[i];
+      data.data[i]=data.data[i+1]=data.data[i+2]=value;
+      data.data[i+3]=255;
+    }
+    maskCtx.putImageData(data,0,0);
+    maskTouched=true;
+    redraw();
+  });
+
+  function loadedSourceStillMatches(){
+    const file=sourceInput.files&&sourceInput.files[0];
+    if(file){
+      const key=`${file.name}:${file.size}:${file.lastModified}`;
+      return loadedSourceType==='upload'&&loadedSourceKey===key;
+    }
+    return loadedSourceType==='reference'&&loadedSourceKey===referenceCode.value.trim();
+  }
+
+  form.addEventListener('submit',event=>{
+    if(currentMode()!=='mask')return;
+    if(!baseImage||!loadedSourceStillMatches()){
+      event.preventDefault();
+      maskStatus.textContent='來源圖片尚未載入，或載入後已更換。請重新載入再圈選。';
+      maskStatus.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+    if(!maskTouched){
+      event.preventDefault();
+      maskStatus.textContent='遮罩目前是空的，請先塗抹要修改的區域。';
+      maskStatus.scrollIntoView({behavior:'smooth',block:'center'});
+      return;
+    }
+    maskDataInput.value=maskCanvas.toDataURL('image/png');
+    document.getElementById('submitBtn').disabled=true;
+    document.getElementById('submitBtn').textContent='正在送出遮罩任務…';
+  });
+
+  function tick(){
+    const left=Math.max(0,Math.floor((exp-Date.now())/1000));
+    const m=Math.floor(left/60),s=left%60;
+    document.getElementById('countdown').textContent=left?`連結剩餘 ${m}:${String(s).padStart(2,'0')}`:'連結已失效，請回 Telegram 重新開啟';
+    if(!left)document.getElementById('submitBtn').disabled=true;
+  }
+  tick();setInterval(tick,1000);
 </script>
 </body></html>
