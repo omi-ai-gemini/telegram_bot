@@ -519,6 +519,7 @@ def process_image_job(
                     organized = organize_image_prompt(
                         draft_prompt=source_prompt,
                         generation_mode=job.get("generation_mode") or "text",
+                        reference_type=job.get("reference_type"),
                         debug_context={
                             "chat_id": job.get("chat_id"),
                             "user_id": job.get("user_id"),
@@ -616,6 +617,11 @@ def process_image_job(
                 flush=True,
             )
 
+            request_profile = (
+                "text_reference" if job.get("generation_mode") == "text" and job.get("reference_type") == "system_reference"
+                else ("mask_edit" if job.get("generation_mode") == "mask" else ("image_edit" if job.get("generation_mode") == "image" else "text"))
+            )
+
             submitted = submit_image_request(
                 job_id=job["id"],
                 prompt=prompt,
@@ -625,6 +631,7 @@ def process_image_job(
                 source_mask_mime_type=(prepared_reference or {}).get("mask_mime_type") or "image/png",
                 width=request_width,
                 height=request_height,
+                request_profile=request_profile,
             )
             if not submitted.get("ok"):
                 _fail(job, submitted.get("message") or "AI Horde 拒絕任務", code="SUBMIT_FAILED")

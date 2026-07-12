@@ -12,6 +12,7 @@ AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2")
 # 仍保留環境變數覆蓋能力，讓你可以隨時改回自己要的模型。
 AI_HORDE_TXT2IMG_MODEL = os.getenv("AI_HORDE_TXT2IMG_MODEL", "AlbedoBase XL (SDXL)")
 AI_HORDE_IMG2IMG_MODEL = os.getenv("AI_HORDE_IMG2IMG_MODEL", "Realistic Vision")
+AI_HORDE_REFERENCE_IMG2IMG_MODEL = os.getenv("AI_HORDE_REFERENCE_IMG2IMG_MODEL", "Realistic Vision")
 AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Realistic Vision Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
@@ -19,6 +20,7 @@ _SESSION = requests.Session()
 # 新預設值改成較適合寫真模型的參數，不再沿用 Flux Schnell 的極低 steps。
 TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "28"))
 IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "28"))
+REFERENCE_IMG2IMG_STEPS = int(os.getenv("AI_HORDE_REFERENCE_IMG2IMG_STEPS", "28"))
 INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "24"))
 
 try:
@@ -30,6 +32,11 @@ try:
     IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_IMG2IMG_CFG_SCALE", "5.0"))
 except Exception:
     IMG2IMG_CFG_SCALE = 5.0
+
+try:
+    REFERENCE_IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE", "5.2"))
+except Exception:
+    REFERENCE_IMG2IMG_CFG_SCALE = 5.2
 
 try:
     IMG2IMG_DENOISING_STRENGTH = float(
@@ -110,8 +117,9 @@ def _looks_like_color_only_edit(prompt: str) -> bool:
     return any(word in text for word in color_words) and not any(word in text for word in restructure_words)
 
 
-def _pick_denoising_strength(mode: str, prompt: str) -> float:
+def _pick_denoising_strength(mode: str, prompt: str, request_profile: str = "") -> float:
     text = str(prompt or "").lower()
+    request_profile = str(request_profile or "").strip()
     if mode == "inpainting":
         if _looks_like_color_only_edit(text):
             return _clamp(float(os.getenv("AI_HORDE_INPAINT_DENOISE_COLOR_ONLY", "0.32")))
@@ -120,6 +128,10 @@ def _pick_denoising_strength(mode: str, prompt: str) -> float:
         return INPAINT_DENOISING_STRENGTH
 
     if mode == "img2img":
+        if request_profile == "text_reference":
+            if any(word in text for word in ["坐姿", "站姿", "pose", "sitting", "standing", "跪", "蹲", "躺", "趴", "臥", "seated", "lying"]):
+                return _clamp(float(os.getenv("AI_HORDE_REFERENCE_DENOISE_POSE", "0.84")))
+            return _clamp(float(os.getenv("AI_HORDE_REFERENCE_DENOISING_STRENGTH", "0.76")))
         if any(word in text for word in ["坐姿", "站姿", "pose", "sitting", "standing", "跪", "蹲", "躺", "趴"]):
             return _clamp(float(os.getenv("AI_HORDE_IMG2IMG_DENOISE_POSE", "0.82")))
         if _looks_like_color_only_edit(text):
@@ -138,6 +150,7 @@ def submit_image_request(
     source_mask_mime_type: str = "image/png",
     width: int = 896,
     height: int = 1152,
+    request_profile: str = "",
 ) -> Dict[str, Any]:
     keys = _keys()
     if not keys:
@@ -153,10 +166,17 @@ def submit_image_request(
     has_mask = bool(source_image_bytes and source_mask_bytes)
     mode = "inpainting" if has_mask else ("img2img" if has_source else "txt2img")
 
+    request_profile = str(request_profile or "").strip()
+    request_profile = str(request_profile or "").strip()
+
     if mode == "inpainting":
         model_name = AI_HORDE_INPAINT_MODEL
         steps = INPAINT_STEPS
         cfg_scale = INPAINT_CFG_SCALE
+    elif mode == "img2img" and request_profile == "text_reference":
+        model_name = AI_HORDE_REFERENCE_IMG2IMG_MODEL
+        steps = REFERENCE_IMG2IMG_STEPS
+        cfg_scale = REFERENCE_IMG2IMG_CFG_SCALE
     elif mode == "img2img":
         model_name = AI_HORDE_IMG2IMG_MODEL
         steps = IMG2IMG_STEPS
@@ -192,14 +212,14 @@ def submit_image_request(
         if has_mask:
             payload["source_mask"] = base64.b64encode(source_mask_bytes).decode("ascii")
             payload["source_processing"] = "inpainting"
-            payload["params"]["denoising_strength"] = _pick_denoising_strength("inpainting", prompt)
+            payload["params"]["denoising_strength"] = _pick_denoising_strength("inpainting", prompt, request_profile=request_profile)
         else:
             payload["source_processing"] = "img2img"
-            payload["params"]["denoising_strength"] = _pick_denoising_strength("img2img", prompt)
+            payload["params"]["denoising_strength"] = _pick_denoising_strength("img2img", prompt, request_profile=request_profile)
 
     print(
         "AI HORDE SUBMIT PREPARED "
-        f"job_id={job_id} mode={mode} model={model_name!r} "
+        f"job_id={job_id} mode={mode} profile={request_profile or mode} model={model_name!r} "
         f"size={width}x{height} steps={steps} cfg={cfg_scale} "
         f"has_mask={has_mask} denoise={payload['params'].get('denoising_strength')}",
         flush=True,

@@ -4288,7 +4288,7 @@ CONTINUE_USER_TEXT = """
 # services\aihorde_service.py
 
 - 類型：.py
-- 行數：309
+- 行數：329
 
 ## imports
 - base64
@@ -4331,6 +4331,7 @@ AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2")
 # 仍保留環境變數覆蓋能力，讓你可以隨時改回自己要的模型。
 AI_HORDE_TXT2IMG_MODEL = os.getenv("AI_HORDE_TXT2IMG_MODEL", "AlbedoBase XL (SDXL)")
 AI_HORDE_IMG2IMG_MODEL = os.getenv("AI_HORDE_IMG2IMG_MODEL", "Realistic Vision")
+AI_HORDE_REFERENCE_IMG2IMG_MODEL = os.getenv("AI_HORDE_REFERENCE_IMG2IMG_MODEL", "Realistic Vision")
 AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Realistic Vision Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
@@ -4338,6 +4339,7 @@ _SESSION = requests.Session()
 # 新預設值改成較適合寫真模型的參數，不再沿用 Flux Schnell 的極低 steps。
 TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "28"))
 IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "28"))
+REFERENCE_IMG2IMG_STEPS = int(os.getenv("AI_HORDE_REFERENCE_IMG2IMG_STEPS", "28"))
 INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "24"))
 
 try:
@@ -4349,6 +4351,11 @@ try:
     IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_IMG2IMG_CFG_SCALE", "5.0"))
 except Exception:
     IMG2IMG_CFG_SCALE = 5.0
+
+try:
+    REFERENCE_IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE", "5.2"))
+except Exception:
+    REFERENCE_IMG2IMG_CFG_SCALE = 5.2
 
 try:
     IMG2IMG_DENOISING_STRENGTH = float(
@@ -4390,15 +4397,8 @@ def _keys() -> List[Tuple[int, str]]:
 
 def _headers(api_key: str) -> Dict[str, str]:
     return {
-        "apikey": api_key,
-        "Client-Agent": AI_HORDE_CLIENT_AGENT,
-        "Content-Type": "application/json",
-    }
-
-
-def _json_or_error(res: requests.Response) -> Dict[str, Any]:
 ...
-... 已省略 229 行
+... 已省略 249 行
 ```
 
 
@@ -4407,9 +4407,10 @@ def _json_or_error(res: requests.Response) -> Dict[str, Any]:
 # services\aihorde_text_service.py
 
 - 類型：.py
-- 行數：705
+- 行數：940
 
 ## imports
+- json
 - os
 - requests
 - services.prompt_debug.save_prompt_debug_log
@@ -4439,10 +4440,17 @@ def _json_or_error(res: requests.Response) -> Dict[str, Any]:
 - generate_text
 - _save_secondary_debug
 - generate_chat_reply
+- _extract_json_payload
+- _ensure_string_list
+- _join_unique
+- _mode_profile
+- _legacy_image_prompt_organizer
+- _structured_image_prompt_organizer
 - organize_image_prompt
 
 ## preview
 ```text
+import json
 import os
 import threading
 import time
@@ -4522,9 +4530,8 @@ def get_secondary_model_label() -> str:
 
 
 
-def _clean_generated_text(text: Any) -> str:
 ...
-... 已省略 625 行
+... 已省略 860 行
 ```
 
 
@@ -5972,7 +5979,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：847
+- 行數：854
 
 ## imports
 - datetime.datetime
@@ -6118,7 +6125,7 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
 
 
 ...
-... 已省略 767 行
+... 已省略 774 行
 ```
 
 
@@ -11338,62 +11345,83 @@ Telemini 四不像專案整理修正版
 # 本次修改說明.txt
 
 - 類型：.txt
-- 行數：52
+- 行數：73
 
 ## preview
 ```text
-Telemini 生圖模型切換 + 圖片 Prompt 接回副模型
+Telemini 生圖任務解析重寫外帶包
 
-本包已修改：
-1. 文生圖預設模型
-   - 改為 AI_HORDE_TXT2IMG_MODEL = AlbedoBase XL (SDXL)
+這包不是只換一句 prompt，而是重寫「副模型整理圖片 prompt」的流程，並補上模式分流。
 
-2. 整體圖生圖預設模型
-   - 改為 AI_HORDE_IMG2IMG_MODEL = Realistic Vision
+本次修改重點
+1. 保留目前生成模式
+   - 文生圖
+   - 文生圖＋基準圖（原本勾選啟用基準圖）
+   - 整體圖生圖
+   - 局部遮罩修改
 
-3. 局部遮罩預設模型
-   - 改為 AI_HORDE_INPAINT_MODEL = Realistic Vision Inpainting
+2. 副模型改成先做「中文任務解析」，再輸出英文圖片 prompt
+   - 不再直接把使用者原句先翻譯成英文再整理
+   - 先用中文理解需求，再輸出結構化 JSON
+   - JSON 會拆出：
+     * must_keep
+     * must_change
+     * must_not_change
+     * must_not_add
+     * low_priority_fill
+     * final_positive_prompt
+     * final_negative_prompt
 
-4. 圖片 Prompt 整理重新接回副模型
-   - 建立生圖任務後，會先把原始圖片 Prompt 丟給副模型整理英文 prompt。
-   - 成功：寫入 final_prompt 後送生圖。
-   - 失敗：自動 fallback 回原始 prompt，不會卡死。
-   - 會在 image_generation_jobs 紀錄 prompt_generation_status、prompt_model、prompt_error。
+3. 明確優先順序
+   A. 使用者明確要求修改或限制不動的內容（最高優先）
+   B. 來源圖 / 基準圖原本存在且未要求修改的內容
+   C. 必要但未指定的補完（最低優先）
 
-5. 參數改為較適合寫真模型
-   - txt2img / img2img / inpaint 不再沿用 Flux Schnell 的低 steps。
-   - 已改成較適合寫真模型的 steps / cfg 預設值。
+4. 不同模式走不同的副模型任務描述
+   - text_to_image
+   - reference_text_to_image
+   - full_image_edit
+   - mask_edit
 
-6. 遮罩顏色修改加入較低重繪強度判斷
-   - 如果 prompt 看起來只是「改顏色」，會自動降低 inpaint denoise。
-   - 目的是避免「把黃色內衣改成黑灰蕾絲」這種整件重做。
+5. 副模型失敗時仍可 fallback
+   - 若副模型沒有正確輸出 JSON，會退回舊版英文化整理
+   - 不會直接卡死整個生圖流程
 
-7. 整體圖生圖補強規則
-   - 若 prompt 明確要求「背景不變」，會更強調保留原背景。
-   - 若 prompt 明確要求「姿勢改變」，會更強調真的改姿勢，不要原圖幾乎不變。
+6. 模型分流補強
+   - txt2img：AI_HORDE_TXT2IMG_MODEL
+   - 文生圖＋基準圖：AI_HORDE_REFERENCE_IMG2IMG_MODEL
+   - 整體圖生圖：AI_HORDE_IMG2IMG_MODEL
+   - 局部遮罩：AI_HORDE_INPAINT_MODEL
 
-=== 可調整環境變數（可不設，直接用預設） ===
+7. 基準圖專用 profile
+   - 文生圖勾選啟用基準圖時，request_profile 會變成 text_reference
+   - 會使用專門的 reference img2img 模型與參數
+
+8. 參數補強
+   - 新增 AI_HORDE_REFERENCE_IMG2IMG_MODEL
+   - 新增 AI_HORDE_REFERENCE_IMG2IMG_STEPS
+   - 新增 AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE
+   - 新增 AI_HORDE_REFERENCE_DENOISING_STRENGTH
+   - 新增 AI_HORDE_REFERENCE_DENOISE_POSE
+
+建議可選環境變數
 AI_HORDE_TXT2IMG_MODEL=AlbedoBase XL (SDXL)
+AI_HORDE_REFERENCE_IMG2IMG_MODEL=Realistic Vision
 AI_HORDE_IMG2IMG_MODEL=Realistic Vision
 AI_HORDE_INPAINT_MODEL=Realistic Vision Inpainting
 
-AI_HORDE_TXT2IMG_STEPS=28
-AI_HORDE_TXT2IMG_CFG_SCALE=5.5
-AI_HORDE_IMG2IMG_STEPS=28
-AI_HORDE_IMG2IMG_CFG_SCALE=5.0
-AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
-AI_HORDE_INPAINT_STEPS=24
-AI_HORDE_INPAINT_CFG_SCALE=7
-AI_HORDE_INPAINT_DENOISING_STRENGTH=0.72
+AI_HORDE_REFERENCE_IMG2IMG_STEPS=28
+AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE=5.2
+AI_HORDE_REFERENCE_DENOISING_STRENGTH=0.76
+AI_HORDE_REFERENCE_DENOISE_POSE=0.84
 
-# 顏色修改／姿勢修改的額外細部控制
-AI_HORDE_INPAINT_DENOISE_COLOR_ONLY=0.32
-AI_HORDE_INPAINT_DENOISE_PATTERN=0.50
-AI_HORDE_IMG2IMG_DENOISE_COLOR_ONLY=0.58
-AI_HORDE_IMG2IMG_DENOISE_POSE=0.82
+本包覆蓋檔案
+- services/aihorde_text_service.py
+- services/image_jobs.py
+- services/aihorde_service.py
 
-=== 覆蓋方式 ===
-把本包內 telemini 資料夾中的檔案，覆蓋到你的專案同路徑即可。
+覆蓋後建議執行
+python -m py_compile servicesihorde_text_service.py services\image_jobs.py servicesihorde_service.py
 ```
 
 
@@ -11817,9 +11845,9 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 
 ## preview
 ```text
-services/aihorde_service.py
+services/aihorde_text_service.py
 services/image_jobs.py
-services/image_prompt.py
+services/aihorde_service.py
 本次修改說明.txt
 ```
 

@@ -1,3 +1,4 @@
+import json
 import os
 import threading
 import time
@@ -575,20 +576,81 @@ def generate_chat_reply(
     return result
 
 
-def organize_image_prompt(
-    draft_prompt: str,
+
+
+def _extract_json_payload(text: Any) -> Optional[Dict[str, Any]]:
+    value = _clean_generated_text(text)
+    if not value:
+        return None
+    if value.startswith("```"):
+        lines = [line for line in value.splitlines() if not line.strip().startswith("```")]
+        value = "\n".join(lines).strip()
+
+    candidates = [value]
+    start = value.find("{")
+    end = value.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        candidates.insert(0, value[start:end+1])
+
+    for candidate in candidates:
+        try:
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            continue
+    return None
+
+
+def _ensure_string_list(value: Any) -> List[str]:
+    if isinstance(value, list):
+        result = []
+        for item in value:
+            item_text = str(item or '').strip()
+            if item_text:
+                result.append(item_text)
+        return result
+    if isinstance(value, str):
+        return [line.strip(' -•	') for line in value.splitlines() if line.strip(' -•	')]
+    return []
+
+
+def _join_unique(items: List[str]) -> str:
+    seen = set()
+    out = []
+    for item in items:
+        key = str(item or '').strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(str(item).strip())
+    return ', '.join(out)
+
+
+def _mode_profile(generation_mode: str, reference_type: Optional[str]) -> str:
+    generation_mode = str(generation_mode or 'text').strip()
+    reference_type = str(reference_type or '').strip()
+    if generation_mode == 'mask':
+        return 'mask_edit'
+    if generation_mode == 'image':
+        return 'full_image_edit'
+    if generation_mode == 'text' and reference_type == 'system_reference':
+        return 'reference_text_to_image'
+    return 'text_to_image'
+
+
+def _legacy_image_prompt_organizer(
+    positive: str,
+    negative: str,
     generation_mode: str,
+    portrait_allowed: bool,
     debug_context: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    positive, separator, negative = str(draft_prompt or "").partition(" ### ")
-    generation_mode = str(generation_mode or "text")
     mode_name = {
-        "text": "txt2img real-camera photograph",
-        "image": "img2img real-photo edit",
-        "mask": "masked local real-photo inpainting",
-    }.get(generation_mode, "txt2img real-camera photograph")
-
-    portrait_allowed = "PORTRAIT_POLICY: ALLOW_EXPLICIT" in positive
+        'text': 'txt2img real-camera photograph',
+        'image': 'img2img real-photo edit',
+        'mask': 'masked local real-photo inpainting',
+    }.get(generation_mode, 'txt2img real-camera photograph')
 
     organizer_prompt = _llama3_prompt(
         system_text="""
@@ -598,7 +660,7 @@ Return only one English positive prompt with no explanation or markdown.
 """,
         user_text=f"""
 Task mode: {mode_name}
-Portrait policy: {"portrait explicitly requested and allowed" if portrait_allowed else "block portrait defaults and face-dominant framing"}
+Portrait policy: {'portrait explicitly requested and allowed' if portrait_allowed else 'block portrait defaults and face-dominant framing'}
 
 Convert the source request below into one concise, concrete English positive prompt.
 Rules:
@@ -621,85 +683,258 @@ SOURCE REQUEST:
 {positive.strip()}
 """,
     )
-
-    debug_id = _save_secondary_debug(organizer_prompt, "image_prompt", debug_context)
     result = generate_text(
         prompt=organizer_prompt,
-        purpose="image_prompt",
-        max_length=int(os.getenv("AI_HORDE_IMAGE_PROMPT_MAX_LENGTH", "520")),
-        temperature=float(os.getenv("AI_HORDE_IMAGE_PROMPT_TEMPERATURE", "0.35")),
-        timeout_seconds=int(os.getenv("AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS", "120")),
+        purpose='image_prompt',
+        max_length=int(os.getenv('AI_HORDE_IMAGE_PROMPT_MAX_LENGTH', '520')),
+        temperature=float(os.getenv('AI_HORDE_IMAGE_PROMPT_TEMPERATURE', '0.35')),
+        timeout_seconds=int(os.getenv('AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS', '120')),
     )
-
-    if result.get("ok"):
-        organized = _clean_generated_text(result.get("text"))
-        for prefix in ("POSITIVE:", "Positive:", "FINAL PROMPT:", "Final prompt:"):
+    if result.get('ok'):
+        organized = _clean_generated_text(result.get('text'))
+        for prefix in ('POSITIVE:', 'Positive:', 'FINAL PROMPT:', 'Final prompt:'):
             if organized.startswith(prefix):
                 organized = organized[len(prefix):].strip()
                 break
-        organized = organized.split("###", 1)[0].strip().strip('"')
-        for marker in ("Negative prompt:", "NEGATIVE:", "Negative:"):
+        organized = organized.split('###', 1)[0].strip().strip('"')
+        for marker in ('Negative prompt:', 'NEGATIVE:', 'Negative:'):
             if marker in organized:
                 organized = organized.split(marker, 1)[0].strip()
 
-        # 移除只給程式辨識的控制標記，接著用程式碼重新補回不可被副模型刪掉的硬規則。
-        organized = organized.replace("PORTRAIT_POLICY: BLOCK", "").replace(
-            "PORTRAIT_POLICY: ALLOW_EXPLICIT", ""
-        ).strip(" ,.;")
-
+        organized = organized.replace('PORTRAIT_POLICY: BLOCK', '').replace('PORTRAIT_POLICY: ALLOW_EXPLICIT', '').strip(' ,.;')
         if len(organized) < 20:
-            result = {
-                **result,
-                "ok": False,
-                "message": "副模型整理後提示詞過短",
-            }
+            return {'ok': False, 'message': '副模型整理後提示詞過短'}
+
+        hard_guards = [
+            'genuine real-camera photograph',
+            'candid documentary lifestyle photography',
+            'natural unretouched skin texture with subtle imperfections',
+            'believable ambient light and ordinary lens perspective',
+            'realistic environment and fabric detail',
+            'not CGI, not 3D, not illustration, not anime, not synthetic beauty art',
+        ]
+        if generation_mode == 'text':
+            if portrait_allowed:
+                hard_guards.append('honor the explicitly requested portrait framing while keeping it natural and minimally retouched')
+            else:
+                hard_guards.extend([
+                    'environmental medium-wide, three-quarter-body, knee-up, or full-body framing',
+                    'subject integrated into a clearly visible location',
+                    'face not dominant in the frame',
+                    'no headshot, no shoulder-up crop, no centered beauty portrait, no empty bokeh background',
+                ])
+        elif generation_mode == 'image':
+            hard_guards.append('preserve recognizable source identity and avoid any unrequested close-up, face zoom, or portrait crop')
+        elif generation_mode == 'mask':
+            hard_guards.append('local photorealistic inpainting only inside the mask with protected regions and composition unchanged')
+
+        positive_prompt = organized + ', ' + ', '.join(hard_guards)
+        final_negative = negative.strip()
+        return {
+            'ok': True,
+            'text': positive_prompt + (f' ### {final_negative}' if final_negative else ''),
+        }
+    return result
+
+
+def _structured_image_prompt_organizer(
+    positive: str,
+    negative: str,
+    generation_mode: str,
+    reference_type: Optional[str],
+    portrait_allowed: bool,
+    debug_context: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    profile = _mode_profile(generation_mode, reference_type)
+    profile_desc = {
+        'text_to_image': '文生圖：沒有來源圖，可在最低優先權補完必要背景、道具、燈光與場景風格。',
+        'reference_text_to_image': '文生圖＋基準圖：有固定基準臉。最高優先保住基準圖人物身份與臉，再完成動作、服裝、背景、物品修改。',
+        'full_image_edit': '整體圖生圖：有來源圖，要改整張圖，但要遵守使用者要求的保留與不動限制。',
+        'mask_edit': '局部遮罩修改：只修改遮罩區域。若只是改顏色，必須保留原物件的形狀、款式、材質與結構。',
+    }.get(profile, '文生圖')
+
+    organizer_prompt = _llama3_prompt(
+        system_text="""
+你現在不是聊天助手，而是「圖片生成任務解析器」。
+你的工作是：
+1. 用中文理解使用者提示詞。
+2. 依照生成模式，拆出最高優先的修改要求、保留要求、禁止變動、禁止新增。
+3. 只有在必要而且使用者沒提供時，才低優先補完背景、場景物件、燈光、風格。
+4. 最後輸出給圖片模型使用的英文正向 prompt 與英文負向 prompt。
+
+重要規則：
+- 優先順序必須是：
+  A. 使用者明確要求修改或限制不動的內容（最高優先）
+  B. 來源圖 / 基準圖既有內容中，未被要求修改的部分
+  C. 必要但未指定的補完（最低優先）
+- 不可以讓低優先補完蓋過高優先要求。
+- 不可以忽略「背景不變、面部保持一致、只改顏色、不要新增物件」這類限制。
+- 不可以把「只改顏色」擴大成換款式、換材質或重做整個物件。
+- 不可以把人物身份改成另一個人。
+- 最終英文 prompt 要直接可給圖片模型使用，不能寫故事，不能聊天，不能解釋。
+- 最終英文 prompt 要明確表達保留項、必改項、禁止項與必要的低優先補完。
+- 只能回傳 JSON，不可加 markdown，不可加說明文字。
+
+JSON 格式固定如下：
+{
+  "generation_mode": "text_to_image | reference_text_to_image | full_image_edit | mask_edit",
+  "must_keep": ["..."],
+  "must_change": ["..."],
+  "must_not_change": ["..."],
+  "must_not_add": ["..."],
+  "low_priority_fill": ["..."],
+  "final_positive_prompt": "...",
+  "final_negative_prompt": "..."
+}
+""",
+        user_text=f"""
+目前模式：{profile}
+模式說明：{profile_desc}
+肖像政策：{'允許明確指定肖像構圖' if portrait_allowed else '預設禁止臉部主導肖像構圖'}
+
+請根據下面的原始圖片需求，先用中文理解，再輸出 JSON。
+
+原始需求：
+{positive.strip()}
+
+原始負向提示（如果有）：
+{negative.strip()}
+
+額外任務規則：
+- 若模式是 reference_text_to_image，必須把「同一張臉 / 固定身份」視為最高優先保留。
+- 若模式是 full_image_edit，必須明確寫出：哪些內容必須保留、哪些內容必須修改、哪些內容不能新增。
+- 若模式是 mask_edit，必須假設只有遮罩區可修改；未遮罩區域與整體構圖應盡量不變。
+- 若需求中出現「背景不變、表情不變、面部保持一致、不要新增」等限制，必須進入 must_keep / must_not_change / must_not_add。
+- 若使用者沒有提供背景，但動作或場景需要合理容器，可以放入 low_priority_fill，例如臥姿可低優先補臥室、床、枕頭、柔和燈光。
+- low_priority_fill 只能在必要時填，且不能多。
+- final_positive_prompt 必須是英文，適合真實寫真照片或真實照片編修模型。
+- final_negative_prompt 必須是英文，明確禁止身份漂移、無故新增、背景亂改、無故肖像裁切等。
+""",
+    )
+
+    debug_id = _save_secondary_debug(organizer_prompt, 'image_prompt_structured', debug_context)
+    result = generate_text(
+        prompt=organizer_prompt,
+        purpose='image_prompt',
+        max_length=int(os.getenv('AI_HORDE_IMAGE_PROMPT_MAX_LENGTH', '900')),
+        temperature=float(os.getenv('AI_HORDE_IMAGE_PROMPT_TEMPERATURE', '0.2')),
+        timeout_seconds=int(os.getenv('AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS', '120')),
+    )
+
+    if result.get('ok'):
+        payload = _extract_json_payload(result.get('text'))
+        if not payload:
+            result = {'ok': False, 'message': '副模型沒有輸出有效 JSON'}
         else:
-            hard_guards = [
-                "genuine real-camera photograph",
-                "candid documentary lifestyle photography",
-                "natural unretouched skin texture with subtle imperfections",
-                "believable ambient light and ordinary lens perspective",
-                "realistic environment and fabric detail",
-                "not CGI, not 3D, not illustration, not anime, not synthetic beauty art",
-            ]
+            must_keep = _ensure_string_list(payload.get('must_keep'))
+            must_change = _ensure_string_list(payload.get('must_change'))
+            must_not_change = _ensure_string_list(payload.get('must_not_change'))
+            must_not_add = _ensure_string_list(payload.get('must_not_add'))
+            low_priority_fill = _ensure_string_list(payload.get('low_priority_fill'))
+            final_positive = str(payload.get('final_positive_prompt') or '').strip().strip('"')
+            final_negative = str(payload.get('final_negative_prompt') or '').strip().strip('"')
 
-            if generation_mode == "text":
-                if portrait_allowed:
-                    hard_guards.append(
-                        "honor the explicitly requested portrait framing while keeping it natural and minimally retouched"
-                    )
-                else:
-                    hard_guards.extend([
-                        "environmental medium-wide, three-quarter-body, knee-up, or full-body framing",
-                        "subject integrated into a clearly visible location",
-                        "face not dominant in the frame",
-                        "no headshot, no shoulder-up crop, no centered beauty portrait, no empty bokeh background",
+            if len(final_positive) < 20:
+                result = {'ok': False, 'message': '副模型輸出的 final_positive_prompt 過短'}
+            else:
+                positive_guards = [
+                    'genuine real-camera photograph',
+                    'natural unretouched skin texture with subtle imperfections',
+                    'believable ambient light and realistic surroundings',
+                    'preserve the highest-priority requested constraints first',
+                ]
+                if profile == 'text_to_image':
+                    if portrait_allowed:
+                        positive_guards.append('respect the explicitly requested portrait framing while keeping it natural')
+                    else:
+                        positive_guards.extend([
+                            'environmental medium-wide, three-quarter-body, knee-up, or full-body composition',
+                            'do not let the face dominate the frame',
+                        ])
+                elif profile == 'reference_text_to_image':
+                    positive_guards.extend([
+                        'preserve the same recognizable face identity from the reference image',
+                        'do not replace the person with a different face',
                     ])
-            elif generation_mode == "image":
-                hard_guards.append(
-                    "preserve recognizable source identity and avoid any unrequested close-up, face zoom, or portrait crop"
-                )
-            elif generation_mode == "mask":
-                hard_guards.append(
-                    "local photorealistic inpainting only inside the mask with protected regions and composition unchanged"
-                )
+                elif profile == 'full_image_edit':
+                    positive_guards.extend([
+                        'preserve the same recognizable person and all unrequested details',
+                        'execute the requested change decisively instead of returning the original image',
+                    ])
+                elif profile == 'mask_edit':
+                    positive_guards.extend([
+                        'edit only the masked region',
+                        'preserve protected regions and original composition',
+                    ])
 
-            # 即使副模型把寫真或防肖像規則壓縮掉，送 AI Horde 前仍會固定補回。
-            organized = organized + ", " + ", ".join(hard_guards)
-            result["text"] = organized + (
-                f" ### {negative.strip()}" if separator and negative.strip() else ""
-            )
+                negative_guards = [
+                    'different person', 'identity drift', 'unrequested background change', 'unrequested extra objects',
+                    'portrait crop unless explicitly requested', 'cgi', '3d render', 'illustration', 'anime', 'plastic skin',
+                    'beauty filter', 'text', 'watermark', 'extra fingers', 'malformed hands'
+                ]
+                if profile == 'mask_edit':
+                    negative_guards.extend(['changes outside mask', 'full image redraw', 'garment redesign when only color change was requested'])
+                if profile == 'reference_text_to_image':
+                    negative_guards.extend(['different face than reference', 'westernized face drift'])
+
+                final_positive = final_positive.rstrip(' ,.;') + ', ' + _join_unique(positive_guards)
+                merged_negative = _join_unique([final_negative, negative.strip(), ', '.join(negative_guards)])
+                result = {
+                    'ok': True,
+                    'text': final_positive + (f' ### {merged_negative}' if merged_negative else ''),
+                    'task_json': {
+                        'generation_mode': profile,
+                        'must_keep': must_keep,
+                        'must_change': must_change,
+                        'must_not_change': must_not_change,
+                        'must_not_add': must_not_add,
+                        'low_priority_fill': low_priority_fill,
+                    },
+                }
 
     if debug_id:
         try:
             update_prompt_debug_log(
                 debug_id,
-                status="ok" if result.get("ok") else "error",
-                block_reason="" if result.get("ok") else str(result.get("message") or "")[:500],
-                response_chars=len(result.get("text") or ""),
+                status='ok' if result.get('ok') else 'error',
+                block_reason='' if result.get('ok') else str(result.get('message') or '')[:500],
+                response_chars=len(result.get('text') or ''),
             )
         except Exception as exc:
-            print("IMAGE PROMPT DEBUG UPDATE SKIPPED:", exc, flush=True)
+            print('IMAGE STRUCTURED PROMPT DEBUG UPDATE SKIPPED:', exc, flush=True)
 
     return result
+
+
+def organize_image_prompt(
+    draft_prompt: str,
+    generation_mode: str,
+    debug_context: Optional[Dict[str, Any]] = None,
+    reference_type: Optional[str] = None,
+) -> Dict[str, Any]:
+    positive, separator, negative = str(draft_prompt or '').partition(' ### ')
+    generation_mode = str(generation_mode or 'text')
+    portrait_allowed = 'PORTRAIT_POLICY: ALLOW_EXPLICIT' in positive
+
+    # 先走結構化任務解析；若副模型沒有正確輸出 JSON，再退回舊版英文化整理。
+    structured = _structured_image_prompt_organizer(
+        positive=positive,
+        negative=negative,
+        generation_mode=generation_mode,
+        reference_type=reference_type,
+        portrait_allowed=portrait_allowed,
+        debug_context=debug_context,
+    )
+    if structured.get('ok'):
+        return structured
+
+    print('IMAGE STRUCTURED PROMPT FALLBACK:', structured.get('message'), flush=True)
+    return _legacy_image_prompt_organizer(
+        positive=positive,
+        negative=negative,
+        generation_mode=generation_mode,
+        portrait_allowed=portrait_allowed,
+        debug_context=debug_context,
+    )
+
 

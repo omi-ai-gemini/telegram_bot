@@ -432,6 +432,12 @@ C:\Projects\telemini
 - `generate_text()`
 - `_save_secondary_debug()`
 - `generate_chat_reply()`
+- `_extract_json_payload()`
+- `_ensure_string_list()`
+- `_join_unique()`
+- `_mode_profile()`
+- `_legacy_image_prompt_organizer()`
+- `_structured_image_prompt_organizer()`
 - `organize_image_prompt()`
 
 ### `services\bot_router.py`
