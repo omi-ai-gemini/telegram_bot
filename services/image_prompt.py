@@ -71,7 +71,7 @@ The newest request explicitly requires portrait-oriented framing. Follow the req
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
 Use the supplied source image as the identity and visual reference, then perform a real photographic edit. The newest explicit request is the required result and must be completed clearly. Do not return the source unchanged, do not merely resize it, and do not hide behind tiny texture changes when a visible wardrobe, pose, action, object, framing, or scene change was requested.
 
-Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
+Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. When the newest request explicitly asks to keep the background unchanged, keep the original room, furniture, layout, and scene structure unchanged as much as possible. When the newest request explicitly asks to change the pose or body position, actually change it decisively instead of returning a near-identical pose. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
 
 The finished edit must retain a genuine real-camera appearance with natural skin texture, realistic ambient light, believable perspective, and no CGI, illustration, anime, plastic skin, or beauty-advertisement finish.
 """.strip()
@@ -80,7 +80,7 @@ The finished edit must retain a genuine real-camera appearance with natural skin
 MASK_TO_IMAGE_GLOBAL_RULE = """
 Use the supplied source image together with its edit mask. White or light mask pixels are the only regions that may be regenerated. Black mask pixels are protected and must remain visually unchanged as much as the inpainting pipeline allows.
 
-Complete the newest explicit request clearly inside the masked region. Use nearby unmasked pixels for identity, lighting, perspective, texture, anatomy, and scene continuity. Do not redesign the whole image, move the camera, zoom into the face, or convert the source into a portrait. Blend the edited area naturally across the soft mask boundary.
+Complete the newest explicit request clearly inside the masked region. Use nearby unmasked pixels for identity, lighting, perspective, texture, anatomy, and scene continuity. If the request is only a color change, keep the original garment design, structure, material, and shape unless the request explicitly asks to change them. Do not redesign the whole image, move the camera, zoom into the face, or convert the source into a portrait. Blend the edited area naturally across the soft mask boundary.
 
 The result must look like a local edit to a real photograph, with matching camera noise, skin texture, lighting, color, depth, and lens perspective. Do not introduce CGI, illustration, anime, plastic skin, or synthetic beauty retouching.
 """.strip()

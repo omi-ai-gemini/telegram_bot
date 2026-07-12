@@ -1,2 +1,4 @@
+services/aihorde_service.py
+services/image_jobs.py
 services/image_prompt.py
-services/aihorde_text_service.py
+本次修改說明.txt

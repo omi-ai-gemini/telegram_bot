@@ -6,36 +6,50 @@ import requests
 
 
 AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2").rstrip("/")
-AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
-# 遮罩局部修改使用獨立 inpainting 模型，避免拿 Flux 一般圖生圖硬做遮罩。
-# AI Horde 工作節點可用模型會浮動，因此保留環境變數覆蓋能力。
-AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Deliberate Inpainting")
+# 依模式分流模型：
+# - 文生圖預設改為較適合寫真路線的 SDXL 模型。
+# - 整體圖生圖與局部遮罩改用較穩定的寫實模型／inpainting 模型。
+# 仍保留環境變數覆蓋能力，讓你可以隨時改回自己要的模型。
+AI_HORDE_TXT2IMG_MODEL = os.getenv("AI_HORDE_TXT2IMG_MODEL", "AlbedoBase XL (SDXL)")
+AI_HORDE_IMG2IMG_MODEL = os.getenv("AI_HORDE_IMG2IMG_MODEL", "Realistic Vision")
+AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Realistic Vision Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
-# Flux Schnell 雙模式參數：
-# - 文生圖維持 4 steps，保留速度與大量 worker 相容性。
-# - 圖生圖提高到 8 steps 與 0.72 重繪強度，避免只縮放原圖直接退回。
-TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "4"))
-IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "8"))
+# 新預設值改成較適合寫真模型的參數，不再沿用 Flux Schnell 的極低 steps。
+TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "28"))
+IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "28"))
+INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "24"))
+
+try:
+    TXT2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_TXT2IMG_CFG_SCALE", "5.5"))
+except Exception:
+    TXT2IMG_CFG_SCALE = 5.5
+
+try:
+    IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_IMG2IMG_CFG_SCALE", "5.0"))
+except Exception:
+    IMG2IMG_CFG_SCALE = 5.0
+
 try:
     IMG2IMG_DENOISING_STRENGTH = float(
-        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.80")
+        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.72")
     )
 except Exception:
     IMG2IMG_DENOISING_STRENGTH = 0.72
 IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
-INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "20"))
+
 try:
     INPAINT_CFG_SCALE = float(os.getenv("AI_HORDE_INPAINT_CFG_SCALE", "7"))
 except Exception:
     INPAINT_CFG_SCALE = 7.0
+
 try:
     INPAINT_DENOISING_STRENGTH = float(
-        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.80")
+        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.72")
     )
 except Exception:
-    INPAINT_DENOISING_STRENGTH = 0.80
+    INPAINT_DENOISING_STRENGTH = 0.72
 INPAINT_DENOISING_STRENGTH = max(0.05, min(1.0, INPAINT_DENOISING_STRENGTH))
 
 
@@ -79,6 +93,42 @@ def _error_message(payload: Dict[str, Any], status_code: int) -> str:
     )
 
 
+def _clamp(value: float, minimum: float = 0.05, maximum: float = 1.0) -> float:
+    return max(minimum, min(maximum, float(value)))
+
+
+def _looks_like_color_only_edit(prompt: str) -> bool:
+    text = str(prompt or "").lower()
+    color_words = [
+        "顏色", "改色", "換色", "變成黃色", "變黃色", "黃色",
+        "color", "recolor", "change the color", "yellow", "red", "blue", "green",
+    ]
+    restructure_words = [
+        "蕾絲", "花紋", "圖案", "材質", "款式", "style", "pattern", "texture", "lace", "replace",
+        "換掉", "替換", "改款", "重做", "remove", "add", "pose", "坐姿", "站姿",
+    ]
+    return any(word in text for word in color_words) and not any(word in text for word in restructure_words)
+
+
+def _pick_denoising_strength(mode: str, prompt: str) -> float:
+    text = str(prompt or "").lower()
+    if mode == "inpainting":
+        if _looks_like_color_only_edit(text):
+            return _clamp(float(os.getenv("AI_HORDE_INPAINT_DENOISE_COLOR_ONLY", "0.32")))
+        if any(word in text for word in ["蕾絲", "花紋", "圖案", "材質", "pattern", "texture", "lace"]):
+            return _clamp(float(os.getenv("AI_HORDE_INPAINT_DENOISE_PATTERN", "0.50")))
+        return INPAINT_DENOISING_STRENGTH
+
+    if mode == "img2img":
+        if any(word in text for word in ["坐姿", "站姿", "pose", "sitting", "standing", "跪", "蹲", "躺", "趴"]):
+            return _clamp(float(os.getenv("AI_HORDE_IMG2IMG_DENOISE_POSE", "0.82")))
+        if _looks_like_color_only_edit(text):
+            return _clamp(float(os.getenv("AI_HORDE_IMG2IMG_DENOISE_COLOR_ONLY", "0.58")))
+        return IMG2IMG_DENOISING_STRENGTH
+
+    return 0.0
+
+
 def submit_image_request(
     job_id: int,
     prompt: str,
@@ -107,10 +157,14 @@ def submit_image_request(
         model_name = AI_HORDE_INPAINT_MODEL
         steps = INPAINT_STEPS
         cfg_scale = INPAINT_CFG_SCALE
+    elif mode == "img2img":
+        model_name = AI_HORDE_IMG2IMG_MODEL
+        steps = IMG2IMG_STEPS
+        cfg_scale = IMG2IMG_CFG_SCALE
     else:
-        model_name = AI_HORDE_MODEL
-        steps = IMG2IMG_STEPS if mode == "img2img" else TXT2IMG_STEPS
-        cfg_scale = 1
+        model_name = AI_HORDE_TXT2IMG_MODEL
+        steps = TXT2IMG_STEPS
+        cfg_scale = TXT2IMG_CFG_SCALE
 
     payload = {
         "prompt": str(prompt or ""),
@@ -138,10 +192,10 @@ def submit_image_request(
         if has_mask:
             payload["source_mask"] = base64.b64encode(source_mask_bytes).decode("ascii")
             payload["source_processing"] = "inpainting"
-            payload["params"]["denoising_strength"] = INPAINT_DENOISING_STRENGTH
+            payload["params"]["denoising_strength"] = _pick_denoising_strength("inpainting", prompt)
         else:
             payload["source_processing"] = "img2img"
-            payload["params"]["denoising_strength"] = IMG2IMG_DENOISING_STRENGTH
+            payload["params"]["denoising_strength"] = _pick_denoising_strength("img2img", prompt)
 
     print(
         "AI HORDE SUBMIT PREPARED "

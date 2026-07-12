@@ -1,0 +1,52 @@
+Telemini 生圖模型切換 + 圖片 Prompt 接回副模型
+
+本包已修改：
+1. 文生圖預設模型
+   - 改為 AI_HORDE_TXT2IMG_MODEL = AlbedoBase XL (SDXL)
+
+2. 整體圖生圖預設模型
+   - 改為 AI_HORDE_IMG2IMG_MODEL = Realistic Vision
+
+3. 局部遮罩預設模型
+   - 改為 AI_HORDE_INPAINT_MODEL = Realistic Vision Inpainting
+
+4. 圖片 Prompt 整理重新接回副模型
+   - 建立生圖任務後，會先把原始圖片 Prompt 丟給副模型整理英文 prompt。
+   - 成功：寫入 final_prompt 後送生圖。
+   - 失敗：自動 fallback 回原始 prompt，不會卡死。
+   - 會在 image_generation_jobs 紀錄 prompt_generation_status、prompt_model、prompt_error。
+
+5. 參數改為較適合寫真模型
+   - txt2img / img2img / inpaint 不再沿用 Flux Schnell 的低 steps。
+   - 已改成較適合寫真模型的 steps / cfg 預設值。
+
+6. 遮罩顏色修改加入較低重繪強度判斷
+   - 如果 prompt 看起來只是「改顏色」，會自動降低 inpaint denoise。
+   - 目的是避免「把黃色內衣改成黑灰蕾絲」這種整件重做。
+
+7. 整體圖生圖補強規則
+   - 若 prompt 明確要求「背景不變」，會更強調保留原背景。
+   - 若 prompt 明確要求「姿勢改變」，會更強調真的改姿勢，不要原圖幾乎不變。
+
+=== 可調整環境變數（可不設，直接用預設） ===
+AI_HORDE_TXT2IMG_MODEL=AlbedoBase XL (SDXL)
+AI_HORDE_IMG2IMG_MODEL=Realistic Vision
+AI_HORDE_INPAINT_MODEL=Realistic Vision Inpainting
+
+AI_HORDE_TXT2IMG_STEPS=28
+AI_HORDE_TXT2IMG_CFG_SCALE=5.5
+AI_HORDE_IMG2IMG_STEPS=28
+AI_HORDE_IMG2IMG_CFG_SCALE=5.0
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+AI_HORDE_INPAINT_STEPS=24
+AI_HORDE_INPAINT_CFG_SCALE=7
+AI_HORDE_INPAINT_DENOISING_STRENGTH=0.72
+
+# 顏色修改／姿勢修改的額外細部控制
+AI_HORDE_INPAINT_DENOISE_COLOR_ONLY=0.32
+AI_HORDE_INPAINT_DENOISE_PATTERN=0.50
+AI_HORDE_IMG2IMG_DENOISE_COLOR_ONLY=0.58
+AI_HORDE_IMG2IMG_DENOISE_POSE=0.82
+
+=== 覆蓋方式 ===
+把本包內 telemini 資料夾中的檔案，覆蓋到你的專案同路徑即可。

@@ -147,6 +147,7 @@ C:\Projects\telemini
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`
 - `本次修復說明.txt`
+- `本次修改說明.txt`
 - `模型切換共用路由修正說明.txt`
 - `模式-使用說明.txt`
 - `生圖功能檢查結果.txt`
@@ -405,6 +406,9 @@ C:\Projects\telemini
 - `_headers()`
 - `_json_or_error()`
 - `_error_message()`
+- `_clamp()`
+- `_looks_like_color_only_edit()`
+- `_pick_denoising_strength()`
 - `submit_image_request()`
 - `check_image_request()`
 - `get_image_result()`

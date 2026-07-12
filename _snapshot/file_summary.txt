@@ -4288,7 +4288,7 @@ CONTINUE_USER_TEXT = """
 # services\aihorde_service.py
 
 - 類型：.py
-- 行數：255
+- 行數：309
 
 ## imports
 - base64
@@ -4306,6 +4306,9 @@ CONTINUE_USER_TEXT = """
 - _headers
 - _json_or_error
 - _error_message
+- _clamp
+- _looks_like_color_only_edit
+- _pick_denoising_strength
 - submit_image_request
 - check_image_request
 - get_image_result
@@ -4322,36 +4325,50 @@ import requests
 
 
 AI_HORDE_BASE_URL = os.getenv("AI_HORDE_BASE_URL", "https://aihorde.net/api/v2").rstrip("/")
-AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
-# 遮罩局部修改使用獨立 inpainting 模型，避免拿 Flux 一般圖生圖硬做遮罩。
-# AI Horde 工作節點可用模型會浮動，因此保留環境變數覆蓋能力。
-AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Deliberate Inpainting")
+# 依模式分流模型：
+# - 文生圖預設改為較適合寫真路線的 SDXL 模型。
+# - 整體圖生圖與局部遮罩改用較穩定的寫實模型／inpainting 模型。
+# 仍保留環境變數覆蓋能力，讓你可以隨時改回自己要的模型。
+AI_HORDE_TXT2IMG_MODEL = os.getenv("AI_HORDE_TXT2IMG_MODEL", "AlbedoBase XL (SDXL)")
+AI_HORDE_IMG2IMG_MODEL = os.getenv("AI_HORDE_IMG2IMG_MODEL", "Realistic Vision")
+AI_HORDE_INPAINT_MODEL = os.getenv("AI_HORDE_INPAINT_MODEL", "Realistic Vision Inpainting")
 AI_HORDE_CLIENT_AGENT = os.getenv("AI_HORDE_CLIENT_AGENT", "TeleminiAI:1.0:telegram-image-generation")
 _SESSION = requests.Session()
 
-# Flux Schnell 雙模式參數：
-# - 文生圖維持 4 steps，保留速度與大量 worker 相容性。
-# - 圖生圖提高到 8 steps 與 0.72 重繪強度，避免只縮放原圖直接退回。
-TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "4"))
-IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "8"))
+# 新預設值改成較適合寫真模型的參數，不再沿用 Flux Schnell 的極低 steps。
+TXT2IMG_STEPS = int(os.getenv("AI_HORDE_TXT2IMG_STEPS", "28"))
+IMG2IMG_STEPS = int(os.getenv("AI_HORDE_IMG2IMG_STEPS", "28"))
+INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "24"))
+
+try:
+    TXT2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_TXT2IMG_CFG_SCALE", "5.5"))
+except Exception:
+    TXT2IMG_CFG_SCALE = 5.5
+
+try:
+    IMG2IMG_CFG_SCALE = float(os.getenv("AI_HORDE_IMG2IMG_CFG_SCALE", "5.0"))
+except Exception:
+    IMG2IMG_CFG_SCALE = 5.0
+
 try:
     IMG2IMG_DENOISING_STRENGTH = float(
-        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.80")
+        os.getenv("AI_HORDE_IMG2IMG_DENOISING_STRENGTH", "0.72")
     )
 except Exception:
     IMG2IMG_DENOISING_STRENGTH = 0.72
 IMG2IMG_DENOISING_STRENGTH = max(0.05, min(1.0, IMG2IMG_DENOISING_STRENGTH))
-INPAINT_STEPS = int(os.getenv("AI_HORDE_INPAINT_STEPS", "20"))
+
 try:
     INPAINT_CFG_SCALE = float(os.getenv("AI_HORDE_INPAINT_CFG_SCALE", "7"))
 except Exception:
     INPAINT_CFG_SCALE = 7.0
+
 try:
     INPAINT_DENOISING_STRENGTH = float(
-        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.80")
+        os.getenv("AI_HORDE_INPAINT_DENOISING_STRENGTH", "0.72")
     )
 except Exception:
-    INPAINT_DENOISING_STRENGTH = 0.80
+    INPAINT_DENOISING_STRENGTH = 0.72
 INPAINT_DENOISING_STRENGTH = max(0.05, min(1.0, INPAINT_DENOISING_STRENGTH))
 
 
@@ -4380,22 +4397,8 @@ def _headers(api_key: str) -> Dict[str, str]:
 
 
 def _json_or_error(res: requests.Response) -> Dict[str, Any]:
-    try:
-        return res.json()
-    except Exception:
-        return {"message": (res.text or "")[:500]}
-
-
-def _error_message(payload: Dict[str, Any], status_code: int) -> str:
-    return str(
-        payload.get("message")
-        or payload.get("error")
-        or payload.get("reason")
-        or f"HTTP {status_code}"
-    )
-
 ...
-... 已省略 175 行
+... 已省略 229 行
 ```
 
 
@@ -5969,7 +5972,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：808
+- 行數：847
 
 ## imports
 - datetime.datetime
@@ -5981,6 +5984,8 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.aihorde_service.download_generated_image
 - services.aihorde_service.get_image_result
 - services.aihorde_service.submit_image_request
+- services.aihorde_text_service.get_secondary_model_label
+- services.aihorde_text_service.organize_image_prompt
 - services.crypto_env.aad_for
 - services.crypto_env.decrypt_text
 - services.crypto_env.encrypt_text
@@ -6047,6 +6052,7 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
+from services.aihorde_text_service import get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -6111,9 +6117,8 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
 
 
 
-def _count_active(user_id: Any) -> int:
 ...
-... 已省略 728 行
+... 已省略 767 行
 ```
 
 
@@ -6324,7 +6329,7 @@ The newest request explicitly requires portrait-oriented framing. Follow the req
 IMAGE_TO_IMAGE_GLOBAL_RULE = """
 Use the supplied source image as the identity and visual reference, then perform a real photographic edit. The newest explicit request is the required result and must be completed clearly. Do not return the source unchanged, do not merely resize it, and do not hide behind tiny texture changes when a visible wardrobe, pose, action, object, framing, or scene change was requested.
 
-Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
+Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. When the newest request explicitly asks to keep the background unchanged, keep the original room, furniture, layout, and scene structure unchanged as much as possible. When the newest request explicitly asks to change the pose or body position, actually change it decisively instead of returning a near-identical pose. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
 
 The finished edit must retain a genuine real-camera appearance with natural skin texture, realistic ambient light, believable perspective, and no CGI, illustration, anime, plastic skin, or beauty-advertisement finish.
 """.strip()
@@ -11330,6 +11335,70 @@ Telemini 四不像專案整理修正版
 
 ================================================================================
 
+# 本次修改說明.txt
+
+- 類型：.txt
+- 行數：52
+
+## preview
+```text
+Telemini 生圖模型切換 + 圖片 Prompt 接回副模型
+
+本包已修改：
+1. 文生圖預設模型
+   - 改為 AI_HORDE_TXT2IMG_MODEL = AlbedoBase XL (SDXL)
+
+2. 整體圖生圖預設模型
+   - 改為 AI_HORDE_IMG2IMG_MODEL = Realistic Vision
+
+3. 局部遮罩預設模型
+   - 改為 AI_HORDE_INPAINT_MODEL = Realistic Vision Inpainting
+
+4. 圖片 Prompt 整理重新接回副模型
+   - 建立生圖任務後，會先把原始圖片 Prompt 丟給副模型整理英文 prompt。
+   - 成功：寫入 final_prompt 後送生圖。
+   - 失敗：自動 fallback 回原始 prompt，不會卡死。
+   - 會在 image_generation_jobs 紀錄 prompt_generation_status、prompt_model、prompt_error。
+
+5. 參數改為較適合寫真模型
+   - txt2img / img2img / inpaint 不再沿用 Flux Schnell 的低 steps。
+   - 已改成較適合寫真模型的 steps / cfg 預設值。
+
+6. 遮罩顏色修改加入較低重繪強度判斷
+   - 如果 prompt 看起來只是「改顏色」，會自動降低 inpaint denoise。
+   - 目的是避免「把黃色內衣改成黑灰蕾絲」這種整件重做。
+
+7. 整體圖生圖補強規則
+   - 若 prompt 明確要求「背景不變」，會更強調保留原背景。
+   - 若 prompt 明確要求「姿勢改變」，會更強調真的改姿勢，不要原圖幾乎不變。
+
+=== 可調整環境變數（可不設，直接用預設） ===
+AI_HORDE_TXT2IMG_MODEL=AlbedoBase XL (SDXL)
+AI_HORDE_IMG2IMG_MODEL=Realistic Vision
+AI_HORDE_INPAINT_MODEL=Realistic Vision Inpainting
+
+AI_HORDE_TXT2IMG_STEPS=28
+AI_HORDE_TXT2IMG_CFG_SCALE=5.5
+AI_HORDE_IMG2IMG_STEPS=28
+AI_HORDE_IMG2IMG_CFG_SCALE=5.0
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+AI_HORDE_INPAINT_STEPS=24
+AI_HORDE_INPAINT_CFG_SCALE=7
+AI_HORDE_INPAINT_DENOISING_STRENGTH=0.72
+
+# 顏色修改／姿勢修改的額外細部控制
+AI_HORDE_INPAINT_DENOISE_COLOR_ONLY=0.32
+AI_HORDE_INPAINT_DENOISE_PATTERN=0.50
+AI_HORDE_IMG2IMG_DENOISE_COLOR_ONLY=0.58
+AI_HORDE_IMG2IMG_DENOISE_POSE=0.82
+
+=== 覆蓋方式 ===
+把本包內 telemini 資料夾中的檔案，覆蓋到你的專案同路徑即可。
+```
+
+
+================================================================================
+
 # 模型切換共用路由修正說明.txt
 
 - 類型：.txt
@@ -11744,12 +11813,14 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 # 覆蓋檔案清單.txt
 
 - 類型：.txt
-- 行數：2
+- 行數：4
 
 ## preview
 ```text
+services/aihorde_service.py
+services/image_jobs.py
 services/image_prompt.py
-services/aihorde_text_service.py
+本次修改說明.txt
 ```
 
 

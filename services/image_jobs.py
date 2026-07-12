@@ -13,6 +13,7 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
+from services.aihorde_text_service import get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -513,26 +514,64 @@ def process_image_job(
             )
 
             if prompt_status not in {"ready", "fallback"}:
-                # 降版規則：圖片 Prompt 不再呼叫副文字模型整理，直接使用原始 Prompt。
-                prompt = source_prompt
-                encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
-                _update_job(
-                    job["id"],
-                    final_prompt=encrypted_prompt,
-                    prompt_generation_status="ready",
-                    prompt_model="secondary_disabled",
-                    prompt_error=None,
-                    prompt_chars_before=len(source_prompt),
-                    prompt_chars_after=len(prompt),
-                )
-                print(
-                    "IMAGE PROMPT SECONDARY DISABLED "
-                    f"job_id={job['id']} input_chars={len(source_prompt)}",
-                    flush=True,
-                )
-                job["prompt_generation_status"] = "ready"
-                job["prompt_model"] = "secondary_disabled"
-                queue_status_text = "生圖任務已送出，正在加入排隊"
+                secondary_label = get_secondary_model_label() or "secondary_text_model"
+                try:
+                    organized = organize_image_prompt(
+                        draft_prompt=source_prompt,
+                        generation_mode=job.get("generation_mode") or "text",
+                        debug_context={
+                            "chat_id": job.get("chat_id"),
+                            "user_id": job.get("user_id"),
+                            "bot_id": job.get("bot_id"),
+                            "purpose": "image_prompt",
+                            "job_id": job.get("id"),
+                        },
+                    )
+                except Exception as exc:
+                    organized = {"ok": False, "message": f"副模型整理失敗：{exc}"}
+
+                if organized.get("ok") and _text(organized.get("text")):
+                    prompt = _text(organized.get("text"))
+                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
+                    _update_job(
+                        job["id"],
+                        final_prompt=encrypted_prompt,
+                        prompt_generation_status="ready",
+                        prompt_model=secondary_label,
+                        prompt_error=None,
+                        prompt_chars_before=len(source_prompt),
+                        prompt_chars_after=len(prompt),
+                    )
+                    print(
+                        "IMAGE PROMPT SECONDARY OK "
+                        f"job_id={job['id']} model={secondary_label} "
+                        f"input_chars={len(source_prompt)} output_chars={len(prompt)}",
+                        flush=True,
+                    )
+                    job["prompt_generation_status"] = "ready"
+                    job["prompt_model"] = secondary_label
+                    queue_status_text = "prompt整理完成，正在加入排隊"
+                else:
+                    prompt = source_prompt
+                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
+                    error_message = _text(organized.get("message")) or "副模型整理失敗，已改用原始提示詞"
+                    _update_job(
+                        job["id"],
+                        final_prompt=encrypted_prompt,
+                        prompt_generation_status="fallback",
+                        prompt_model=secondary_label,
+                        prompt_error=error_message[:500],
+                        prompt_chars_before=len(source_prompt),
+                        prompt_chars_after=len(prompt),
+                    )
+                    print(
+                        "IMAGE PROMPT SECONDARY FALLBACK "
+                        f"job_id={job['id']} model={secondary_label} reason={error_message}",
+                        flush=True,
+                    )
+                    job["prompt_generation_status"] = "fallback"
+                    job["prompt_model"] = secondary_label
+                    queue_status_text = "prompt整理失敗，已改用原始提示詞，正在加入排隊"
             elif not prompt:
                 prompt = source_prompt
 
