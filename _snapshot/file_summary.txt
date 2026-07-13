@@ -12986,7 +12986,7 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 # 本機AI閘道\app.py
 
 - 類型：.py
-- 行數：316
+- 行數：317
 
 ## imports
 - flask.Flask
@@ -12999,6 +12999,7 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 - re
 - requests
 - secrets
+- threading
 - time
 - urllib.parse.urlencode
 
@@ -13025,6 +13026,7 @@ import json
 import os
 import re
 import time
+import threading
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -13100,9 +13102,8 @@ def _verify_request():
     if not secrets.compare_digest(token.strip(), GATEWAY_SECRET):
         return False, "Bearer Token 驗證失敗"
 
-    return True, ""
 ...
-... 已省略 236 行
+... 已省略 237 行
 ```
 
 
