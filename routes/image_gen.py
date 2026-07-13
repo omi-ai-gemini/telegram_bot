@@ -18,6 +18,18 @@ from services.image_store import (
 
 
 image_gen_bp = Blueprint("image_gen", __name__)
+
+
+@image_gen_bp.after_request
+def _image_privacy_headers(response):
+    # 圖片管理與預覽頁不進瀏覽器快取，也不把含 token 的網址帶到外站。
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 MAX_MASK_BYTES = 4 * 1024 * 1024
 ALLOWED_UPLOAD_MIMES = {"image/jpeg", "image/png", "image/webp"}
@@ -239,7 +251,7 @@ def image_library_preview(identifier):
     media = download_image_asset(identifier, auth["bot_id"], auth["chat_id"])
     if not media:
         return "圖片讀取失敗", 404
-    return Response(media["bytes"], mimetype=media.get("mime_type") or "image/jpeg", headers={"Cache-Control": "private, max-age=60"})
+    return Response(media["bytes"], mimetype=media.get("mime_type") or "image/jpeg", headers={"Cache-Control": "no-store, no-cache, must-revalidate, private", "Referrer-Policy": "no-referrer"})
 
 
 @image_gen_bp.route("/setting/images/rename", methods=["POST"])

@@ -1,73 +1,52 @@
-Telemini 生圖任務解析重寫外帶包
+Telemini Qwen／ComfyUI 隱私閘道版
 
-這包不是只換一句 prompt，而是重寫「副模型整理圖片 prompt」的流程，並補上模式分流。
+本次完成：
 
-本次修改重點
-1. 保留目前生成模式
-   - 文生圖
-   - 文生圖＋基準圖（原本勾選啟用基準圖）
-   - 整體圖生圖
-   - 局部遮罩修改
+一、Render 不再需要直接連接 11434／8188
+- 新增 services/local_ai_gateway_client.py。
+- Qwen 與 ComfyUI 都可改走 LOCAL_AI_GATEWAY_URL。
+- 遠端網址不是 HTTPS 時會拒絕連線。
+- LOCAL_AI_GATEWAY_URL 或密鑰只填一半時，不會偷偷退回不安全直連。
 
-2. 副模型改成先做「中文任務解析」，再輸出英文圖片 prompt
-   - 不再直接把使用者原句先翻譯成英文再整理
-   - 先用中文理解需求，再輸出結構化 JSON
-   - JSON 會拆出：
-     * must_keep
-     * must_change
-     * must_not_change
-     * must_not_add
-     * low_priority_fill
-     * final_positive_prompt
-     * final_negative_prompt
+二、本機驗證閘道
+新增「本機AI閘道」資料夾：
+- app.py
+- 啟動本機AI閘道.cmd
+- 閘道設定範例.cmd
+- 產生共用密鑰.ps1
+- Cloudflare Tunnel 設定範例與說明
 
-3. 明確優先順序
-   A. 使用者明確要求修改或限制不動的內容（最高優先）
-   B. 來源圖 / 基準圖原本存在且未要求修改的內容
-   C. 必要但未指定的補完（最低優先）
+驗證方式：
+- HMAC-SHA256
+- 請求時間戳
+- 一次性 nonce，防重放
+- request body SHA-256
+- 可再疊加 Cloudflare Access Service Token
 
-4. 不同模式走不同的副模型任務描述
-   - text_to_image
-   - reference_text_to_image
-   - full_image_edit
-   - mask_edit
+三、圖片不保存在你的電腦或 Render
+- ComfyUI 工作流使用 PreviewImage，不使用 SaveImage。
+- Render 只在記憶體接收圖片 bytes，不寫入磁碟。
+- 本機閘道把圖片 bytes 交出去後，立即刪除 ComfyUI temp 檔。
+- 同時刪除該 prompt 的 ComfyUI history。
+- 閘道啟動時會清理舊 history。
+- 每 10 分鐘清理超過 30 分鐘的殘留 temp 檔，處理斷線或程式中止情況。
 
-5. 副模型失敗時仍可 fallback
-   - 若副模型沒有正確輸出 JSON，會退回舊版英文化整理
-   - 不會直接卡死整個生圖流程
+四、圖片管理照常保留
+- Telegram 成功收到圖片後，仍保存 Telegram file_id 到原本圖片管理。
+- 不保存圖片實體 bytes。
+- 使用者仍可在原本圖片管理查看、改名、刪除與後續圖生圖。
 
-6. 模型分流補強
-   - txt2img：AI_HORDE_TXT2IMG_MODEL
-   - 文生圖＋基準圖：AI_HORDE_REFERENCE_IMG2IMG_MODEL
-   - 整體圖生圖：AI_HORDE_IMG2IMG_MODEL
-   - 局部遮罩：AI_HORDE_INPAINT_MODEL
+五、圖片管理網頁防外流
+- 原本 20 分鐘簽章 token 驗證保留。
+- 新增 no-store、no-cache。
+- 新增 Referrer-Policy: no-referrer。
+- 新增 X-Frame-Options: DENY。
+- 圖片預覽不會建立公開靜態網址。
 
-7. 基準圖專用 profile
-   - 文生圖勾選啟用基準圖時，request_profile 會變成 text_reference
-   - 會使用專門的 reference img2img 模型與參數
+六、你需要做的一次性設定
+1. 本機建立閘道共用密鑰。
+2. 建立 Cloudflare Tunnel，指向 127.0.0.1:8787。
+3. Render 填 LOCAL_AI_GATEWAY_URL 與 LOCAL_AI_GATEWAY_SECRET。
+4. 建議再建立 Cloudflare Access Service Token。
 
-8. 參數補強
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_MODEL
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_STEPS
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE
-   - 新增 AI_HORDE_REFERENCE_DENOISING_STRENGTH
-   - 新增 AI_HORDE_REFERENCE_DENOISE_POSE
-
-建議可選環境變數
-AI_HORDE_TXT2IMG_MODEL=AlbedoBase XL (SDXL)
-AI_HORDE_REFERENCE_IMG2IMG_MODEL=Realistic Vision
-AI_HORDE_IMG2IMG_MODEL=Realistic Vision
-AI_HORDE_INPAINT_MODEL=Realistic Vision Inpainting
-
-AI_HORDE_REFERENCE_IMG2IMG_STEPS=28
-AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE=5.2
-AI_HORDE_REFERENCE_DENOISING_STRENGTH=0.76
-AI_HORDE_REFERENCE_DENOISE_POSE=0.84
-
-本包覆蓋檔案
-- services/aihorde_text_service.py
-- services/image_jobs.py
-- services/aihorde_service.py
-
-覆蓋後建議執行
-python -m py_compile servicesihorde_text_service.py services\image_jobs.py servicesihorde_service.py
+日常不用手動驗證；程式會自動簽章與驗證每次請求。

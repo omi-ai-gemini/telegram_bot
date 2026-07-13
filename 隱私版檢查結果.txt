@@ -1,0 +1,13 @@
+Telemini 隱私版檢查結果
+
+已通過：
+- 全專案 Python compileall。
+- 主程式 ComfyUI workflow 不含 SaveImage。
+- workflows/txt2img_basic_api.json 已改為 PreviewImage。
+- HMAC 正確簽章可通過閘道驗證。
+- 錯誤簽章會回 401。
+- 相同 nonce 重放會回 401。
+- 閘道根網址回 404，不公開服務資訊。
+- 模擬圖片讀取後，temp 實體檔已刪除。
+- 模擬圖片讀取後，對應 ComfyUI history 已送出刪除。
+- Telegram file_id 圖片管理流程仍保留。

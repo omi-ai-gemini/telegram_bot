@@ -1,0 +1,39 @@
+Telemini 本機 AI 隱私閘道
+
+作用：
+Render 不直接公開連接 Ollama 11434 或 ComfyUI 8188。
+Render 只透過 Cloudflare Tunnel 的 HTTPS 網址呼叫本機閘道。
+每一個請求還會再用共用密鑰做 HMAC-SHA256 簽章、時間戳與一次性 nonce 驗證。
+
+本機要保持運行：
+1. Ollama
+2. ComfyUI
+3. 本機 AI 閘道
+4. cloudflared
+
+第一次設定：
+1. 執行「產生共用密鑰.ps1」。
+2. 複製「閘道設定範例.cmd」，改名為「閘道設定.cmd」。
+3. 填入共用密鑰及正確的 COMFYUI_ROOT。
+4. 雙擊「啟動本機AI閘道.cmd」。
+5. Cloudflare Tunnel 的本機服務指向：http://127.0.0.1:8787
+6. Render 新增：
+   LOCAL_AI_GATEWAY_URL=https://你的閘道網域
+   LOCAL_AI_GATEWAY_SECRET=與本機完全相同的共用密鑰
+
+有使用 Cloudflare Access Service Token 時，再於 Render 新增：
+   CF_ACCESS_CLIENT_ID=...
+   CF_ACCESS_CLIENT_SECRET=...
+
+安全規則：
+- 不要把 11434 或 8188 做路由器 Port Forwarding。
+- Ollama、ComfyUI、本機閘道都維持 127.0.0.1。
+- Cloudflare Tunnel 只指向 127.0.0.1:8787。
+- 閘道設定.cmd 不要提交到 GitHub。
+
+圖片隱私：
+- ComfyUI 使用 PreviewImage。
+- Render 經閘道讀取圖片 bytes 後，閘道會立刻刪除該張 ComfyUI temp 檔。
+- Render 不會把圖片寫進本機磁碟。
+- Telegram 收到圖片後，仍只保存原本圖片管理需要的 Telegram file_id。
+- 圖片管理功能與使用者自行刪除功能照常保留。

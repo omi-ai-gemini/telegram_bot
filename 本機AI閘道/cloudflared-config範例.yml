@@ -1,0 +1,7 @@
+tunnel: 請填你的Tunnel-UUID
+credentials-file: C:\Users\你的Windows帳號\.cloudflared\請填你的Tunnel-UUID.json
+
+ingress:
+  - hostname: ai.你的網域
+    service: http://127.0.0.1:8787
+  - service: http_status:404

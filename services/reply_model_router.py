@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional
 
-from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.qwen_service import generate_chat_reply, get_secondary_model_label
 from services.gemini_service import ask_gemini_prompt
 from services.model_mode import MODE_MAIN, MODE_SECONDARY, get_api_model_mode
 from services.style import build_prompt
@@ -31,11 +31,11 @@ def _normalize_secondary(result: Any) -> Dict[str, Any]:
     payload = result if isinstance(result, dict) else {}
     return {
         "text": payload.get("text"),
-        "thoughts": "本次回覆由 AI Horde 副模型產生，沒有 Gemini 推理摘要。",
+        "thoughts": "本次回覆由 Qwen2.5:7b 副模型產生，沒有 Gemini 推理摘要。",
         "thought_source": "generated",
         "provider": MODE_SECONDARY,
         "model": payload.get("model") or get_secondary_model_label(),
-        "error": payload.get("message") or (None if payload.get("text") else "副模型沒有回傳結果"),
+        "error": payload.get("message") or (None if payload.get("text") else "Qwen 副模型沒有回傳結果"),
         "request_id": payload.get("request_id"),
         "elapsed": payload.get("elapsed"),
         "ok": bool(payload.get("ok") and payload.get("text")),
@@ -67,8 +67,8 @@ def generate_reply_by_mode(
     """
     所有聊天回覆共用的唯一模型分流節點。
 
-    一般回覆、重跑、接續、/reply、阻擋競速都先完成同一份 Prompt，
-    到真正要送出模型的最後一步才依 /modes_api 決定 API。
+    一般回覆、重跑、接續、/reply 都先完成同一份 Prompt，
+    到真正要送出模型的最後一步才依 /models_deputy 決定 API。
     """
     selected_mode = model_override or get_api_model_mode(user_id, bot_id, chat_id)
     if selected_mode not in {MODE_MAIN, MODE_SECONDARY}:

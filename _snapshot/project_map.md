@@ -16,6 +16,19 @@ C:\Projects\telemini
 - `AI_Horde尺寸與工作節點相容修正說明.txt`
 - `AI_Horde生圖外帶說明.txt`
 - `config.py`
+- `docs\#U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U56fa#U5b9a#U8eab#U4efd#U63d0#U793a#U8a5e#U751f#U5716#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U5716#U7247#U7b49#U5f85#U51fd#U5f0f#U532f#U5165#U932f#U8aa4#U4fee#U6b63#U8aaa#U660e.md`
+- `docs\#U5716#U7247#U7b49#U5f85#U8207#U6a21#U578b#U5207#U63db#U4fee#U6b63#U8aaa#U660e.md`
+- `docs\#U5716#U7247#U89e3#U6790#U4e0a#U9650#U8207#U7121#U56de#U61c9#U63d0#U793a#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U5716#U7247#U89e3#U6790#U6a21#U578bfallback#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U5a92#U9ad4#U8f38#U5165#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U6587#U751f#U5716#U69cb#U5716#U8207#U5716#U751f#U5716#U4fee#U6539#U529b#U5ea6#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U6587#U751f#U5716#U8207#U5716#U751f#U5716#U96d9#U6a21#U5f0f#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U670d#U52d9#U4e2d#U5fc3#U516c#U544a#U63a8#U64ad#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U670d#U52d9#U4e2d#U5fc3#U66f4#U65b0#U8aaa#U660e.md`
+- `docs\#U76ee#U524d#U5c08#U6848#U6574#U5408#U72c0#U614b.md`
+- `docs\AI_HORDE#U751f#U5716#U529f#U80fd#U66f4#U65b0#U8aaa#U660e.md`
 - `docs\AI_HORDE生圖功能更新說明.md`
 - `docs\AI_MESSAGE_ACTIONS_README.md`
 - `docs\BLOCKED_RETRY_BUTTON_README.md`
@@ -23,6 +36,7 @@ C:\Projects\telemini
 - `docs\ENV_ENCRYPTION_README.md`
 - `docs\HIDDEN_PASSIVE_SUMMARY_README.md`
 - `docs\NORMAL_REPLY_UNIFIED_GENERATION_README.md`
+- `docs\Pillow#U4f9d#U8cf4#U4fee#U5fa9#U8aaa#U660e.md`
 - `docs\Pillow依賴修復說明.md`
 - `docs\PRIVACY_ACCESS_README.md`
 - `docs\PRIVACY_SYNC_README.md`
@@ -55,7 +69,9 @@ C:\Projects\telemini
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
 - `main.py`
+- `prompt#U5916#U5e36#U8aaa#U660e.txt`
 - `prompt外帶說明.txt`
+- `README_#U8986#U84cb#U8aaa#U660e.txt`
 - `README_覆蓋說明.txt`
 - `requirements.txt`
 - `routes\admin.py`
@@ -76,6 +92,7 @@ C:\Projects\telemini
 - `services\call_ai.py`
 - `services\character.py`
 - `services\chat_persona.py`
+- `services\comfyui_service.py`
 - `services\commands.py`
 - `services\crypto_box.py`
 - `services\crypto_env.py`
@@ -88,6 +105,7 @@ C:\Projects\telemini
 - `services\image_prepare.py`
 - `services\image_prompt.py`
 - `services\image_store.py`
+- `services\local_ai_gateway_client.py`
 - `services\media_ai.py`
 - `services\memory.py`
 - `services\memory_summary.py`
@@ -97,6 +115,7 @@ C:\Projects\telemini
 - `services\privacy_migration.py`
 - `services\privacy_session.py`
 - `services\prompt_debug.py`
+- `services\qwen_service.py`
 - `services\reply_model_router.py`
 - `services\reply_style.py`
 - `services\runtime_cache.py`
@@ -107,6 +126,7 @@ C:\Projects\telemini
 - `services\time_context.py`
 - `services\user_notice.py`
 - `services\user_router.py`
+- `static\image_reference\#U57fa#U6e96#U5716#U653e#U7f6e#U8aaa#U660e.txt`
 - `static\image_reference\基準圖放置說明.txt`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
@@ -122,6 +142,7 @@ C:\Projects\telemini
 - `templates\prompt_debug_list.html`
 - `templates\reply_style_form.html`
 - `templates\thought_view.html`
+- `test_comfy_api.py`
 - `test_lab\__init__.py`
 - `test_lab\db.py`
 - `test_lab\gemini.py`
@@ -133,6 +154,8 @@ C:\Projects\telemini
 - `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
+- `workflows\txt2img_basic_api.json`
+- `修改檔案清單.txt`
 - `全寫真防肖像改版說明.txt`
 - `副模型真實對話角色修正說明.txt`
 - `副模型競速與圖片Prompt覆蓋說明.txt`
@@ -146,6 +169,11 @@ C:\Projects\telemini
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`
+- `本機AI閘道\app.py`
+- `本機AI閘道\cloudflared-config範例.yml`
+- `本機AI閘道\Cloudflare設定步驟.txt`
+- `本機AI閘道\requirements.txt`
+- `本機AI閘道\設定說明.txt`
 - `本次修復說明.txt`
 - `本次修改說明.txt`
 - `模型切換共用路由修正說明.txt`
@@ -164,6 +192,7 @@ C:\Projects\telemini
 - `遮罩局部修改外帶說明.txt`
 - `遮罩生圖修正說明.txt`
 - `開場-更新說明.txt`
+- `隱私版檢查結果.txt`
 
 ## Python 路由總覽
 
@@ -242,6 +271,7 @@ C:\Projects\telemini
 - `admin_login_developer()`
 
 ### `routes\image_gen.py`
+- `_image_privacy_headers()`
 - `_decode_mask_data_url()`
 - `_token()`
 - `_auth()`
@@ -488,6 +518,19 @@ C:\Projects\telemini
 - `update_chat_persona_settings()`
 - `delete_chat_persona_settings()`
 
+### `services\comfyui_service.py`
+- `_workflow_seed()`
+- `build_txt2img_workflow()`
+- `_post_json()`
+- `queue_prompt()`
+- `interrupt()`
+- `_get_history()`
+- `_pick_image_meta()`
+- `_safe_delete_direct_temp()`
+- `_delete_direct_history()`
+- `_download_view()`
+- `wait_for_prompt_image()`
+
 ### `services\commands.py`
 - `_telegram_post()`
 - `_build_persona_setting_url()`
@@ -612,6 +655,8 @@ C:\Projects\telemini
 - `_load_system_reference()`
 - `_resolve_reference()`
 - `_save_generated_telegram_photo()`
+- `_job_cancel_requested()`
+- `_process_comfy_txt2img()`
 - `process_image_job()`
 - `run_image_job_in_thread()`
 - `cancel_job_for_user()`
@@ -642,6 +687,17 @@ C:\Projects\telemini
 - `download_image_asset()`
 - `rename_image_asset()`
 - `delete_image_asset()`
+
+### `services\local_ai_gateway_client.py`
+- `gateway_requested()`
+- `gateway_enabled()`
+- `gateway_config_error()`
+- `_body_bytes()`
+- `_signed_headers()`
+- `_request()`
+- `gateway_post_json()`
+- `gateway_get_json()`
+- `gateway_get_bytes()`
 
 ### `services\media_ai.py`
 - `_text()`
@@ -746,7 +802,7 @@ C:\Projects\telemini
 - `set_api_model_mode()`
 - `toggle_api_model_mode()`
 - `_mode_text()`
-- `handle_modes_api_command()`
+- `handle_models_deputy_command()`
 
 ### `services\privacy_access.py`
 - `_text_id()`
@@ -796,6 +852,18 @@ C:\Projects\telemini
 - `_row_to_summary()`
 - `_row_to_detail()`
 - `send_prompt_debug_link()`
+
+### `services\qwen_service.py`
+- `_clean_text()`
+- `_post_generate()`
+- `get_secondary_model_label()`
+- `generate_chat_reply()`
+- `_strip_code_fence()`
+- `_extract_json()`
+- `_infer_identity()`
+- `_infer_gender()`
+- `build_face_prompts()`
+- `organize_image_prompt()`
 
 ### `services\reply_model_router.py`
 - `_normalize_main()`
@@ -881,6 +949,14 @@ C:\Projects\telemini
 - `clear_gemini_key_cache()`
 - `user_has_key()`
 
+### `test_comfy_api.py`
+- `load_workflow()`
+- `fill_workflow()`
+- `submit_workflow()`
+- `wait_for_result()`
+- `print_output_files()`
+- `main()`
+
 ### `test_lab\db.py`
 - `init_test_lab_db()`
 
@@ -950,3 +1026,21 @@ C:\Projects\telemini
 - `summarize_file()`
 - `generate_project_map()`
 - `main()`
+
+### `本機AI閘道\app.py`
+- `_cleanup_nonces()`
+- `_request_path_with_query()`
+- `_verify_request()`
+- `_auth_guard()`
+- `_proxy_json()`
+- `ollama_generate()`
+- `comfy_prompt()`
+- `comfy_interrupt()`
+- `comfy_history()`
+- `_temp_root()`
+- `_cleanup_stale_temp_files()`
+- `_stale_cleanup_loop()`
+- `_clear_comfy_history_on_start()`
+- `_safe_temp_path()`
+- `comfy_view()`
+- `_privacy_headers()`

@@ -1,0 +1,26 @@
+Telemini Prompt Debug 網頁版外帶包
+
+覆蓋 / 新增：
+- main.py
+- handlers/message_handler.py
+- services/database.py
+- services/gemini_service.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/prompt_debug.py
+- routes/prompt_debug.py
+- templates/prompt_debug_list.html
+- templates/prompt_debug_detail.html
+- templates/prompt_debug_compare.html
+- docs/PROMPT_DEBUG_WEB_README.md
+
+部署後用法：
+1. 讓 bot 跑一次一般新輸入。
+2. 再按 🔁 或用 🗣️ 讓它跑一次刷新/救援。
+3. 輸入 /prompt_debug_compare。
+4. 打開網頁看兩筆 prompt 差異。
+
+注意：
+- 聊天室只會出現一個網頁連結，不會塞完整 prompt。
+- Prompt Debug 會保存完整明文 prompt，只供開發者除錯。
+- 每個 bot_id + chat_id 只保留最新 50 筆。

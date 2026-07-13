@@ -112,7 +112,7 @@ python -m compileall -q .
 # config.py
 
 - 類型：.py
-- 行數：93
+- 行數：114
 
 ## imports
 - os
@@ -201,9 +201,871 @@ AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "true")
 # =========================
-# AI Horde 副文字模型
+# Ollama / Qwen 副模型
 ...
-... 已省略 13 行
+... 已省略 34 行
+```
+
+
+================================================================================
+
+# docs\#U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：173
+
+## preview
+```text
+# Telemini 副模型競速與圖片 Prompt 整理更新
+
+## 1. AI Horde 副文字模型
+
+新增：
+
+- `services/aihorde_text_service.py`
+- `services/model_mode.py`
+
+預設副模型：
+
+```text
+koboldcpp/L3-8B-Stheno-v3.2
+koboldcpp/mini-magnum-12b-v1.1
+```
+
+兩個名稱會一起送進 AI Horde，由當下可用工作節點先接單。可在 Render 改成：
+
+```text
+AI_HORDE_TEXT_MODELS=模型一,模型二
+```
+
+沿用原本：
+
+```text
+AI_HORDE_API_KEY_1
+AI_HORDE_API_KEY_2
+```
+
+不需要新增第三把 Key。
+
+## 2. 安全阻擋按鈕
+
+一般回覆出現「內容被安全阻擋」時，按鈕改為：
+
+```text
+⚡ 副模型競速
+```
+
+按下後：
+
+1. 目前聊天室後續回覆模式切成副模型。
+2. Gemini 與 AI Horde 同時生成。
+3. 第一個有效回覆勝出。
+4. Gemini 安全阻擋或空回覆不算有效結果。
+5. Gemini 先完成時，程式會通知 AI Horde 取消仍在等待的文字任務。
+6. 競速狀態訊息完成後會自動刪除。
+
+重要 Log：
+
+```text
+MODEL RACE START
+MODEL RACE BRANCH RESULT
+MODEL RACE WINNER
+MODEL RACE ERROR
+```
+
+## 3. 主副模型切換指令
+
+```text
+/modes_api
+```
+
+不帶參數時，主模型與副模型互相切換。
+
+```text
+/modes_api main
+/modes_api secondary
+/modes_api status
+```
+
+- `main`：後續一般回覆走 Gemini。
+- `secondary`：後續一般回覆直接走 AI Horde。
+- `status`：只查看目前模式。
+
+切換與查詢會寫入 `MODEL MODE COMMAND` / `MODEL MODE SET` Log。
+
+狀態保存在：
+
+```text
+...
+... 已省略 93 行
+```
+
+
+================================================================================
+
+# docs\#U56fa#U5b9a#U8eab#U4efd#U63d0#U793a#U8a5e#U751f#U5716#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：21
+
+## preview
+```text
+# 固定身份提示詞生圖更新
+
+本版以最新版 `telemini(3).zip` 為基礎重新合併。
+
+## 流程
+
+- 系統預設人物：固定身份提示詞 → Flux txt2img。
+- 聊天室圖片／臨時上傳圖：玩家圖片 → 等比例裁切 → Flux img2img。
+- 不再使用系統基準圖、遮罩或 inpainting。
+
+## 提示詞優先級
+
+完全自訂提示詞 > 補充提示詞 > 固定標籤 > 本輪訊息 > 系統預設外觀。
+
+補充提示詞明確指定髮色、髮長或髮型時，程式會先從本輪訊息移除同欄位的舊描述，避免同時出現「黑色長髮」和「金色短髮」。
+
+玩家使用自己的參考圖片時，不套用系統固定臉型。
+
+## 最終尺寸
+
+固定為 896×1152。玩家參考圖先等比例裁切，不直接拉伸。
+```
+
+
+================================================================================
+
+# docs\#U5716#U7247#U7b49#U5f85#U51fd#U5f0f#U532f#U5165#U932f#U8aa4#U4fee#U6b63#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：37
+
+## preview
+```text
+# 圖片等待函式匯入錯誤修正
+
+## 錯誤
+
+```text
+ImportError: cannot import name 'queue_text_for_pending_photo' from 'services.media_ai'
+```
+
+原因：`handlers/message_handler.py` 已使用圖片等待 10 秒流程，但後續補丁把 `services/media_ai.py` 覆蓋成未包含等待函式的版本。
+
+## 本次修正
+
+只需要覆蓋：
+
+- `services/media_ai.py`
+
+保留並合併：
+
+1. `queue_text_for_pending_photo()` 圖片後補文字緩衝。
+2. 圖片解析完成後等待 10 秒。
+3. 圖片解析上限 `65536`。
+4. 靜態貼圖上限 `500`。
+5. `MAX_TOKENS` 有部分圖片描述時繼續使用，並保留 log。
+6. Gemini 沒有輸出圖片描述時，聊天室提示：
+
+```text
+不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止
+```
+
+7. 當日圖片額度用完時，傳圖仍會收到提示。
+8. 圖片失敗時，解析期間緩衝的文字直接中斷，不另行呼叫文字模型。
+
+## 測試
+
+```powershell
+python -m py_compile services\media_ai.py handlers\message_handler.py services\gemini_service.py config.py main.py
+```
+```
+
+
+================================================================================
+
+# docs\#U5716#U7247#U7b49#U5f85#U8207#U6a21#U578b#U5207#U63db#U4fee#U6b63#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：84
+
+## preview
+```text
+# 圖片等待 10 秒與圖片模型切換修正
+
+## 修改檔案
+
+- `handlers/message_handler.py`
+- `services/media_ai.py`
+- `services/gemini_service.py`
+
+## 圖片等待流程
+
+```text
+收到圖片
+→ 立即建立等待狀態
+→ 圖片模型解析
+→ 解析完成後等待 10 秒
+```
+
+- 解析期間收到文字：先暫存；圖片解析完成後立即合併送進文字模型。
+- 解析完成後 10 秒內收到文字：取消等待，圖片解析＋文字合併送進文字模型。
+- 10 秒內沒有文字：只把圖片解析結果送進文字模型。
+- 圖片附註 caption 會一起放進同一次輸入。
+- 圖片解析失敗時，如果期間有暫存文字，文字會恢復成一般聊天，不會被吞掉。
+
+## 3.5 Flash 切換修正
+
+原本問題：
+
+- `503 UNAVAILABLE / high demand` 被當成額度用完。
+- 因此 3.5 Flash 被停用到隔天，後續圖片直接走 3 Flash Preview。
+- 停用狀態原本只按模型記錄，不同使用者可能互相影響。
+
+修正後：
+
+```text
+503 / high demand
+→ 只重試 3.5 Flash
+→ 不停用、不切 3 Flash
+
+一般 RPM / TPM 429
+→ 只重試 3.5 Flash
+→ 不停用到隔天
+
+明確每日 RPD / per-day 額度用完
+→ 只停用該 API Key 的 3.5 Flash
+→ 切到 3 Flash Preview
+
+404 / 模型已下架
+→ 本次切到 3 Flash Preview
+→ 不記成每日額度用完
+```
+
+API Key 只使用 SHA-256 短雜湊識別，不會把原始 Key 寫進 log。
+
+## 重要 Log
+
+```text
+GEMINI IMAGE ROUTE
+GEMINI IMAGE ATTEMPT
+GEMINI IMAGE RETRY WAIT
+GEMINI IMAGE TO TEXT ERROR ... kind=high_demand
+GEMINI IMAGE PRIMARY FAILED NO FALLBACK ... reason=high_demand
+GEMINI IMAGE MODEL DISABLED UNTIL RESET ... reason=daily_quota
+GEMINI IMAGE FALLBACK SWITCH ... reason=daily_quota
+GEMINI IMAGE TO TEXT OK
+```
+
+圖片等待：
+
+```text
+MEDIA PHOTO PENDING CREATED
+MEDIA PHOTO PARSE START
+MEDIA PHOTO PARSE OK
+MEDIA PHOTO WAIT START
+MEDIA PHOTO TEXT BUFFERED
+MEDIA PHOTO WAIT CANCEL reason=text_received
+MEDIA PHOTO WAIT TIMEOUT
+MEDIA PHOTO DISPATCH
+```
+
+## 編譯測試
+...
+... 已省略 4 行
+```
+
+
+================================================================================
+
+# docs\#U5716#U7247#U89e3#U6790#U4e0a#U9650#U8207#U7121#U56de#U61c9#U63d0#U793a#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：46
+
+## preview
+```text
+# 圖片解析上限與無回應提示更新說明
+
+## 覆蓋檔案
+
+- `config.py`
+- `services/gemini_service.py`
+- `services/media_ai.py`
+
+## 更新內容
+
+1. 圖片解析單次輸出上限
+- 新增 `GEMINI_VISION_MAX_OUTPUT_TOKENS`，預設 `65536`。
+- 靜態貼圖解析上限維持 `500`。
+
+2. 圖片解析失敗時不再沉默
+- 如果 Gemini 圖片解析沒有輸出文字，聊天室會明確提示：
+  - 圖片：`不小心超過單次最大限制，消耗圖片次數1次，文字回應一併停止`
+  - 貼圖：`不小心超過單次最大限制，消耗貼圖次數1次，文字回應一併停止`
+- 這種情況下不再繼續送進文字模型。
+
+3. 當日額度耗盡也會回提示
+- 若圖片解析模型額度耗盡，使用者傳圖時會直接收到提示，不會沒反應。
+
+4. 503 / 高負載不再整天誤判成額度用完
+- 只有 quota / 429 / RESOURCE_EXHAUSTED 會停用到下次 Pacific 午夜。
+- 503 / high demand 只會本次改試下一個模型。
+
+5. 新增 log
+- 會額外印出：
+  - 路由選擇
+  - 嘗試模型
+  - `MAX_TOKENS` 命中 log
+  - 全部模型失敗原因
+
+## 可選環境變數
+
+```text
+GEMINI_VISION_MAX_OUTPUT_TOKENS=65536
+GEMINI_STICKER_MAX_OUTPUT_TOKENS=500
+```
+
+## 測試
+
+```bash
+python -m py_compile config.py services/gemini_service.py services/media_ai.py
+```
+```
+
+
+================================================================================
+
+# docs\#U5716#U7247#U89e3#U6790#U6a21#U578bfallback#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：58
+
+## preview
+```text
+# 圖片解析模型 fallback 更新
+
+## 更新目標
+
+圖片、靜態貼圖解析改成：
+
+1. 優先送進 `gemini-3.5-flash`
+2. 如果主模型遇到 quota / rate limit / 服務暫時不可用，改送進 `gemini-3-flash-preview`
+3. 主模型出現 429 / RESOURCE_EXHAUSTED / 503 後，會在目前 Render process 內暫停嘗試到 Pacific time 下一次午夜重置後
+4. 避免每天額度達上限後，每張圖片都先撞一次 3.5 Flash
+
+## 修改檔案
+
+- `config.py`
+- `services/gemini_service.py`
+
+## 環境變數
+
+可以在 Render 設定：
+
+```text
+GEMINI_VISION_MODEL=gemini-3.5-flash
+GEMINI_VISION_FALLBACK_MODEL=gemini-3-flash-preview
+```
+
+如果 Render 已經有舊的：
+
+```text
+GEMINI_VISION_MODEL=gemini-2.5-flash
+```
+
+要刪掉或改成：
+
+```text
+GEMINI_VISION_MODEL=gemini-3.5-flash
+```
+
+## Render log 判讀
+
+成功：
+
+```text
+GEMINI IMAGE TO TEXT OK model=gemini-3.5-flash len=...
+```
+
+主模型達上限後切換：
+
+```text
+GEMINI IMAGE TO TEXT ERROR model=gemini-3.5-flash ... 429 RESOURCE_EXHAUSTED ...
+GEMINI IMAGE MODEL DISABLED UNTIL RESET model=gemini-3.5-flash ...
+GEMINI IMAGE TO TEXT OK model=gemini-3-flash-preview len=...
+```
+
+全部失敗：
+
+```text
+GEMINI IMAGE TO TEXT FAILED all_models=[...]
+```
+```
+
+
+================================================================================
+
+# docs\#U5a92#U9ad4#U8f38#U5165#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：47
+
+## preview
+```text
+# Telemini 非文字輸入分流更新
+
+## 更新內容
+
+1. 靜態貼圖
+- Telegram static sticker 下載 WebP。
+- 使用 `gemini-3.1-flash-lite` 解析貼圖內容。
+- 再把解析結果交回原本聊天流程，由主模型自然回覆。
+
+2. 圖片訊息
+- 使用者直接傳 photo 時，不再沉默。
+- 先使用 `gemini-2.5-flash` 解析圖片。
+- 再把圖片解析文字交回 `gemini-3.1-flash-lite` 原聊天流程回覆。
+- 這樣保留「文字回覆由 3.1 處理」的主架構。
+
+3. 未支援輸入防呆
+- 語音、音訊、影片、GIF / animation、動態貼圖、影片貼圖、文件、位置等尚未支援的訊息，會直接回覆：
+
+```text
+程式尚不能對語音、動態貼圖、影片產生回覆
+```
+
+避免使用者傳了之後聊天室完全沒有反應。
+
+## 修改檔案
+
+- `config.py`
+- `main.py`
+- `services/telegram_service.py`
+- `services/gemini_service.py`
+- `services/media_ai.py`
+
+## 環境變數
+
+可選：
+
+```text
+GEMINI_VISION_MODEL=gemini-2.5-flash
+```
+
+不設定時預設使用 `gemini-2.5-flash` 做圖片解析。
+
+## 測試
+
+```bash
+python -m py_compile main.py config.py services/telegram_service.py services/gemini_service.py services/media_ai.py
+```
+```
+
+
+================================================================================
+
+# docs\#U6587#U751f#U5716#U69cb#U5716#U8207#U5716#U751f#U5716#U4fee#U6539#U529b#U5ea6#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：28
+
+## preview
+```text
+# 文生圖構圖與圖生圖修改力度更新
+
+## 文生圖
+
+- 模型維持 `Flux.1-Schnell fp8 (Compact)`。
+- 預設改成環境敘事生活攝影，不再把頭肩肖像當成安全預設。
+- 未明確要求特寫時，優先使用中遠景、四分之三身或全身構圖。
+- 場景、服裝、動作、物品與手部互動必須能在畫面中看見。
+- 負面提示詞新增 headshot、face-only portrait、studio portrait、glamour portrait 等肖像照傾向。
+- 文生圖維持 4 steps，避免增加整體等待時間。
+
+## 圖生圖
+
+- 模型同樣維持 `Flux.1-Schnell fp8 (Compact)`，不切換冷門模型。
+- 全域規則明確要求：修改內容是必須完成的任務，不可只縮放原圖後退回。
+- 未指定區域仍要求盡量保留，指定區域必須明顯替換或改變。
+- 重繪強度由 `0.50` 提高為 `0.72`。
+- 圖生圖 steps 由 `4` 提高為 `8`，文生圖不受影響。
+
+## 可選環境變數
+
+```text
+AI_HORDE_TXT2IMG_STEPS=4
+AI_HORDE_IMG2IMG_STEPS=8
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+```
+
+不設定時會使用上述預設值。
+```
+
+
+================================================================================
+
+# docs\#U6587#U751f#U5716#U8207#U5716#U751f#U5716#U96d9#U6a21#U5f0f#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：61
+
+## preview
+```text
+# Telemini 文生圖與圖生圖雙模式更新
+
+## 本次改版
+
+### 文生圖
+
+- 不上傳系統基準圖。
+- 使用固定男／女人物身份描述。
+- 固定採用自然相機、生活感、真實膚質方向。
+- 壓低塑膠皮膚、美顏濾鏡、CGI、AI 美女商攝感。
+- 依服裝、動作、物品與場景需求自動選擇半身或全身構圖，不再固定生成臉部特寫。
+
+### 圖生圖
+
+- 來源可選本次上傳圖片或聊天室圖片代號／名稱。
+- 原圖是最高視覺依據。
+- 只修改最新提示詞明確要求的內容。
+- 未被要求修改的人物、姿勢、構圖、背景、物品、招牌與文字區域盡量保留。
+- 重繪強度由舊版 `0.72` 降為 `0.50`，降低人物與整體畫面漂移。
+- 來源圖只做等比例縮放與裁切，不直接拉伸。
+
+## 提示詞優先順序
+
+```text
+完全自訂提示詞
+或
+補充提示詞 > 固定標籤 > 本輪對話
+```
+
+程式不再逐項辨識髮型、衣服、場景或物品。
+所有需求共用同一條規則：
+
+```text
+最新且最明確的要求優先；遇到衝突時忽略較舊內容。
+```
+
+補充提示詞會同時放在 Prompt 的最高優先區塊與結尾，降低長對話把補充需求吃掉的情況。
+
+## 修改檔案
+
+- `routes/image_gen.py`
+- `services/aihorde_service.py`
+- `services/image_jobs.py`
+- `services/image_prepare.py`
+- `services/image_prompt.py`
+- `templates/image_gen_form.html`
+- `requirements.txt`
+
+## 重要限制
+
+這版仍是 AI Horde 的 `txt2img / img2img`，不是本機人物分割與精準 Photoshop 合成。
+
+因此：
+
+- 圖生圖會「盡量」保留原圖，不保證中文字能逐像素完全不變。
+- 大幅改動姿勢或場景時，原人物相似度仍可能下降。
+- 使用者要求改得越少，原圖通常保留得越好。
+
+## Render
+
+需要重新 Build，讓 Pillow 依賴正常安裝。
+```
+
+
+================================================================================
+
+# docs\#U670d#U52d9#U4e2d#U5fc3#U516c#U544a#U63a8#U64ad#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：56
+
+## preview
+```text
+# 服務中心公告推播更新說明
+
+## 本次修改
+
+1. `/start` 不再先送最新公告。
+   - 現在 `/start` 只送服務中心主頁按鈕。
+   - 公告內容只放在「公告事項」按鈕內查看。
+
+2. 公告會存進 DB。
+   - table：`service_center_announcements`
+   - 最新公告仍顯示在公告事項最上面。
+
+3. 新增主動推播。
+   - table：`service_center_subscribers`
+   - 使用者只要曾經私訊或操作服務中心 bot，就會記錄 chat_id。
+   - Telegram bot 只能主動傳訊息給曾經開始過對話的使用者或曾經互動過的 chat。
+
+4. 每天下午五點推新公告。
+   - 時區：Asia/Taipei
+   - 每天 17:00 後檢查一次。
+   - 若有 `push_enabled = TRUE` 且 `pushed_at IS NULL` 的公告，就主動推播。
+   - 推播流程跑完後會把該公告設為 `push_enabled = FALSE` 並寫入 `pushed_at`，所以同一則公告不會在未來重複推給新加入的 chat。
+   - table：`service_center_announcement_deliveries`
+   - unique：`announcement_id + chat_id`，避免 Render 重啟或多 worker 重複推同一則公告。
+
+## 本次預設公告
+
+標籤：功能更新
+標題：圖片與貼圖輸入更新
+內容：
+
+1. 新增圖片訊息支援：使用者直接傳圖片時，系統會先解析圖片內容，再交回聊天流程自然回覆。
+2. 新增靜態貼圖支援：Telegram 靜態貼圖會被解析成可理解的文字內容，再由 AI 接續回覆。
+3. 新增未支援媒體防呆：語音、音訊、影片、GIF、動態貼圖、影片貼圖、文件、位置等目前尚未支援的輸入，會回覆提示，不會再完全沒反應。
+
+## 新增 table
+
+```sql
+service_center_subscribers
+service_center_announcement_deliveries
+service_center_scheduler_state
+```
+
+## 管理員新增公告
+
+```text
+/announce 功能更新｜標題｜內容
+```
+
+新增後會先出現在公告事項，下一次台灣時間下午五點主動推播一次。
+
+## 測試
+
+```bash
+python -m py_compile main.py service_center/db.py service_center/handler.py service_center/scheduler.py service_center/telegram.py
+```
+```
+
+
+================================================================================
+
+# docs\#U670d#U52d9#U4e2d#U5fc3#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：130
+
+## preview
+```text
+# 服務中心更新說明
+
+## 更新重點
+
+這包把服務中心的 Telemini Wifi、Gemini API、公告事項補成可用流程。
+
+## 1. Telemini Wifi
+
+使用者在服務中心按下「📶 Telemini Wifi」後，下一則文字會被視為 BotFather 給的 bot token。
+
+流程：
+
+```text
+按 Telemini Wifi
+→ 貼上 bot token
+→ 服務中心刪除 token 訊息
+→ Telegram getMe 驗證 token
+→ 取得 bot username 當 bot_id
+→ 寫入 bot_config
+→ 自動 setWebhook 到 BASE_URL/webhook/<bot_id>
+→ 回覆設定結果
+```
+
+注意：
+- 不會把 token 印到 Render log。
+- token 寫入 DB 前會嘗試用 `APP_ENCRYPTION_SECRET` 加密。
+- 舊版明文 token 仍可相容讀取。
+
+## 2. Gemini API
+
+使用者在服務中心按下「🔑 Gemini API」後，下一則文字會被視為 Gemini API Key。
+
+流程：
+
+```text
+按 Gemini API
+→ 貼上 Gemini API Key
+→ 服務中心刪除 key 訊息
+→ 寫入 user_config
+→ 清除 gemini_key 快取
+→ 回覆設定完成
+```
+
+注意：
+- 不會把 key 印到 Render log。
+- key 寫入 DB 前會嘗試用 `APP_ENCRYPTION_SECRET` 加密。
+- 舊版明文 key 仍可相容讀取。
+
+## 3. 公告事項 DB
+
+新增服務中心公告資料表：
+
+```sql
+service_center_announcements
+```
+
+欄位：
+
+```text
+id
+ann_key
+label
+title
+body
+is_active
+created_at
+updated_at
+```
+
+公告事項按鈕會讀取最新 10 筆公告，最新公告放最上面。
+
+## 4. /start 行為
+
+服務中心 bot 收到 `/start` 時：
+
+```text
+先送最新一則公告
+再送服務中心主頁按鈕
+```
+
+...
+... 已省略 50 行
+```
+
+
+================================================================================
+
+# docs\#U76ee#U524d#U5c08#U6848#U6574#U5408#U72c0#U614b.md
+
+- 類型：.md
+- 行數：56
+
+## preview
+```text
+# Telemini 目前專案整合狀態
+
+本版已整理成單一路線，保留以下功能：
+
+- Gemini 主模型聊天／劇場回覆
+- AI Horde 副文字模型與 `/modes_api`
+- 安全阻擋後主副模型競速
+- 圖片 Prompt 先由副模型整理
+- 圖生圖原圖等比例縮放、不裁切
+- 依原圖比例自動選擇不超過安全像素量的 64 倍數尺寸
+- 淺灰色補邊
+- AI Horde 文生圖／圖生圖
+- 服務中心、公告推播、Telemini Wifi、Gemini API 設定
+- 圖片解析、貼圖解析、圖片庫、記憶與 Prompt Debug
+
+## 生圖正確流程
+
+```text
+使用者送出生圖表單
+→ Telegram 顯示「prompt生成中」
+→ AI Horde 副文字模型整理圖片 Prompt
+→ 成功：使用整理後 Prompt
+→ 失敗：保留原始 Prompt 當 fallback
+→ Telegram 更新為「生圖任務已送出，正在加入排隊」
+→ AI Horde 圖片模型開始排隊與生成
+```
+
+## 圖生圖尺寸流程
+
+```text
+任意尺寸原圖
+→ 修正 EXIF 方向
+→ 保留完整原圖比例
+→ 依安全總像素量選最大可用尺寸
+→ 寬高向下修成 64 的倍數
+→ 等比例縮放，不裁切
+→ 不足區域使用 RGB(240,240,240) 淺灰補邊
+→ 以動態寬高送入 AI Horde
+```
+
+## 已移除
+
+- 舊 SQLite 檢查腳本
+- 未掛載且會暴露密鑰的舊 `api.py`
+- 未使用的遮罩生圖占位檔
+- 未使用的男女基準圖片
+- Git 內部資料、快照、Python 快取
+- 檔名已損壞成 `#Uxxxx` 的舊補丁說明文件
+
+## 驗證
+
+部署前可執行：
+
+```bash
+python -m compileall -q .
+```
+```
+
+
+================================================================================
+
+# docs\AI_HORDE#U751f#U5716#U529f#U80fd#U66f4#U65b0#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：50
+
+## preview
+```text
+# Telemini AI Horde 生圖功能
+
+目前提供兩種模式：
+
+## 文生圖
+
+- 使用固定男／女人物身份描述。
+- 不傳送系統基準圖。
+- 模型：`Flux.1-Schnell fp8 (Compact)`。
+- 預設輸出：`896×1152`。
+- 風格為自然相機生活感攝影，避免塑膠肌、過度磨皮、CGI 與純臉部商攝特寫。
+
+## 圖生圖
+
+- 使用本次上傳圖片或聊天室圖片代號／名稱。
+- 來源圖等比例處理為 `896×1152`，不直接拉伸。
+- 使用 `img2img`，固定重繪強度 `0.50`。
+- 原圖是視覺依據；只修改最新提示詞明確要求的內容，其他部分盡量保留。
+
+## 提示詞
+
+不呼叫 Gemini，也不額外消耗 Gemini 圖片解析流量。
+
+優先順序：
+
+```text
+完全自訂提示詞
+或
+補充提示詞 > 固定標籤 > 本輪對話
+```
+
+補充提示詞會放在最高優先區塊並在 Prompt 結尾再次強調。
+
+## Render 必填
+
+```text
+AI_HORDE_API_KEY_1=第一個 AI Horde API Key
+AI_HORDE_API_KEY_2=第二個 AI Horde API Key
+BASE_URL=https://你的-render網址
+SETTING_LINK_SECRET=設定頁簽章密鑰
+APP_ENCRYPTION_SECRET=資料加密密鑰
+```
+
+## 任務規則
+
+- 每位使用者最多同時 3 張排隊／生成中任務。
+- 排隊與生成合計 20 分鐘超時。
+- 圖片與提示詞會送到 AI Horde 社群工作節點。
+- 臨時上傳圖只供本次任務使用，不寫入圖片庫。
+- 聊天室圖片與完成圖片仍可使用既有圖片庫。
 ```
 
 
@@ -673,6 +1535,36 @@ user message
 ```bash
 python -m py_compile services/memory.py services/style.py services/call_ai.py services/ai_actions.py
 ```
+```
+
+
+================================================================================
+
+# docs\Pillow#U4f9d#U8cf4#U4fee#U5fa9#U8aaa#U660e.md
+
+- 類型：.md
+- 行數：18
+
+## preview
+```text
+# Pillow 依賴說明
+
+目前 Pillow 不再用於系統基準圖遮罩。
+
+它只用於玩家上傳圖片或聊天室參考圖片：
+
+- 讀取 JPG／PNG／WEBP
+- 修正 EXIF 方向
+- 等比例縮放並裁切為 896×1152
+- 禁止直接拉伸人物比例
+
+`requirements.txt` 保留：
+
+```text
+Pillow==12.3.0
+```
+
+Pillow 採延遲安全匯入，安裝異常時不會讓 Gunicorn 在匯入階段直接崩潰；只會讓該次自訂圖片任務回報依賴缺失。
 ```
 
 
@@ -2650,7 +3542,7 @@ def _send_script_opening(bot_id, chat_id):
 - services.commands.send_setting_menu
 - services.media_ai.queue_text_for_pending_photo
 - services.memory_view.send_memory_view_menu
-- services.model_mode.handle_modes_api_command
+- services.model_mode.handle_models_deputy_command
 - services.prompt_debug.send_prompt_debug_link
 - services.telegram_service.send_message
 - test_lab.service.handle_test_lab_message
@@ -2671,7 +3563,7 @@ from services.memory_view import send_memory_view_menu
 from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
-from services.model_mode import handle_modes_api_command
+from services.model_mode import handle_models_deputy_command
 from test_lab.service import handle_test_lab_message
 
 
@@ -2734,8 +3626,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         run_reply_recovery(user_id, bot_id, chat_id)
         return
 
-    if text == "/modes_api" or text.startswith("/modes_api "):
-        handle_modes_api_command(
+    if text == "/models_deputy" or text.startswith("/models_deputy "):
+        handle_models_deputy_command(
             user_id=user_id,
             bot_id=bot_id,
             chat_id=chat_id,
@@ -2881,6 +3773,44 @@ def webhook(bot_id):
 
 ================================================================================
 
+# prompt#U5916#U5e36#U8aaa#U660e.txt
+
+- 類型：.txt
+- 行數：26
+
+## preview
+```text
+Telemini Prompt Debug 網頁版外帶包
+
+覆蓋 / 新增：
+- main.py
+- handlers/message_handler.py
+- services/database.py
+- services/gemini_service.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/prompt_debug.py
+- routes/prompt_debug.py
+- templates/prompt_debug_list.html
+- templates/prompt_debug_detail.html
+- templates/prompt_debug_compare.html
+- docs/PROMPT_DEBUG_WEB_README.md
+
+部署後用法：
+1. 讓 bot 跑一次一般新輸入。
+2. 再按 🔁 或用 🗣️ 讓它跑一次刷新/救援。
+3. 輸入 /prompt_debug_compare。
+4. 打開網頁看兩筆 prompt 差異。
+
+注意：
+- 聊天室只會出現一個網頁連結，不會塞完整 prompt。
+- Prompt Debug 會保存完整明文 prompt，只供開發者除錯。
+- 每個 bot_id + chat_id 只保留最新 50 筆。
+```
+
+
+================================================================================
+
 # prompt外帶說明.txt
 
 - 類型：.txt
@@ -2914,6 +3844,48 @@ Telemini Prompt Debug 網頁版外帶包
 - 聊天室只會出現一個網頁連結，不會塞完整 prompt。
 - Prompt Debug 會保存完整明文 prompt，只供開發者除錯。
 - 每個 bot_id + chat_id 只保留最新 50 筆。
+```
+
+
+================================================================================
+
+# README_#U8986#U84cb#U8aaa#U660e.txt
+
+- 類型：.txt
+- 行數：30
+
+## preview
+```text
+Telemini 最新服務中心檔案包
+
+覆蓋檔案：
+- config.py
+- main.py
+- service_center/__init__.py
+- service_center/db.py
+- service_center/handler.py
+- service_center/telegram.py
+
+附帶說明文件：
+- docs/SERVICE_CENTER_ENV_STAGE1_README.md
+- docs/SERVICE_CENTER_AUTOWEBHOOK_HOTFIX_README.md
+- docs/SERVICE_CENTER_BUTTONS_README.md
+
+Render 必填環境變數：
+- BASE_URL=https://你的-render網址
+- SERVICE_CENTER_BOT_ID=service_center
+- SERVICE_CENTER_BOT_TOKEN=BotFather 給你的服務中心 bot token
+
+可選：
+- SERVICE_CENTER_ADMIN_IDS=你的 Telegram 數字 ID，多人用逗號分隔
+
+部署後：
+- 第一次 request 會自動設定服務中心 webhook。
+- webhook 路徑：/webhook/service_center
+- 服務中心 bot 不進主遊戲、不呼叫 Gemini、不寫 chat_memory、不查 bot_config。
+
+測試：
+python -m py_compile main.py config.py service_center/handler.py service_center/telegram.py service_center/db.py
 ```
 
 
@@ -3108,7 +4080,7 @@ def add_key_route():
 # routes\image_gen.py
 
 - 類型：.py
-- 行數：276
+- 行數：288
 
 ## imports
 - base64
@@ -3131,6 +4103,7 @@ def add_key_route():
 - services.image_store.rename_image_asset
 
 ## functions
+- _image_privacy_headers
 - _decode_mask_data_url
 - _token
 - _auth
@@ -3172,6 +4145,18 @@ from services.image_store import (
 
 
 image_gen_bp = Blueprint("image_gen", __name__)
+
+
+@image_gen_bp.after_request
+def _image_privacy_headers(response):
+    # 圖片管理與預覽頁不進瀏覽器快取，也不把含 token 的網址帶到外站。
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    return response
 MAX_UPLOAD_BYTES = 12 * 1024 * 1024
 MAX_MASK_BYTES = 4 * 1024 * 1024
 ALLOWED_UPLOAD_MIMES = {"image/jpeg", "image/png", "image/webp"}
@@ -3220,20 +4205,8 @@ def _render_generate(auth, context=None, error="", success="", job_id=None, form
         context=context or {},
         fixed_tags=list(FIXED_TAGS.keys()),
         error=error,
-        success=success,
-        job_id=job_id,
-        form=form or {},
-        expires_at=auth.get("expires_at", 0),
-    ), status
-
-
-@image_gen_bp.route("/image/generate", methods=["GET"])
-def image_generate_page():
-    auth, error = _auth("generate")
-    if error:
-        return error
 ...
-... 已省略 196 行
+... 已省略 208 行
 ```
 
 
@@ -4655,7 +5628,6 @@ def bot_exists(bot_id: str) -> bool:
 - services.ai_actions.create_ai_message_action
 - services.ai_actions.send_blocked_reply_message
 - services.ai_actions.update_action_telegram_message_id
-- services.aihorde_text_service.get_secondary_model_label
 - services.bot_router.get_bot_token
 - services.character.get_character_settings
 - services.chat_persona.get_chat_persona_settings
@@ -4673,6 +5645,7 @@ def bot_exists(bot_id: str) -> bool:
 - services.model_mode.MODE_MAIN
 - services.model_mode.MODE_SECONDARY
 - services.model_mode.get_api_model_mode
+- services.qwen_service.get_secondary_model_label
 - services.reply_model_router.generate_reply_by_mode
 - services.reply_style.get_reply_style_settings
 - services.telegram_service.delete_message
@@ -4708,7 +5681,7 @@ from services.ai_actions import (
     send_blocked_reply_message,
 )
 from services.gemini_service import GEMINI_BLOCKED
-from services.aihorde_text_service import get_secondary_model_label
+from services.qwen_service import get_secondary_model_label
 from services.reply_model_router import generate_reply_by_mode
 from services.model_mode import (
     MODE_MAIN,
@@ -5017,6 +5990,132 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
         cursor.execute("""
 ...
 ... 已省略 128 行
+```
+
+
+================================================================================
+
+# services\comfyui_service.py
+
+- 類型：.py
+- 行數：371
+
+## imports
+- os
+- pathlib.Path
+- random
+- requests
+- services.local_ai_gateway_client.gateway_config_error
+- services.local_ai_gateway_client.gateway_enabled
+- services.local_ai_gateway_client.gateway_get_bytes
+- services.local_ai_gateway_client.gateway_get_json
+- services.local_ai_gateway_client.gateway_post_json
+- services.local_ai_gateway_client.gateway_requested
+- time
+- typing.Any
+- typing.Callable
+- typing.Dict
+- typing.Optional
+- urllib.parse.urlencode
+- uuid
+
+## functions
+- _workflow_seed
+- build_txt2img_workflow
+- _post_json
+- queue_prompt
+- interrupt
+- _get_history
+- _pick_image_meta
+- _safe_delete_direct_temp
+- _delete_direct_history
+- _download_view
+- wait_for_prompt_image
+
+## preview
+```text
+import os
+import random
+import time
+import uuid
+from typing import Any, Callable, Dict, Optional
+from urllib.parse import urlencode
+
+import requests
+
+from services.local_ai_gateway_client import (
+    gateway_config_error,
+    gateway_enabled,
+    gateway_requested,
+    gateway_get_bytes,
+    gateway_get_json,
+    gateway_post_json,
+)
+
+
+_COMFY_SESSION = requests.Session()
+
+COMFYUI_BASE_URL = str(os.getenv("COMFYUI_BASE_URL", "http://127.0.0.1:8188")).rstrip("/")
+COMFYUI_TIMEOUT_SECONDS = max(60, int(os.getenv("COMFYUI_TIMEOUT_SECONDS", "900") or "900"))
+COMFYUI_POLL_SECONDS = max(1, int(os.getenv("COMFYUI_POLL_SECONDS", "2") or "2"))
+COMFYUI_CHECKPOINT = str(os.getenv("COMFYUI_CHECKPOINT", "cyberrealisticXL_v100.safetensors")).strip() or "cyberrealisticXL_v100.safetensors"
+COMFYUI_UPSCALE_MODEL = str(os.getenv("COMFYUI_UPSCALE_MODEL", "RealESRGAN_x2plus.pth")).strip() or "RealESRGAN_x2plus.pth"
+COMFYUI_FACE_DETECTOR = str(os.getenv("COMFYUI_FACE_DETECTOR", "bbox/face_yolov8m.pt")).strip() or "bbox/face_yolov8m.pt"
+COMFYUI_WIDTH = max(256, int(os.getenv("COMFYUI_WIDTH", "768") or "768"))
+COMFYUI_HEIGHT = max(256, int(os.getenv("COMFYUI_HEIGHT", "1024") or "1024"))
+COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
+COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
+
+
+def _workflow_seed() -> int:
+    return random.SystemRandom().randint(1, 2**62)
+
+
+def build_txt2img_workflow(
+    *,
+    main_positive: str,
+    main_negative: str,
+    face_positive: str,
+    face_negative: str,
+) -> Dict[str, Any]:
+    return {
+        "10": {
+            "inputs": {"text": str(main_negative or ""), "clip": ["12", 1]},
+            "class_type": "CLIPTextEncode",
+            "_meta": {"title": "CLIP 文字編碼（負面提示詞）"},
+        },
+        "11": {
+            "inputs": {"text": str(main_positive or ""), "clip": ["12", 1]},
+            "class_type": "CLIPTextEncode",
+            "_meta": {"title": "CLIP 文字編碼（正面提示詞）"},
+        },
+        "12": {
+            "inputs": {"ckpt_name": COMFYUI_CHECKPOINT},
+            "class_type": "CheckpointLoaderSimple",
+            "_meta": {"title": "載入檢查點"},
+        },
+        "13": {
+            "inputs": {
+                "seed": _workflow_seed(),
+                "steps": 25,
+                "cfg": 5.5,
+                "sampler_name": "dpmpp_2m",
+                "scheduler": "karras",
+                "denoise": 1,
+                "model": ["12", 0],
+                "positive": ["11", 0],
+                "negative": ["10", 0],
+                "latent_image": ["14", 0],
+            },
+            "class_type": "KSampler",
+            "_meta": {"title": "KSampler"},
+        },
+        "14": {
+            "inputs": {"width": COMFYUI_WIDTH, "height": COMFYUI_HEIGHT, "batch_size": 1},
+            "class_type": "EmptyLatentImage",
+            "_meta": {"title": "空白潛在影像"},
+...
+... 已省略 291 行
 ```
 
 
@@ -5979,7 +7078,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：854
+- 行數：981
 
 ## imports
 - datetime.datetime
@@ -5991,8 +7090,9 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.aihorde_service.download_generated_image
 - services.aihorde_service.get_image_result
 - services.aihorde_service.submit_image_request
-- services.aihorde_text_service.get_secondary_model_label
-- services.aihorde_text_service.organize_image_prompt
+- services.comfyui_service.build_txt2img_workflow
+- services.comfyui_service.queue_prompt
+- services.comfyui_service.wait_for_prompt_image
 - services.crypto_env.aad_for
 - services.crypto_env.decrypt_text
 - services.crypto_env.encrypt_text
@@ -6003,6 +7103,9 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.image_prepare.prepare_img2img_source
 - services.image_store.download_image_asset
 - services.image_store.save_image_asset
+- services.qwen_service.build_face_prompts
+- services.qwen_service.get_secondary_model_label
+- services.qwen_service.organize_image_prompt
 - services.telegram_service.delete_message
 - services.telegram_service.edit_message_text
 - services.telegram_service.send_message
@@ -6037,6 +7140,8 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - _load_system_reference
 - _resolve_reference
 - _save_generated_telegram_photo
+- _job_cancel_requested
+- _process_comfy_txt2img
 - process_image_job
 - run_image_job_in_thread
 - cancel_job_for_user
@@ -6059,7 +7164,8 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
-from services.aihorde_text_service import get_secondary_model_label, organize_image_prompt
+from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
+from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -6123,9 +7229,8 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
 
 
 
-
 ...
-... 已省略 774 行
+... 已省略 901 行
 ```
 
 
@@ -6460,6 +7565,124 @@ def init_image_tables() -> None:
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_generation_status TEXT DEFAULT 'pending'")
 ...
 ... 已省略 223 行
+```
+
+
+================================================================================
+
+# services\local_ai_gateway_client.py
+
+- 類型：.py
+- 行數：178
+
+## imports
+- hashlib
+- hmac
+- json
+- os
+- requests
+- secrets
+- time
+- typing.Any
+- typing.Dict
+- typing.Optional
+- urllib.parse.urlencode
+
+## functions
+- gateway_requested
+- gateway_enabled
+- gateway_config_error
+- _body_bytes
+- _signed_headers
+- _request
+- gateway_post_json
+- gateway_get_json
+- gateway_get_bytes
+
+## preview
+```text
+import hashlib
+import hmac
+import json
+import os
+import secrets
+import time
+from typing import Any, Dict, Optional
+from urllib.parse import urlencode
+
+import requests
+
+
+_SESSION = requests.Session()
+
+LOCAL_AI_GATEWAY_URL = str(os.getenv("LOCAL_AI_GATEWAY_URL", "")).strip().rstrip("/")
+LOCAL_AI_GATEWAY_SECRET = str(os.getenv("LOCAL_AI_GATEWAY_SECRET", "")).strip()
+CF_ACCESS_CLIENT_ID = str(os.getenv("CF_ACCESS_CLIENT_ID", "")).strip()
+CF_ACCESS_CLIENT_SECRET = str(os.getenv("CF_ACCESS_CLIENT_SECRET", "")).strip()
+LOCAL_AI_GATEWAY_TIMEOUT_SECONDS = max(
+    30,
+    int(os.getenv("LOCAL_AI_GATEWAY_TIMEOUT_SECONDS", "180") or "180"),
+)
+
+
+def gateway_requested() -> bool:
+    return bool(LOCAL_AI_GATEWAY_URL or LOCAL_AI_GATEWAY_SECRET)
+
+
+def gateway_enabled() -> bool:
+    return bool(LOCAL_AI_GATEWAY_URL and LOCAL_AI_GATEWAY_SECRET)
+
+
+def gateway_config_error() -> str:
+    if not gateway_requested():
+        return ""
+    if not LOCAL_AI_GATEWAY_URL:
+        return "已設定本機 AI 閘道密鑰，但缺少 LOCAL_AI_GATEWAY_URL"
+    if not LOCAL_AI_GATEWAY_SECRET:
+        return "已設定 LOCAL_AI_GATEWAY_URL，但缺少 LOCAL_AI_GATEWAY_SECRET"
+    lowered = LOCAL_AI_GATEWAY_URL.lower()
+    is_local = lowered.startswith("http://127.0.0.1") or lowered.startswith("http://localhost")
+    if not lowered.startswith("https://") and not is_local:
+        return "遠端本機 AI 閘道必須使用 HTTPS"
+    return ""
+
+
+def _body_bytes(payload: Optional[Dict[str, Any]]) -> bytes:
+    if payload is None:
+        return b""
+    return json.dumps(
+        payload,
+        ensure_ascii=False,
+        separators=(",", ":"),
+    ).encode("utf-8")
+
+
+def _signed_headers(method: str, path_with_query: str, body: bytes) -> Dict[str, str]:
+    timestamp = str(int(time.time()))
+    nonce = secrets.token_urlsafe(18)
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = "\n".join([
+        str(method or "GET").upper(),
+        str(path_with_query or "/"),
+        timestamp,
+        nonce,
+        body_hash,
+    ]).encode("utf-8")
+    signature = hmac.new(
+        LOCAL_AI_GATEWAY_SECRET.encode("utf-8"),
+        canonical,
+        hashlib.sha256,
+    ).hexdigest()
+
+    headers = {
+        "X-Telemini-Timestamp": timestamp,
+        "X-Telemini-Nonce": nonce,
+        "X-Telemini-Signature": signature,
+    }
+    if body:
+        headers["Content-Type"] = "application/json"
+...
+... 已省略 98 行
 ```
 
 
@@ -7013,7 +8236,7 @@ def _send_or_edit(bot_id, chat_id, message_id, text, reply_markup):
 - set_api_model_mode
 - toggle_api_model_mode
 - _mode_text
-- handle_modes_api_command
+- handle_models_deputy_command
 
 ## preview
 ```text
@@ -7088,11 +8311,11 @@ def toggle_api_model_mode(user_id: Any, bot_id: Any, chat_id: Any) -> str:
 
 def _mode_text(mode: str) -> str:
     if mode == MODE_SECONDARY:
-        return "副模型（AI Horde）"
+        return "副模型（Qwen2.5:7b / Ollama）"
     return "主模型（Gemini）"
 
 
-def handle_modes_api_command(
+def handle_models_deputy_command(
     user_id: Any,
     bot_id: Any,
     chat_id: Any,
@@ -7571,18 +8794,138 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 
 ================================================================================
 
+# services\qwen_service.py
+
+- 類型：.py
+- 行數：302
+
+## imports
+- json
+- os
+- re
+- requests
+- services.local_ai_gateway_client.gateway_config_error
+- services.local_ai_gateway_client.gateway_enabled
+- services.local_ai_gateway_client.gateway_post_json
+- services.local_ai_gateway_client.gateway_requested
+- typing.Any
+- typing.Dict
+- typing.Optional
+- typing.Tuple
+
+## functions
+- _clean_text
+- _post_generate
+- get_secondary_model_label
+- generate_chat_reply
+- _strip_code_fence
+- _extract_json
+- _infer_identity
+- _infer_gender
+- build_face_prompts
+- organize_image_prompt
+
+## preview
+```text
+import json
+import os
+import re
+from typing import Any, Dict, Optional, Tuple
+
+import requests
+
+from services.local_ai_gateway_client import (
+    gateway_config_error,
+    gateway_enabled,
+    gateway_post_json,
+    gateway_requested,
+)
+
+
+_OLLAMA_SESSION = requests.Session()
+
+OLLAMA_BASE_URL = str(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+OLLAMA_DEPUTY_MODEL = str(os.getenv("OLLAMA_DEPUTY_MODEL", "qwen2.5:7b")).strip() or "qwen2.5:7b"
+OLLAMA_PROMPT_MODEL = str(os.getenv("OLLAMA_PROMPT_MODEL", OLLAMA_DEPUTY_MODEL)).strip() or OLLAMA_DEPUTY_MODEL
+OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180") or "180"))
+OLLAMA_CHAT_NUM_PREDICT = max(64, int(os.getenv("OLLAMA_CHAT_NUM_PREDICT", "512") or "512"))
+OLLAMA_PROMPT_NUM_PREDICT = max(128, int(os.getenv("OLLAMA_PROMPT_NUM_PREDICT", "700") or "700"))
+
+
+FACE_NEGATIVE = (
+    "cross-eyed, asymmetrical eyes, mismatched eyes, deformed eyes, blurry eyes, "
+    "malformed pupils, extra pupils, deformed face, bad anatomy, blurry, low quality, "
+    "plastic skin, over-smoothed face"
+)
+
+FACE_SUFFIX = (
+    "natural detailed eyes, symmetrical eyes, detailed dark brown irises, realistic eyelashes, "
+    "natural eye reflections, subtle natural makeup, realistic skin texture, clean facial details"
+)
+
+FACE_IDENTITY_PREFIX = {
+    ("Chinese", "woman"): "young Chinese woman, Han Chinese facial features, natural Chinese facial structure",
+    ("Chinese", "man"): "young Chinese man, Han Chinese facial features, natural Chinese facial structure",
+    ("Japanese", "woman"): "young Japanese woman, natural Japanese facial features, natural Japanese facial structure",
+    ("Japanese", "man"): "young Japanese man, natural Japanese facial features, natural Japanese facial structure",
+    ("Korean", "woman"): "young Korean woman, natural Korean facial features, natural Korean facial structure",
+    ("Korean", "man"): "young Korean man, natural Korean facial features, natural Korean facial structure",
+    ("Taiwanese", "woman"): "young Taiwanese woman, natural Taiwanese facial features, natural Taiwanese facial structure",
+    ("Taiwanese", "man"): "young Taiwanese man, natural Taiwanese facial features, natural Taiwanese facial structure",
+    ("Western", "woman"): "young Western woman, natural Western facial features, natural Western facial structure",
+    ("Western", "man"): "young Western man, natural Western facial features, natural Western facial structure",
+    ("EastAsian", "woman"): "young East Asian woman, natural East Asian facial features, natural East Asian facial structure",
+    ("EastAsian", "man"): "young East Asian man, natural East Asian facial features, natural East Asian facial structure",
+}
+
+
+IMAGE_PROMPT_SYSTEM = """You rewrite a draft image request into ComfyUI / SDXL prompt fields.
+Output only valid JSON. Do not add markdown, explanations, or code fences.
+
+Required JSON keys:
+- main_positive: string
+- main_negative: string
+- face_identity: string
+- face_gender: string
+
+Rules:
+1. main_positive must be in English and directly usable for a realistic photo generation workflow.
+2. main_negative must be in English and focus on avoiding close-up portrait crops, bad anatomy, extra limbs, blur, low quality, illustration look, and other common generation failures.
+3. face_identity must be one of: Chinese, Japanese, Korean, Taiwanese, Western, EastAsian.
+4. face_gender must be one of: woman, man.
+5. Preserve the user's requested subject, clothing, framing, background, and scene intent.
+6. If the draft clearly asks for a wider framing such as three-quarter body, medium-long shot, knee-up, environmental shot, or not a close-up, keep that.
+7. Do not censor, moralize, refuse, or mention policy. Only transform the request into model-friendly prompt fields.
+"""
+
+
+def _clean_text(value: Any) -> str:
+    return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: int = 512, temperature: float = 0.6) -> Dict[str, Any]:
+    url = f"{OLLAMA_BASE_URL}/api/generate"
+    payload = {
+        "model": model,
+...
+... 已省略 222 行
+```
+
+
+================================================================================
+
 # services\reply_model_router.py
 
 - 類型：.py
 - 行數：134
 
 ## imports
-- services.aihorde_text_service.generate_chat_reply
-- services.aihorde_text_service.get_secondary_model_label
 - services.gemini_service.ask_gemini_prompt
 - services.model_mode.MODE_MAIN
 - services.model_mode.MODE_SECONDARY
 - services.model_mode.get_api_model_mode
+- services.qwen_service.generate_chat_reply
+- services.qwen_service.get_secondary_model_label
 - services.style.build_prompt
 - typing.Any
 - typing.Dict
@@ -7597,7 +8940,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 ```text
 from typing import Any, Dict, Optional
 
-from services.aihorde_text_service import generate_chat_reply, get_secondary_model_label
+from services.qwen_service import generate_chat_reply, get_secondary_model_label
 from services.gemini_service import ask_gemini_prompt
 from services.model_mode import MODE_MAIN, MODE_SECONDARY, get_api_model_mode
 from services.style import build_prompt
@@ -7628,11 +8971,11 @@ def _normalize_secondary(result: Any) -> Dict[str, Any]:
     payload = result if isinstance(result, dict) else {}
     return {
         "text": payload.get("text"),
-        "thoughts": "本次回覆由 AI Horde 副模型產生，沒有 Gemini 推理摘要。",
+        "thoughts": "本次回覆由 Qwen2.5:7b 副模型產生，沒有 Gemini 推理摘要。",
         "thought_source": "generated",
         "provider": MODE_SECONDARY,
         "model": payload.get("model") or get_secondary_model_label(),
-        "error": payload.get("message") or (None if payload.get("text") else "副模型沒有回傳結果"),
+        "error": payload.get("message") or (None if payload.get("text") else "Qwen 副模型沒有回傳結果"),
         "request_id": payload.get("request_id"),
         "elapsed": payload.get("elapsed"),
         "ok": bool(payload.get("ok") and payload.get("text")),
@@ -7664,8 +9007,8 @@ def generate_reply_by_mode(
     """
     所有聊天回覆共用的唯一模型分流節點。
 
-    一般回覆、重跑、接續、/reply、阻擋競速都先完成同一份 Prompt，
-    到真正要送出模型的最後一步才依 /modes_api 決定 API。
+    一般回覆、重跑、接續、/reply 都先完成同一份 Prompt，
+    到真正要送出模型的最後一步才依 /models_deputy 決定 API。
     """
     selected_mode = model_override or get_api_model_mode(user_id, bot_id, chat_id)
     if selected_mode not in {MODE_MAIN, MODE_SECONDARY}:
@@ -8629,6 +9972,20 @@ def user_has_key(user_id: int) -> bool:
     conn.close()
 ...
 ... 已省略 2 行
+```
+
+
+================================================================================
+
+# static\image_reference\#U57fa#U6e96#U5716#U653e#U7f6e#U8aaa#U660e.txt
+
+- 類型：.txt
+- 行數：2
+
+## preview
+```text
+文生圖勾選「啟用基準圖」時，系統會讀取這個資料夾內的 male_reference.png 或 female_reference.png 作為基準圖。
+你之後若要替換人物基準圖，直接覆蓋同名檔案即可。
 ```
 
 
@@ -9895,6 +11252,115 @@ def user_has_key(user_id: int) -> bool:
 
 ================================================================================
 
+# test_comfy_api.py
+
+- 類型：.py
+- 行數：122
+
+## imports
+- json
+- pathlib.Path
+- random
+- requests
+- time
+
+## functions
+- load_workflow
+- fill_workflow
+- submit_workflow
+- wait_for_result
+- print_output_files
+- main
+
+## preview
+```text
+import json
+import random
+import time
+from pathlib import Path
+
+import requests
+
+
+COMFY_URL = "http://127.0.0.1:8188"
+WORKFLOW_PATH = Path("workflows/txt2img_basic_api.json")
+
+
+def load_workflow() -> dict:
+    if not WORKFLOW_PATH.exists():
+        raise FileNotFoundError(f"找不到工作流：{WORKFLOW_PATH.resolve()}")
+
+    with WORKFLOW_PATH.open("r", encoding="utf-8") as file:
+        return json.load(file)
+
+
+def fill_workflow(workflow: dict) -> dict:
+    # 正面提示詞
+    workflow["11"]["inputs"]["text"] = (
+        "a realistic photo of a young Chinese woman, "
+        "Han Chinese facial features, three-quarter body shot, "
+        "medium-long shot, from head to knees, natural standing pose, "
+        "soft daylight, realistic skin texture, photorealistic"
+    )
+
+    # 負面提示詞
+    workflow["10"]["inputs"]["text"] = (
+        "close-up, extreme close-up, headshot, face-only shot, "
+        "anime, cartoon, blurry, low quality, deformed face, "
+        "extra arms, extra hands, bad anatomy"
+    )
+
+    # 解析度
+    workflow["14"]["inputs"]["width"] = 576
+    workflow["14"]["inputs"]["height"] = 1024
+    workflow["14"]["inputs"]["batch_size"] = 1
+
+    # 採樣設定
+    workflow["13"]["inputs"]["seed"] = random.randint(1, 2**63 - 1)
+    workflow["13"]["inputs"]["steps"] = 25
+    workflow["13"]["inputs"]["cfg"] = 5
+    workflow["13"]["inputs"]["sampler_name"] = "dpmpp_2m"
+    workflow["13"]["inputs"]["scheduler"] = "karras"
+    workflow["13"]["inputs"]["denoise"] = 1
+
+    return workflow
+
+
+def submit_workflow(workflow: dict) -> str:
+    response = requests.post(
+        f"{COMFY_URL}/prompt",
+        json={"prompt": workflow},
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    data = response.json()
+
+    if "prompt_id" not in data:
+        raise RuntimeError(f"ComfyUI 拒絕工作流：{data}")
+
+    return data["prompt_id"]
+
+
+def wait_for_result(prompt_id: str, timeout_seconds: int = 1800) -> dict:
+    deadline = time.time() + timeout_seconds
+
+    while time.time() < deadline:
+        response = requests.get(
+            f"{COMFY_URL}/history/{prompt_id}",
+            timeout=30,
+        )
+        response.raise_for_status()
+
+        history = response.json()
+
+...
+... 已省略 42 行
+```
+
+
+================================================================================
+
 # test_lab\__init__.py
 
 - 類型：.py
@@ -10814,6 +12280,134 @@ def should_ignore(path: Path) -> bool:
 
 ================================================================================
 
+# workflows\txt2img_basic_api.json
+
+- 類型：.json
+- 行數：230
+
+## preview
+```text
+{
+  "10": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 文字編碼（提示詞）"
+    }
+  },
+  "11": {
+    "inputs": {
+      "text": "",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 文字編碼（提示詞）"
+    }
+  },
+  "12": {
+    "inputs": {
+      "ckpt_name": "cyberrealisticXL_v100.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "載入檢查點"
+    }
+  },
+  "13": {
+    "inputs": {
+      "seed": 402326381105677,
+      "steps": 25,
+      "cfg": 5.5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "12",
+        0
+      ],
+      "positive": [
+        "11",
+        0
+      ],
+      "negative": [
+        "10",
+        0
+      ],
+      "latent_image": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "14": {
+    "inputs": {
+      "width": 768,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空白潛在影像"
+    }
+  },
+  "15": {
+    "inputs": {
+      "images": [
+...
+... 已省略 150 行
+```
+
+
+================================================================================
+
+# 修改檔案清單.txt
+
+- 類型：.txt
+- 行數：22
+
+## preview
+```text
+本補丁包含以下檔案：
+
+.gitignore
+config.py
+routes/image_gen.py
+services/comfyui_service.py
+services/local_ai_gateway_client.py
+services/qwen_service.py
+test_comfy_api.py
+workflows/txt2img_basic_api.json
+本機AI閘道/Cloudflare設定步驟.txt
+本機AI閘道/app.py
+本機AI閘道/cloudflared-config範例.yml
+本機AI閘道/requirements.txt
+本機AI閘道/啟動CloudflareTunnel範例.cmd
+本機AI閘道/啟動本機AI閘道.cmd
+本機AI閘道/產生共用密鑰.ps1
+本機AI閘道/設定說明.txt
+本機AI閘道/閘道設定範例.cmd
+本次修改說明.txt
+補丁覆蓋說明.txt
+隱私版檢查結果.txt
+```
+
+
+================================================================================
+
 # 全寫真防肖像改版說明.txt
 
 - 類型：.txt
@@ -11310,6 +12904,294 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 
 ================================================================================
 
+# 本機AI閘道\app.py
+
+- 類型：.py
+- 行數：328
+
+## imports
+- flask.Flask
+- flask.Response
+- flask.jsonify
+- flask.request
+- hashlib
+- hmac
+- os
+- pathlib.Path
+- re
+- requests
+- threading
+- time
+- typing.Dict
+- urllib.parse.urlencode
+
+## functions
+- _cleanup_nonces
+- _request_path_with_query
+- _verify_request
+- _auth_guard
+- _proxy_json
+- ollama_generate
+- comfy_prompt
+- comfy_interrupt
+- comfy_history
+- _temp_root
+- _cleanup_stale_temp_files
+- _stale_cleanup_loop
+- _clear_comfy_history_on_start
+- _safe_temp_path
+- comfy_view
+- _privacy_headers
+
+## preview
+```text
+import hashlib
+import hmac
+import os
+import re
+import threading
+import time
+from pathlib import Path
+from typing import Dict
+from urllib.parse import urlencode
+
+import requests
+from flask import Flask, Response, jsonify, request
+
+
+app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
+
+OLLAMA_BASE_URL = str(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+COMFYUI_BASE_URL = str(os.getenv("COMFYUI_BASE_URL", "http://127.0.0.1:8188")).rstrip("/")
+GATEWAY_SECRET = str(os.getenv("LOCAL_AI_GATEWAY_SECRET", "")).strip()
+GATEWAY_PORT = int(os.getenv("LOCAL_AI_GATEWAY_PORT", "8787") or "8787")
+MAX_CLOCK_SKEW_SECONDS = max(30, int(os.getenv("LOCAL_AI_GATEWAY_MAX_SKEW", "90") or "90"))
+COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
+COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
+COMFYUI_TEMP_RETENTION_SECONDS = max(300, int(os.getenv("COMFYUI_TEMP_RETENTION_SECONDS", "1800") or "1800"))
+
+_SESSION = requests.Session()
+_NONCES: Dict[str, float] = {}
+_NONCE_LOCK = threading.Lock()
+_PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
+
+
+def _cleanup_nonces(now: float) -> None:
+    cutoff = now - max(300, MAX_CLOCK_SKEW_SECONDS * 3)
+    with _NONCE_LOCK:
+        stale = [nonce for nonce, created in _NONCES.items() if created < cutoff]
+        for nonce in stale:
+            _NONCES.pop(nonce, None)
+
+
+def _request_path_with_query() -> str:
+    path = request.path
+    raw_query = request.query_string.decode("utf-8", errors="strict")
+    return f"{path}?{raw_query}" if raw_query else path
+
+
+def _verify_request():
+    if not GATEWAY_SECRET:
+        return False, "本機閘道未設定 LOCAL_AI_GATEWAY_SECRET"
+
+    timestamp = str(request.headers.get("X-Telemini-Timestamp") or "").strip()
+    nonce = str(request.headers.get("X-Telemini-Nonce") or "").strip()
+    signature = str(request.headers.get("X-Telemini-Signature") or "").strip().lower()
+
+    if not timestamp or not nonce or not signature:
+        return False, "缺少閘道驗證標頭"
+
+    try:
+        timestamp_value = int(timestamp)
+    except Exception:
+        return False, "時間戳格式錯誤"
+
+    now = time.time()
+    if abs(now - timestamp_value) > MAX_CLOCK_SKEW_SECONDS:
+        return False, "請求已過期"
+
+    _cleanup_nonces(now)
+    with _NONCE_LOCK:
+        if nonce in _NONCES:
+            return False, "重複請求已拒絕"
+
+    body = request.get_data(cache=True) or b""
+    body_hash = hashlib.sha256(body).hexdigest()
+    canonical = "\n".join([
+        request.method.upper(),
+        _request_path_with_query(),
+        timestamp,
+        nonce,
+        body_hash,
+    ]).encode("utf-8")
+...
+... 已省略 248 行
+```
+
+
+================================================================================
+
+# 本機AI閘道\cloudflared-config範例.yml
+
+- 類型：.yml
+- 行數：7
+
+## preview
+```text
+tunnel: 請填你的Tunnel-UUID
+credentials-file: C:\Users\你的Windows帳號\.cloudflared\請填你的Tunnel-UUID.json
+
+ingress:
+  - hostname: ai.你的網域
+    service: http://127.0.0.1:8787
+  - service: http_status:404
+```
+
+
+================================================================================
+
+# 本機AI閘道\Cloudflare設定步驟.txt
+
+- 類型：.txt
+- 行數：64
+
+## preview
+```text
+Cloudflare Tunnel 一次性設定
+
+這一步無法由專案自動替你登入 Cloudflare 或選擇網域，所以只需要你第一次設定一次。
+之後每次開機只要保持 cloudflared 運行。
+
+一、建立 Tunnel
+在 PowerShell 執行：
+
+cloudflared tunnel login
+cloudflared tunnel create telemini-ai
+
+第二個指令會顯示 Tunnel UUID，並在：
+%USERPROFILE%\.cloudflared
+建立對應的 JSON 憑證檔。
+
+二、建立設定檔
+把「cloudflared-config範例.yml」內容複製到：
+
+%USERPROFILE%\.cloudflared\config.yml
+
+修改三處：
+1. Tunnel UUID
+2. credentials-file 的 Windows 帳號與 UUID
+3. ai.你的網域
+
+Cloudflare Tunnel 只指向：
+http://127.0.0.1:8787
+
+不要指向 11434 或 8188。
+
+三、建立 DNS 路由
+
+cloudflared tunnel route dns telemini-ai ai.你的網域
+
+四、啟動 Tunnel
+
+cloudflared tunnel run telemini-ai
+
+五、Render Environment
+
+LOCAL_AI_GATEWAY_URL=https://ai.你的網域
+LOCAL_AI_GATEWAY_SECRET=與本機閘道設定.cmd 完全相同的密鑰
+
+六、Cloudflare Access（第二層保護，建議開啟）
+
+在 Cloudflare Zero Trust 建立 Self-hosted Application，網域選 ai.你的網域。
+建立 Service Token，再建立 Service Auth Policy 只允許該 Service Token。
+把產生的值填入 Render：
+
+CF_ACCESS_CLIENT_ID=...
+CF_ACCESS_CLIENT_SECRET=...
+
+程式會自動使用：
+CF-Access-Client-Id
+CF-Access-Client-Secret
+
+七、實際保護層
+
+1. Cloudflare Tunnel：不開路由器連接埠，不公開家中 IP。
+2. HTTPS：Render 到 Cloudflare 的傳輸加密。
+3. Cloudflare Access Service Token：非授權請求先被 Cloudflare 擋下。
+4. Telemini HMAC：每次請求另有時間戳、nonce、SHA-256 內容雜湊與簽章。
+5. 本機閘道只監聽 127.0.0.1:8787。
+6. Ollama 與 ComfyUI 只監聽 127.0.0.1，不對外公開。
+```
+
+
+================================================================================
+
+# 本機AI閘道\requirements.txt
+
+- 類型：.txt
+- 行數：2
+
+## preview
+```text
+flask
+requests
+```
+
+
+================================================================================
+
+# 本機AI閘道\設定說明.txt
+
+- 類型：.txt
+- 行數：39
+
+## preview
+```text
+Telemini 本機 AI 隱私閘道
+
+作用：
+Render 不直接公開連接 Ollama 11434 或 ComfyUI 8188。
+Render 只透過 Cloudflare Tunnel 的 HTTPS 網址呼叫本機閘道。
+每一個請求還會再用共用密鑰做 HMAC-SHA256 簽章、時間戳與一次性 nonce 驗證。
+
+本機要保持運行：
+1. Ollama
+2. ComfyUI
+3. 本機 AI 閘道
+4. cloudflared
+
+第一次設定：
+1. 執行「產生共用密鑰.ps1」。
+2. 複製「閘道設定範例.cmd」，改名為「閘道設定.cmd」。
+3. 填入共用密鑰及正確的 COMFYUI_ROOT。
+4. 雙擊「啟動本機AI閘道.cmd」。
+5. Cloudflare Tunnel 的本機服務指向：http://127.0.0.1:8787
+6. Render 新增：
+   LOCAL_AI_GATEWAY_URL=https://你的閘道網域
+   LOCAL_AI_GATEWAY_SECRET=與本機完全相同的共用密鑰
+
+有使用 Cloudflare Access Service Token 時，再於 Render 新增：
+   CF_ACCESS_CLIENT_ID=...
+   CF_ACCESS_CLIENT_SECRET=...
+
+安全規則：
+- 不要把 11434 或 8188 做路由器 Port Forwarding。
+- Ollama、ComfyUI、本機閘道都維持 127.0.0.1。
+- Cloudflare Tunnel 只指向 127.0.0.1:8787。
+- 閘道設定.cmd 不要提交到 GitHub。
+
+圖片隱私：
+- ComfyUI 使用 PreviewImage。
+- Render 經閘道讀取圖片 bytes 後，閘道會立刻刪除該張 ComfyUI temp 檔。
+- Render 不會把圖片寫進本機磁碟。
+- Telegram 收到圖片後，仍只保存原本圖片管理需要的 Telegram file_id。
+- 圖片管理功能與使用者自行刪除功能照常保留。
+```
+
+
+================================================================================
+
 # 本次修復說明.txt
 
 - 類型：.txt
@@ -11345,83 +13227,62 @@ Telemini 四不像專案整理修正版
 # 本次修改說明.txt
 
 - 類型：.txt
-- 行數：73
+- 行數：52
 
 ## preview
 ```text
-Telemini 生圖任務解析重寫外帶包
+Telemini Qwen／ComfyUI 隱私閘道版
 
-這包不是只換一句 prompt，而是重寫「副模型整理圖片 prompt」的流程，並補上模式分流。
+本次完成：
 
-本次修改重點
-1. 保留目前生成模式
-   - 文生圖
-   - 文生圖＋基準圖（原本勾選啟用基準圖）
-   - 整體圖生圖
-   - 局部遮罩修改
+一、Render 不再需要直接連接 11434／8188
+- 新增 services/local_ai_gateway_client.py。
+- Qwen 與 ComfyUI 都可改走 LOCAL_AI_GATEWAY_URL。
+- 遠端網址不是 HTTPS 時會拒絕連線。
+- LOCAL_AI_GATEWAY_URL 或密鑰只填一半時，不會偷偷退回不安全直連。
 
-2. 副模型改成先做「中文任務解析」，再輸出英文圖片 prompt
-   - 不再直接把使用者原句先翻譯成英文再整理
-   - 先用中文理解需求，再輸出結構化 JSON
-   - JSON 會拆出：
-     * must_keep
-     * must_change
-     * must_not_change
-     * must_not_add
-     * low_priority_fill
-     * final_positive_prompt
-     * final_negative_prompt
+二、本機驗證閘道
+新增「本機AI閘道」資料夾：
+- app.py
+- 啟動本機AI閘道.cmd
+- 閘道設定範例.cmd
+- 產生共用密鑰.ps1
+- Cloudflare Tunnel 設定範例與說明
 
-3. 明確優先順序
-   A. 使用者明確要求修改或限制不動的內容（最高優先）
-   B. 來源圖 / 基準圖原本存在且未要求修改的內容
-   C. 必要但未指定的補完（最低優先）
+驗證方式：
+- HMAC-SHA256
+- 請求時間戳
+- 一次性 nonce，防重放
+- request body SHA-256
+- 可再疊加 Cloudflare Access Service Token
 
-4. 不同模式走不同的副模型任務描述
-   - text_to_image
-   - reference_text_to_image
-   - full_image_edit
-   - mask_edit
+三、圖片不保存在你的電腦或 Render
+- ComfyUI 工作流使用 PreviewImage，不使用 SaveImage。
+- Render 只在記憶體接收圖片 bytes，不寫入磁碟。
+- 本機閘道把圖片 bytes 交出去後，立即刪除 ComfyUI temp 檔。
+- 同時刪除該 prompt 的 ComfyUI history。
+- 閘道啟動時會清理舊 history。
+- 每 10 分鐘清理超過 30 分鐘的殘留 temp 檔，處理斷線或程式中止情況。
 
-5. 副模型失敗時仍可 fallback
-   - 若副模型沒有正確輸出 JSON，會退回舊版英文化整理
-   - 不會直接卡死整個生圖流程
+四、圖片管理照常保留
+- Telegram 成功收到圖片後，仍保存 Telegram file_id 到原本圖片管理。
+- 不保存圖片實體 bytes。
+- 使用者仍可在原本圖片管理查看、改名、刪除與後續圖生圖。
 
-6. 模型分流補強
-   - txt2img：AI_HORDE_TXT2IMG_MODEL
-   - 文生圖＋基準圖：AI_HORDE_REFERENCE_IMG2IMG_MODEL
-   - 整體圖生圖：AI_HORDE_IMG2IMG_MODEL
-   - 局部遮罩：AI_HORDE_INPAINT_MODEL
+五、圖片管理網頁防外流
+- 原本 20 分鐘簽章 token 驗證保留。
+- 新增 no-store、no-cache。
+- 新增 Referrer-Policy: no-referrer。
+- 新增 X-Frame-Options: DENY。
+- 圖片預覽不會建立公開靜態網址。
 
-7. 基準圖專用 profile
-   - 文生圖勾選啟用基準圖時，request_profile 會變成 text_reference
-   - 會使用專門的 reference img2img 模型與參數
+六、你需要做的一次性設定
+1. 本機建立閘道共用密鑰。
+2. 建立 Cloudflare Tunnel，指向 127.0.0.1:8787。
+3. Render 填 LOCAL_AI_GATEWAY_URL 與 LOCAL_AI_GATEWAY_SECRET。
+4. 建議再建立 Cloudflare Access Service Token。
 
-8. 參數補強
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_MODEL
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_STEPS
-   - 新增 AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE
-   - 新增 AI_HORDE_REFERENCE_DENOISING_STRENGTH
-   - 新增 AI_HORDE_REFERENCE_DENOISE_POSE
-
-建議可選環境變數
-AI_HORDE_TXT2IMG_MODEL=AlbedoBase XL (SDXL)
-AI_HORDE_REFERENCE_IMG2IMG_MODEL=Realistic Vision
-AI_HORDE_IMG2IMG_MODEL=Realistic Vision
-AI_HORDE_INPAINT_MODEL=Realistic Vision Inpainting
-
-AI_HORDE_REFERENCE_IMG2IMG_STEPS=28
-AI_HORDE_REFERENCE_IMG2IMG_CFG_SCALE=5.2
-AI_HORDE_REFERENCE_DENOISING_STRENGTH=0.76
-AI_HORDE_REFERENCE_DENOISE_POSE=0.84
-
-本包覆蓋檔案
-- services/aihorde_text_service.py
-- services/image_jobs.py
-- services/aihorde_service.py
-
-覆蓋後建議執行
-python -m py_compile servicesihorde_text_service.py services\image_jobs.py servicesihorde_service.py
+日常不用手動驗證；程式會自動簽章與驗證每次請求。
 ```
 
 
@@ -11797,26 +13658,39 @@ AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
 # 補丁覆蓋說明.txt
 
 - 類型：.txt
-- 行數：16
+- 行數：29
 
 ## preview
 ```text
-圖片解析上限與無回應提示補丁
+Telemini 隱私閘道補丁
 
-請覆蓋以下檔案：
-- config.py
-- services/gemini_service.py
-- services/media_ai.py
+套用基準：你這次上傳的「telemini更換代理模型.zip」。
+本壓縮檔只包含新增或修改的檔案，不是完整專案。
 
-附帶說明：
-- docs/圖片解析上限與無回應提示更新說明.md
+覆蓋方式：
+1. 先停止本機 AI 閘道與 Telemini 測試程序。
+2. 解壓本補丁。
+3. 把壓縮檔內所有檔案與資料夾複製到 Telemini 專案根目錄。
+4. Windows 詢問時選擇「取代目的地中的檔案」。
+5. 不要刪除專案中其他未出現在本補丁的檔案。
 
-重點：
-1. 圖片解析單次輸出上限預設拉到 65536
-2. 靜態貼圖解析上限維持 500
-3. 沒有圖片解析文字輸出時，聊天室會主動提示，不再沉默
-4. 當日額度耗盡時，使用者傳圖也會收到提示
-5. 503 高負載不再直接停用到隔天
+本次主要內容：
+- Render 不再直接連接 127.0.0.1 的 Ollama／ComfyUI，改走本機 AI 閘道。
+- 閘道請求使用 HMAC-SHA256、時間戳與 nonce 驗證。
+- 遠端閘道預設要求 HTTPS。
+- Ollama 與 ComfyUI 保持只供本機使用，不必公開 11434、8188。
+- ComfyUI 臨時圖片讀取後自動刪除，並清除該次 history。
+- Telegram 圖片管理功能照常保留 file_id，不保存圖片實體到 Render。
+- 圖片管理與預覽回應加入 no-store 等防快取標頭。
+
+一次性設定：
+- 先閱讀「本機AI閘道/設定說明.txt」與「本機AI閘道/Cloudflare設定步驟.txt」。
+- Render 與本機閘道要設定同一組 LOCAL_AI_GATEWAY_SECRET。
+- Render 設定 LOCAL_AI_GATEWAY_URL 為 Cloudflare Tunnel 的 HTTPS 網址。
+- Cloudflare Access Service Token 為選配；有使用時再設定 Client ID／Secret。
+
+驗證：
+python -m compileall -q .
 ```
 
 
@@ -12057,6 +13931,31 @@ Telemini 開場白狀態更新包
 注意：
 - database.py 已加入 ALTER TABLE，部署後第一次請求會自動補 opening_sent 與 script_hash 欄位。
 - Telegram 舊選單按鈕不會自己更新，請重新輸入 /設定 產生新選單。
+```
+
+
+================================================================================
+
+# 隱私版檢查結果.txt
+
+- 類型：.txt
+- 行數：13
+
+## preview
+```text
+Telemini 隱私版檢查結果
+
+已通過：
+- 全專案 Python compileall。
+- 主程式 ComfyUI workflow 不含 SaveImage。
+- workflows/txt2img_basic_api.json 已改為 PreviewImage。
+- HMAC 正確簽章可通過閘道驗證。
+- 錯誤簽章會回 401。
+- 相同 nonce 重放會回 401。
+- 閘道根網址回 404，不公開服務資訊。
+- 模擬圖片讀取後，temp 實體檔已刪除。
+- 模擬圖片讀取後，對應 ComfyUI history 已送出刪除。
+- Telegram file_id 圖片管理流程仍保留。
 ```
 
 

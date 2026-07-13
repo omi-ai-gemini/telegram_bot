@@ -13,7 +13,8 @@ from services.aihorde_service import (
     submit_image_request,
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
-from services.aihorde_text_service import get_secondary_model_label, organize_image_prompt
+from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
+from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -455,6 +456,128 @@ def _save_generated_telegram_photo(job: Dict[str, Any], result: Dict[str, Any]) 
     return bool(saved)
 
 
+def _job_cancel_requested(job_id: int) -> bool:
+    current = _get_job(job_id) or {}
+    return bool(current.get("cancel_requested"))
+
+
+def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
+    source_prompt = _decrypt_prompt(
+        job["id"],
+        job.get("source_prompt") or job.get("final_prompt"),
+        field="source_prompt" if job.get("source_prompt") else "final_prompt",
+    )
+    if not source_prompt:
+        _fail(job, "生圖提示詞讀取失敗", code="PROMPT_READ_FAILED")
+        return True
+
+    secondary_label = get_secondary_model_label() or "qwen2.5:7b"
+    organized = organize_image_prompt(source_prompt, gender_hint=job.get("gender") or "")
+    organize_error = _text(organized.get("message"))
+    if organized.get("ok"):
+        prompt_preview = organized.get("text") or organized.get("main_positive") or source_prompt
+        _update_job(
+            job["id"],
+            final_prompt=_encrypt_prompt(job["id"], prompt_preview, field="final_prompt"),
+            prompt_generation_status="ready",
+            prompt_model=secondary_label,
+            prompt_error=None,
+            prompt_chars_before=len(source_prompt),
+            prompt_chars_after=len(prompt_preview),
+        )
+        _edit_status_message(job, "prompt整理完成，正在送入 ComfyUI")
+    else:
+        fallback_positive = source_prompt
+        fallback_negative = (
+            "close-up, extreme close-up, headshot, face-only shot, portrait crop, tight crop, anime, cartoon, "
+            "illustration, blurry, low quality, bad anatomy, extra limbs, malformed hands, plastic skin"
+        )
+        fallback_face_positive, fallback_face_negative = build_face_prompts(
+            "EastAsian",
+            "man" if _text(job.get("gender")).lower() == "male" else "woman",
+        )
+        organized = {
+            "ok": True,
+            "main_positive": fallback_positive,
+            "main_negative": fallback_negative,
+            "face_positive": fallback_face_positive,
+            "face_negative": fallback_face_negative,
+        }
+        error_message = organize_error or "Qwen Prompt 整理失敗，已改用原始提示詞"
+        _update_job(
+            job["id"],
+            final_prompt=_encrypt_prompt(job["id"], fallback_positive, field="final_prompt"),
+            prompt_generation_status="fallback",
+            prompt_model=secondary_label,
+            prompt_error=error_message[:500],
+            prompt_chars_before=len(source_prompt),
+            prompt_chars_after=len(fallback_positive),
+        )
+        _edit_status_message(job, "prompt整理失敗，已改用原始提示詞，正在送入 ComfyUI")
+
+    if _job_cancel_requested(job["id"]):
+        _cancel(_get_job(job["id"]) or job)
+        return True
+
+    workflow = build_txt2img_workflow(
+        main_positive=organized.get("main_positive") or source_prompt,
+        main_negative=organized.get("main_negative") or "",
+        face_positive=organized.get("face_positive") or "",
+        face_negative=organized.get("face_negative") or "",
+    )
+
+    _update_job(job["id"], status="submitting", heartbeat_at=datetime.utcnow())
+    queued = queue_prompt(workflow)
+    if not queued.get("ok"):
+        _fail(job, queued.get("message") or "ComfyUI 任務送出失敗", code="COMFYUI_SUBMIT_FAILED")
+        return True
+
+    _update_job(
+        job["id"],
+        status="processing",
+        horde_request_id=str(queued.get("prompt_id")),
+        api_slot="comfyui",
+        started_at=datetime.utcnow(),
+        heartbeat_at=datetime.utcnow(),
+        queued_notified=True,
+        processing_notified=True,
+    )
+    _edit_status_message(job, "正在生圖")
+
+    waited = wait_for_prompt_image(
+        str(queued.get("prompt_id")),
+        cancel_check=lambda: _job_cancel_requested(job["id"]),
+        progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
+    )
+    if waited.get("canceled"):
+        _cancel(_get_job(job["id"]) or job)
+        return True
+    if not waited.get("ok") or not waited.get("bytes"):
+        _fail(job, waited.get("message") or "ComfyUI 沒有回傳圖片", code="COMFYUI_RESULT_FAILED")
+        return True
+
+    sent = send_photo_bytes(
+        job["bot_id"],
+        job["chat_id"],
+        waited["bytes"],
+        filename=f"telemini_{job['id']}.png",
+        mime_type=waited.get("mime_type") or "image/png",
+    )
+    if not _extract_message_id(sent):
+        _fail(job, "圖片已生成，但傳送到 Telegram 失敗", code="TELEGRAM_SEND_FAILED")
+        return True
+
+    _save_generated_telegram_photo(job, sent)
+    _update_job(
+        job["id"],
+        status="completed",
+        completed_at=datetime.utcnow(),
+        worker_token=None,
+    )
+    _delete_status_message(job)
+    return True
+
+
 def process_image_job(
     job_id: int,
     custom_upload: Optional[Dict[str, Any]] = None,
@@ -475,6 +598,10 @@ def process_image_job(
         if job.get("cancel_requested"):
             _cancel(job)
             return
+
+        if job.get("generation_mode") == "text" and job.get("reference_type") == "system_prompt":
+            if _process_comfy_txt2img(job):
+                return
 
         if not job.get("horde_request_id"):
             # 文生圖預設不傳來源圖；若使用者在文生圖勾選啟用基準圖，

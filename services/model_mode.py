@@ -69,11 +69,11 @@ def toggle_api_model_mode(user_id: Any, bot_id: Any, chat_id: Any) -> str:
 
 def _mode_text(mode: str) -> str:
     if mode == MODE_SECONDARY:
-        return "副模型（AI Horde）"
+        return "副模型（Qwen2.5:7b / Ollama）"
     return "主模型（Gemini）"
 
 
-def handle_modes_api_command(
+def handle_models_deputy_command(
     user_id: Any,
     bot_id: Any,
     chat_id: Any,
@@ -92,7 +92,7 @@ def handle_modes_api_command(
         mode = get_api_model_mode(user_id, bot_id, chat_id)
     elif arg in {"main", "gemini", "主", "主模型"}:
         mode = set_api_model_mode(user_id, bot_id, chat_id, MODE_MAIN)
-    elif arg in {"secondary", "horde", "副", "副模型"}:
+    elif arg in {"secondary", "deputy", "qwen", "副", "副模型"}:
         mode = set_api_model_mode(user_id, bot_id, chat_id, MODE_SECONDARY)
     elif not arg:
         mode = toggle_api_model_mode(user_id, bot_id, chat_id)
@@ -100,7 +100,7 @@ def handle_modes_api_command(
         send_message(
             bot_id,
             chat_id,
-            "用法：\n/modes_api\n/modes_api main\n/modes_api secondary\n/modes_api status",
+            "用法：\n/models_deputy\n/models_deputy main\n/models_deputy deputy\n/models_deputy status",
         )
         return {"ok": False, "reason": "invalid_arg"}
 
@@ -109,9 +109,9 @@ def handle_modes_api_command(
         chat_id,
         f"目前模型模式：{_mode_text(mode)}\n"
         + (
-            "後續一般文字回覆會走副模型；重跑、接續、救援與安全阻擋按鈕固定使用 Gemini。輸入 /modes_api main 可切回主模型。"
+            "後續一般文字回覆會走 Qwen2.5:7b；重跑、接續、救援與安全阻擋按鈕固定使用 Gemini。輸入 /models_deputy main 可切回主模型。"
             if mode == MODE_SECONDARY
-            else "後續一般文字回覆會走 Gemini；副模型競速目前停用。"
+            else "後續一般文字回覆會走 Gemini。輸入 /models_deputy deputy 可切到 Qwen2.5:7b。"
         ),
     )
     return {"ok": True, "mode": mode}

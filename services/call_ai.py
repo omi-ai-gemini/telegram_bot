@@ -6,7 +6,7 @@ from services.ai_actions import (
     send_blocked_reply_message,
 )
 from services.gemini_service import GEMINI_BLOCKED
-from services.aihorde_text_service import get_secondary_model_label
+from services.qwen_service import get_secondary_model_label
 from services.reply_model_router import generate_reply_by_mode
 from services.model_mode import (
     MODE_MAIN,
@@ -300,7 +300,7 @@ def _send_generated_reply(
     label="AI",
     model_override=None,
 ):
-    """組好一次 Prompt，最後一個節點才決定送 Gemini 或 AI Horde。"""
+    """組好一次 Prompt，最後一個節點才決定送 Gemini 或 Qwen。"""
     scope = "group" if _is_group_chat(chat_id) else "private"
     emotion = get_emotion(chat_id)
     settings = _get_generation_settings(bot_id, chat_id, user_id, scope)
@@ -341,7 +341,7 @@ def _send_generated_reply(
 
     if not result.get("text"):
         message = result.get("error") or (
-            "副模型沒有回傳可用文字"
+            "Qwen 副模型沒有回傳可用文字"
             if provider == MODE_SECONDARY
             else "Gemini 沒有回傳可用文字"
         )

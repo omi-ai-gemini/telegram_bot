@@ -77,17 +77,38 @@ AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "true")
 # =========================
-# AI Horde 副文字模型
+# Ollama / Qwen 副模型
 # =========================
-# 多個模型以逗號分隔；AI Horde 會由可用工作節點先接單。
-AI_HORDE_TEXT_MODELS = os.getenv(
-    "AI_HORDE_TEXT_MODELS",
-    "koboldcpp/L3-8B-Stheno-v3.2,koboldcpp/mini-magnum-12b-v1.1",
-)
-AI_HORDE_TEXT_TIMEOUT_SECONDS = _env_int("AI_HORDE_TEXT_TIMEOUT_SECONDS", 150)
-AI_HORDE_TEXT_POLL_SECONDS = _env_int("AI_HORDE_TEXT_POLL_SECONDS", 2)
-AI_HORDE_TEXT_MAX_CONTEXT = _env_int("AI_HORDE_TEXT_MAX_CONTEXT", 16384)
-AI_HORDE_CHAT_MAX_LENGTH = _env_int("AI_HORDE_CHAT_MAX_LENGTH", 320)
-AI_HORDE_IMAGE_PROMPT_MAX_LENGTH = _env_int("AI_HORDE_IMAGE_PROMPT_MAX_LENGTH", 360)
-AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS = _env_int("AI_HORDE_IMAGE_PROMPT_TIMEOUT_SECONDS", 120)
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+OLLAMA_DEPUTY_MODEL = os.getenv("OLLAMA_DEPUTY_MODEL", "qwen2.5:7b")
+OLLAMA_PROMPT_MODEL = os.getenv("OLLAMA_PROMPT_MODEL", OLLAMA_DEPUTY_MODEL)
+OLLAMA_TIMEOUT_SECONDS = _env_int("OLLAMA_TIMEOUT_SECONDS", 180)
+OLLAMA_CHAT_NUM_PREDICT = _env_int("OLLAMA_CHAT_NUM_PREDICT", 512)
+OLLAMA_PROMPT_NUM_PREDICT = _env_int("OLLAMA_PROMPT_NUM_PREDICT", 700)
+
+# =========================
+# ComfyUI 文生圖
+# =========================
+COMFYUI_BASE_URL = os.getenv("COMFYUI_BASE_URL", "http://127.0.0.1:8188")
+COMFYUI_TIMEOUT_SECONDS = _env_int("COMFYUI_TIMEOUT_SECONDS", 900)
+COMFYUI_POLL_SECONDS = _env_int("COMFYUI_POLL_SECONDS", 2)
+COMFYUI_CHECKPOINT = os.getenv("COMFYUI_CHECKPOINT", "cyberrealisticXL_v100.safetensors")
+COMFYUI_UPSCALE_MODEL = os.getenv("COMFYUI_UPSCALE_MODEL", "RealESRGAN_x2plus.pth")
+COMFYUI_FACE_DETECTOR = os.getenv("COMFYUI_FACE_DETECTOR", "bbox/face_yolov8m.pt")
+COMFYUI_WIDTH = _env_int("COMFYUI_WIDTH", 768)
+COMFYUI_HEIGHT = _env_int("COMFYUI_HEIGHT", 1024)
+
+# =========================
+# Render → 本機 AI 隱私閘道
+# =========================
+# 正式部署在 Render 時使用 HTTPS Tunnel 網址；本機整合測試可留空。
+LOCAL_AI_GATEWAY_URL = os.getenv("LOCAL_AI_GATEWAY_URL", "")
+LOCAL_AI_GATEWAY_SECRET = os.getenv("LOCAL_AI_GATEWAY_SECRET", "")
+LOCAL_AI_GATEWAY_TIMEOUT_SECONDS = _env_int("LOCAL_AI_GATEWAY_TIMEOUT_SECONDS", 180)
+# 有套 Cloudflare Access Service Token 時才需要填。
+CF_ACCESS_CLIENT_ID = os.getenv("CF_ACCESS_CLIENT_ID", "")
+CF_ACCESS_CLIENT_SECRET = os.getenv("CF_ACCESS_CLIENT_SECRET", "")
+# Telemini 與 ComfyUI 同機執行時，用於讀完 PreviewImage 後刪除 temp。
+COMFYUI_TEMP_DIR = os.getenv("COMFYUI_TEMP_DIR", "")
+COMFYUI_ROOT = os.getenv("COMFYUI_ROOT", "")
 

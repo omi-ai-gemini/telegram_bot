@@ -1,8 +1,24 @@
+📄 #U6e05#U7406#U820a#U6a94#U6848.ps1
+📄 #U6e05#U7406#U820a#U6a94#U6848_#U7de8#U78bc#U4fee#U6b63#U7248.ps1
+📄 .gitignore
 📄 __init__.py
 📄 AI_Horde尺寸與工作節點相容修正說明.txt
 📄 AI_Horde生圖外帶說明.txt
 📄 config.py
 📁 docs/
+  📄 #U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U56fa#U5b9a#U8eab#U4efd#U63d0#U793a#U8a5e#U751f#U5716#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U5716#U7247#U7b49#U5f85#U51fd#U5f0f#U532f#U5165#U932f#U8aa4#U4fee#U6b63#U8aaa#U660e.md
+  📄 #U5716#U7247#U7b49#U5f85#U8207#U6a21#U578b#U5207#U63db#U4fee#U6b63#U8aaa#U660e.md
+  📄 #U5716#U7247#U89e3#U6790#U4e0a#U9650#U8207#U7121#U56de#U61c9#U63d0#U793a#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U5716#U7247#U89e3#U6790#U6a21#U578bfallback#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U5a92#U9ad4#U8f38#U5165#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U6587#U751f#U5716#U69cb#U5716#U8207#U5716#U751f#U5716#U4fee#U6539#U529b#U5ea6#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U6587#U751f#U5716#U8207#U5716#U751f#U5716#U96d9#U6a21#U5f0f#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U670d#U52d9#U4e2d#U5fc3#U516c#U544a#U63a8#U64ad#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U670d#U52d9#U4e2d#U5fc3#U66f4#U65b0#U8aaa#U660e.md
+  📄 #U76ee#U524d#U5c08#U6848#U6574#U5408#U72c0#U614b.md
+  📄 AI_HORDE#U751f#U5716#U529f#U80fd#U66f4#U65b0#U8aaa#U660e.md
   📄 AI_HORDE生圖功能更新說明.md
   📄 AI_MESSAGE_ACTIONS_README.md
   📄 BLOCKED_RETRY_BUTTON_README.md
@@ -10,6 +26,7 @@
   📄 ENV_ENCRYPTION_README.md
   📄 HIDDEN_PASSIVE_SUMMARY_README.md
   📄 NORMAL_REPLY_UNIFIED_GENERATION_README.md
+  📄 Pillow#U4f9d#U8cf4#U4fee#U5fa9#U8aaa#U660e.md
   📄 Pillow依賴修復說明.md
   📄 PRIVACY_ACCESS_README.md
   📄 PRIVACY_SYNC_README.md
@@ -43,7 +60,9 @@
   📄 call_handler.py
   📄 message_handler.py
 📄 main.py
+📄 prompt#U5916#U5e36#U8aaa#U660e.txt
 📄 prompt外帶說明.txt
+📄 README_#U8986#U84cb#U8aaa#U660e.txt
 📄 README_覆蓋說明.txt
 📄 requirements.txt
 📁 routes/
@@ -67,6 +86,7 @@
   📄 call_ai.py
   📄 character.py
   📄 chat_persona.py
+  📄 comfyui_service.py
   📄 commands.py
   📄 crypto_box.py
   📄 crypto_env.py
@@ -79,6 +99,7 @@
   📄 image_prepare.py
   📄 image_prompt.py
   📄 image_store.py
+  📄 local_ai_gateway_client.py
   📄 media_ai.py
   📄 memory.py
   📄 memory_summary.py
@@ -88,6 +109,7 @@
   📄 privacy_migration.py
   📄 privacy_session.py
   📄 prompt_debug.py
+  📄 qwen_service.py
   📄 reply_model_router.py
   📄 reply_style.py
   📄 runtime_cache.py
@@ -100,6 +122,7 @@
   📄 user_router.py
 📁 static/
   📁 image_reference/
+    📄 #U57fa#U6e96#U5716#U653e#U7f6e#U8aaa#U660e.txt
     📄 基準圖放置說明.txt
 📁 templates/
   📄 character_form.html
@@ -116,6 +139,7 @@
   📄 prompt_debug_list.html
   📄 reply_style_form.html
   📄 thought_view.html
+📄 test_comfy_api.py
 📁 test_lab/
   📄 __init__.py
   📄 db.py
@@ -130,6 +154,9 @@
   📄 apply_blocked_retry_patch.py
   📄 encrypt_existing_plaintext.py
   📄 project_snapshot.py
+📁 workflows/
+  📄 txt2img_basic_api.json
+📄 修改檔案清單.txt
 📄 全寫真防肖像改版說明.txt
 📄 副模型真實對話角色修正說明.txt
 📄 副模型競速與圖片Prompt覆蓋說明.txt
@@ -143,6 +170,16 @@
 📄 服務中心公告推播覆蓋說明.txt
 📄 服務中心硬檢查覆蓋說明.txt
 📄 服務中心管理員判定修復說明.txt
+📁 本機AI閘道/
+  📄 app.py
+  📄 cloudflared-config範例.yml
+  📄 Cloudflare設定步驟.txt
+  📄 requirements.txt
+  📄 啟動CloudflareTunnel範例.cmd
+  📄 啟動本機AI閘道.cmd
+  📄 產生共用密鑰.ps1
+  📄 設定說明.txt
+  📄 閘道設定範例.cmd
 📄 本次修復說明.txt
 📄 本次修改說明.txt
 📄 模型切換共用路由修正說明.txt
@@ -163,3 +200,4 @@
 📄 遮罩局部修改外帶說明.txt
 📄 遮罩生圖修正說明.txt
 📄 開場-更新說明.txt
+📄 隱私版檢查結果.txt
