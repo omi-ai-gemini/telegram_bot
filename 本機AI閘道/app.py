@@ -1,4 +1,5 @@
 import hashlib
+import json
 import hmac
 import os
 import re
@@ -11,6 +12,43 @@ from urllib.parse import urlencode
 import requests
 from flask import Flask, Response, jsonify, request
 
+
+def _load_gateway_config() -> None:
+    """Load local UTF-8 JSON config before reading environment variables.
+
+    This avoids Windows cmd.exe code-page problems with Chinese paths.
+    Environment variables still take priority over values in the JSON file.
+    """
+    config_path = Path(__file__).resolve().with_name("gateway_config.json")
+    if not config_path.is_file():
+        return
+
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        raise SystemExit(f"gateway_config.json 讀取失敗：{exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise SystemExit("gateway_config.json 格式錯誤：最外層必須是 JSON 物件")
+
+    allowed = {
+        "LOCAL_AI_GATEWAY_SECRET",
+        "LOCAL_AI_GATEWAY_PORT",
+        "LOCAL_AI_GATEWAY_MAX_SKEW",
+        "OLLAMA_BASE_URL",
+        "COMFYUI_BASE_URL",
+        "COMFYUI_ROOT",
+        "COMFYUI_TEMP_DIR",
+        "COMFYUI_TEMP_RETENTION_SECONDS",
+    }
+    for key in allowed:
+        value = payload.get(key)
+        if value is None:
+            continue
+        os.environ.setdefault(key, str(value))
+
+
+_load_gateway_config()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
