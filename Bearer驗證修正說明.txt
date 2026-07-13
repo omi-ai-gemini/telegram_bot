@@ -1,0 +1,30 @@
+Telemini 本機 AI 閘道 Bearer 驗證修正補丁
+
+用途：
+- 把原本容易因 body、query、時間戳或編碼差異造成 401 的 HMAC 簽章，改成 HTTPS + Bearer Token。
+- 共用密鑰仍使用 LOCAL_AI_GATEWAY_SECRET。
+- Cloudflare Tunnel 仍負責 HTTPS 加密。
+- Cloudflare Access Client ID / Secret 仍可照常使用。
+
+覆蓋檔案：
+1. services/local_ai_gateway_client.py
+2. 本機AI閘道/app.py
+
+套用：
+1. 解壓後把兩個資料夾複製到 Telemini 根目錄並覆蓋。
+2. Render 的 LOCAL_AI_GATEWAY_SECRET 不用更換。
+3. 本機 gateway_config.json 的 LOCAL_AI_GATEWAY_SECRET 必須與 Render 相同。
+4. Render 重新部署。
+5. 本機閘道 Ctrl+C 後重新執行：python app.py
+6. Quick Tunnel 不用重開；只要原本 cloudflared 視窗仍在執行即可。
+
+驗證方式：
+- Telegram 再測 /models_deputy 或副模型回覆。
+- 本機閘道成功時會看到 POST /v1/ollama/generate HTTP/1.1 200。
+- 直接用瀏覽器打閘道仍會得到 401，因為沒有帶 Authorization: Bearer ...，這是正常的。
+
+安全性：
+- 密鑰不會放進網址。
+- Token 經 Cloudflare HTTPS 傳輸。
+- 本機閘道只監聽 127.0.0.1:8787。
+- Ollama 11434 與 ComfyUI 8188 不需要公開。

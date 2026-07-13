@@ -1,12 +1,8 @@
-import hashlib
 import json
-import hmac
 import os
 import re
-import threading
 import time
 from pathlib import Path
-from typing import Dict
 from urllib.parse import urlencode
 
 import requests
@@ -45,7 +41,7 @@ def _load_gateway_config() -> None:
         value = payload.get(key)
         if value is None:
             continue
-        os.environ.setdefault(key, str(value))
+        os.environ[key] = str(value)
 
 
 _load_gateway_config()
@@ -63,70 +59,24 @@ COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 COMFYUI_TEMP_RETENTION_SECONDS = max(300, int(os.getenv("COMFYUI_TEMP_RETENTION_SECONDS", "1800") or "1800"))
 
 _SESSION = requests.Session()
-_NONCES: Dict[str, float] = {}
-_NONCE_LOCK = threading.Lock()
 _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
-
-
-def _cleanup_nonces(now: float) -> None:
-    cutoff = now - max(300, MAX_CLOCK_SKEW_SECONDS * 3)
-    with _NONCE_LOCK:
-        stale = [nonce for nonce, created in _NONCES.items() if created < cutoff]
-        for nonce in stale:
-            _NONCES.pop(nonce, None)
-
-
-def _request_path_with_query() -> str:
-    path = request.path
-    raw_query = request.query_string.decode("utf-8", errors="strict")
-    return f"{path}?{raw_query}" if raw_query else path
 
 
 def _verify_request():
     if not GATEWAY_SECRET:
         return False, "本機閘道未設定 LOCAL_AI_GATEWAY_SECRET"
 
-    timestamp = str(request.headers.get("X-Telemini-Timestamp") or "").strip()
-    nonce = str(request.headers.get("X-Telemini-Nonce") or "").strip()
-    signature = str(request.headers.get("X-Telemini-Signature") or "").strip().lower()
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    scheme, separator, token = authorization.partition(" ")
 
-    if not timestamp or not nonce or not signature:
-        return False, "缺少閘道驗證標頭"
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return False, "缺少或錯誤的 Bearer 驗證標頭"
 
-    try:
-        timestamp_value = int(timestamp)
-    except Exception:
-        return False, "時間戳格式錯誤"
+    # 使用常數時間比較，避免直接字串比較產生時序差異。
+    import secrets
+    if not secrets.compare_digest(token.strip(), GATEWAY_SECRET):
+        return False, "Bearer Token 驗證失敗"
 
-    now = time.time()
-    if abs(now - timestamp_value) > MAX_CLOCK_SKEW_SECONDS:
-        return False, "請求已過期"
-
-    _cleanup_nonces(now)
-    with _NONCE_LOCK:
-        if nonce in _NONCES:
-            return False, "重複請求已拒絕"
-
-    body = request.get_data(cache=True) or b""
-    body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join([
-        request.method.upper(),
-        _request_path_with_query(),
-        timestamp,
-        nonce,
-        body_hash,
-    ]).encode("utf-8")
-    expected = hmac.new(
-        GATEWAY_SECRET.encode("utf-8"),
-        canonical,
-        hashlib.sha256,
-    ).hexdigest()
-
-    if not hmac.compare_digest(expected, signature):
-        return False, "簽章驗證失敗"
-
-    with _NONCE_LOCK:
-        _NONCES[nonce] = now
     return True, ""
 
 

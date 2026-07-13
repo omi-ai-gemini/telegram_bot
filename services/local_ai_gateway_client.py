@@ -1,9 +1,5 @@
-import hashlib
-import hmac
 import json
 import os
-import secrets
-import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
@@ -54,27 +50,10 @@ def _body_bytes(payload: Optional[Dict[str, Any]]) -> bytes:
     ).encode("utf-8")
 
 
-def _signed_headers(method: str, path_with_query: str, body: bytes) -> Dict[str, str]:
-    timestamp = str(int(time.time()))
-    nonce = secrets.token_urlsafe(18)
-    body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join([
-        str(method or "GET").upper(),
-        str(path_with_query or "/"),
-        timestamp,
-        nonce,
-        body_hash,
-    ]).encode("utf-8")
-    signature = hmac.new(
-        LOCAL_AI_GATEWAY_SECRET.encode("utf-8"),
-        canonical,
-        hashlib.sha256,
-    ).hexdigest()
-
+def _auth_headers(body: bytes) -> Dict[str, str]:
+    """使用 HTTPS 上的 Bearer Token 驗證本機閘道。"""
     headers = {
-        "X-Telemini-Timestamp": timestamp,
-        "X-Telemini-Nonce": nonce,
-        "X-Telemini-Signature": signature,
+        "Authorization": f"Bearer {LOCAL_AI_GATEWAY_SECRET}",
     }
     if body:
         headers["Content-Type"] = "application/json"
@@ -101,7 +80,7 @@ def _request(
     query = urlencode(params or {}, doseq=True)
     path_with_query = f"{path}?{query}" if query else path
     body = _body_bytes(payload)
-    headers = _signed_headers(method, path_with_query, body)
+    headers = _auth_headers(body)
     url = f"{LOCAL_AI_GATEWAY_URL}{path_with_query}"
 
     try:

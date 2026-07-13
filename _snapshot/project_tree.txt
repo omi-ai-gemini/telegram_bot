@@ -4,6 +4,7 @@
 📄 __init__.py
 📄 AI_Horde尺寸與工作節點相容修正說明.txt
 📄 AI_Horde生圖外帶說明.txt
+📄 Bearer驗證修正說明.txt
 📄 config.py
 📁 docs/
   📄 #U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md
@@ -162,6 +163,7 @@
 📄 副模型競速與圖片Prompt覆蓋說明.txt
 📄 副模型競速與生圖流程檢查結果.txt
 📄 副模型降版說明.txt
+📄 啟動錯誤修正說明.txt
 📄 固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt
 📄 圖片模型fallback覆蓋說明.txt
 📄 圖片等待與模型切換覆蓋說明.txt
@@ -171,10 +173,14 @@
 📄 服務中心硬檢查覆蓋說明.txt
 📄 服務中心管理員判定修復說明.txt
 📁 本機AI閘道/
+  📄 .gitignore
   📄 app.py
   📄 cloudflared-config範例.yml
   📄 Cloudflare設定步驟.txt
+  📄 gateway_config.example.json
+  📄 gateway_config.json
   📄 requirements.txt
+  📄 setup_gateway.ps1
   📄 啟動CloudflareTunnel範例.cmd
   📄 啟動本機AI閘道.cmd
   📄 產生共用密鑰.ps1

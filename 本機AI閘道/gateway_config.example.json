@@ -1,5 +1,5 @@
 {
-  "LOCAL_AI_GATEWAY_SECRET": "replace-with-the-same-secret-used-on-render",
+  "LOCAL_AI_GATEWAY_SECRET": "ui7Ophml2NJjlWk9woJthgjWY5HxVbWpY0QmEjgAd_N06bcBqvA-bsacLTN7-C41XWGYqhG-HqPx2oRCKkwdgw",
   "LOCAL_AI_GATEWAY_PORT": 8787,
   "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
   "COMFYUI_BASE_URL": "http://127.0.0.1:8188",

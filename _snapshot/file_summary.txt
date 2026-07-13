@@ -109,6 +109,48 @@ python -m compileall -q .
 
 ================================================================================
 
+# Bearer驗證修正說明.txt
+
+- 類型：.txt
+- 行數：30
+
+## preview
+```text
+Telemini 本機 AI 閘道 Bearer 驗證修正補丁
+
+用途：
+- 把原本容易因 body、query、時間戳或編碼差異造成 401 的 HMAC 簽章，改成 HTTPS + Bearer Token。
+- 共用密鑰仍使用 LOCAL_AI_GATEWAY_SECRET。
+- Cloudflare Tunnel 仍負責 HTTPS 加密。
+- Cloudflare Access Client ID / Secret 仍可照常使用。
+
+覆蓋檔案：
+1. services/local_ai_gateway_client.py
+2. 本機AI閘道/app.py
+
+套用：
+1. 解壓後把兩個資料夾複製到 Telemini 根目錄並覆蓋。
+2. Render 的 LOCAL_AI_GATEWAY_SECRET 不用更換。
+3. 本機 gateway_config.json 的 LOCAL_AI_GATEWAY_SECRET 必須與 Render 相同。
+4. Render 重新部署。
+5. 本機閘道 Ctrl+C 後重新執行：python app.py
+6. Quick Tunnel 不用重開；只要原本 cloudflared 視窗仍在執行即可。
+
+驗證方式：
+- Telegram 再測 /models_deputy 或副模型回覆。
+- 本機閘道成功時會看到 POST /v1/ollama/generate HTTP/1.1 200。
+- 直接用瀏覽器打閘道仍會得到 401，因為沒有帶 Authorization: Bearer ...，這是正常的。
+
+安全性：
+- 密鑰不會放進網址。
+- Token 經 Cloudflare HTTPS 傳輸。
+- 本機閘道只監聽 127.0.0.1:8787。
+- Ollama 11434 與 ComfyUI 8188 不需要公開。
+```
+
+
+================================================================================
+
 # config.py
 
 - 類型：.py
@@ -7573,16 +7615,12 @@ def init_image_tables() -> None:
 # services\local_ai_gateway_client.py
 
 - 類型：.py
-- 行數：178
+- 行數：157
 
 ## imports
-- hashlib
-- hmac
 - json
 - os
 - requests
-- secrets
-- time
 - typing.Any
 - typing.Dict
 - typing.Optional
@@ -7593,7 +7631,7 @@ def init_image_tables() -> None:
 - gateway_enabled
 - gateway_config_error
 - _body_bytes
-- _signed_headers
+- _auth_headers
 - _request
 - gateway_post_json
 - gateway_get_json
@@ -7601,12 +7639,8 @@ def init_image_tables() -> None:
 
 ## preview
 ```text
-import hashlib
-import hmac
 import json
 import os
-import secrets
-import time
 from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
@@ -7657,32 +7691,36 @@ def _body_bytes(payload: Optional[Dict[str, Any]]) -> bytes:
     ).encode("utf-8")
 
 
-def _signed_headers(method: str, path_with_query: str, body: bytes) -> Dict[str, str]:
-    timestamp = str(int(time.time()))
-    nonce = secrets.token_urlsafe(18)
-    body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join([
-        str(method or "GET").upper(),
-        str(path_with_query or "/"),
-        timestamp,
-        nonce,
-        body_hash,
-    ]).encode("utf-8")
-    signature = hmac.new(
-        LOCAL_AI_GATEWAY_SECRET.encode("utf-8"),
-        canonical,
-        hashlib.sha256,
-    ).hexdigest()
-
+def _auth_headers(body: bytes) -> Dict[str, str]:
+    """使用 HTTPS 上的 Bearer Token 驗證本機閘道。"""
     headers = {
-        "X-Telemini-Timestamp": timestamp,
-        "X-Telemini-Nonce": nonce,
-        "X-Telemini-Signature": signature,
+        "Authorization": f"Bearer {LOCAL_AI_GATEWAY_SECRET}",
     }
     if body:
         headers["Content-Type"] = "application/json"
+    if CF_ACCESS_CLIENT_ID and CF_ACCESS_CLIENT_SECRET:
+        headers["CF-Access-Client-Id"] = CF_ACCESS_CLIENT_ID
+        headers["CF-Access-Client-Secret"] = CF_ACCESS_CLIENT_SECRET
+    return headers
+
+
+def _request(
+    method: str,
+    path: str,
+    *,
+    payload: Optional[Dict[str, Any]] = None,
+    params: Optional[Dict[str, Any]] = None,
+    timeout: Optional[int] = None,
+) -> Dict[str, Any]:
+    config_error = gateway_config_error()
+    if config_error:
+        return {"ok": False, "message": config_error}
+    if not gateway_enabled():
+        return {"ok": False, "message": "本機 AI 閘道尚未設定"}
+
+    query = urlencode(params or {}, doseq=True)
 ...
-... 已省略 98 行
+... 已省略 77 行
 ```
 
 
@@ -12632,6 +12670,47 @@ Telemini 副模型降版
 
 ================================================================================
 
+# 啟動錯誤修正說明.txt
+
+- 類型：.txt
+- 行數：29
+
+## preview
+```text
+Telemini 本機 AI 閘道啟動修正
+
+修正問題：
+1. 舊版 .cmd 使用 UTF-8 中文內容與 LF 換行，Windows cmd.exe 可能把指令解析成亂碼。
+2. 找不到「閘道設定.cmd」時仍繼續執行 app.py，造成 LOCAL_AI_GATEWAY_SECRET 錯誤顯示兩次。
+3. COMFYUI_ROOT 含中文路徑時，批次檔受系統碼頁影響。
+
+新版做法：
+- 啟動批次檔內容改成純 ASCII 並使用 Windows CRLF。
+- 不再讀取「閘道設定.cmd」。
+- 改讀 UTF-8 的 gateway_config.json。
+- 第一次啟動會自動執行 setup_gateway.ps1：
+  1. 產生隨機 LOCAL_AI_GATEWAY_SECRET。
+  2. 建立 gateway_config.json。
+  3. 顯示並複製 Render 需要設定的密鑰。
+
+覆蓋方式：
+把本補丁內的「本機AI閘道」資料夾覆蓋到專案根目錄。
+舊的「閘道設定.cmd」可以刪除，新版不會再使用。
+
+第一次啟動：
+1. 雙擊 本機AI閘道\啟動本機AI閘道.cmd
+2. 第一次會自動產生 gateway_config.json。
+3. 把畫面顯示的 LOCAL_AI_GATEWAY_SECRET 設到 Render。
+4. 再次雙擊啟動檔。
+
+注意：
+- gateway_config.json 含私密密鑰，不要上傳 GitHub。
+- Ollama、ComfyUI 必須先啟動。
+```
+
+
+================================================================================
+
 # 固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt
 
 - 類型：.txt
@@ -12907,27 +12986,24 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 # 本機AI閘道\app.py
 
 - 類型：.py
-- 行數：328
+- 行數：316
 
 ## imports
 - flask.Flask
 - flask.Response
 - flask.jsonify
 - flask.request
-- hashlib
-- hmac
+- json
 - os
 - pathlib.Path
 - re
 - requests
-- threading
+- secrets
 - time
-- typing.Dict
 - urllib.parse.urlencode
 
 ## functions
-- _cleanup_nonces
-- _request_path_with_query
+- _load_gateway_config
 - _verify_request
 - _auth_guard
 - _proxy_json
@@ -12945,19 +13021,53 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 
 ## preview
 ```text
-import hashlib
-import hmac
+import json
 import os
 import re
-import threading
 import time
 from pathlib import Path
-from typing import Dict
 from urllib.parse import urlencode
 
 import requests
 from flask import Flask, Response, jsonify, request
 
+
+def _load_gateway_config() -> None:
+    """Load local UTF-8 JSON config before reading environment variables.
+
+    This avoids Windows cmd.exe code-page problems with Chinese paths.
+    Environment variables still take priority over values in the JSON file.
+    """
+    config_path = Path(__file__).resolve().with_name("gateway_config.json")
+    if not config_path.is_file():
+        return
+
+    try:
+        payload = json.loads(config_path.read_text(encoding="utf-8-sig"))
+    except Exception as exc:
+        raise SystemExit(f"gateway_config.json 讀取失敗：{exc}") from exc
+
+    if not isinstance(payload, dict):
+        raise SystemExit("gateway_config.json 格式錯誤：最外層必須是 JSON 物件")
+
+    allowed = {
+        "LOCAL_AI_GATEWAY_SECRET",
+        "LOCAL_AI_GATEWAY_PORT",
+        "LOCAL_AI_GATEWAY_MAX_SKEW",
+        "OLLAMA_BASE_URL",
+        "COMFYUI_BASE_URL",
+        "COMFYUI_ROOT",
+        "COMFYUI_TEMP_DIR",
+        "COMFYUI_TEMP_RETENTION_SECONDS",
+    }
+    for key in allowed:
+        value = payload.get(key)
+        if value is None:
+            continue
+        os.environ[key] = str(value)
+
+
+_load_gateway_config()
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 16 * 1024 * 1024
@@ -12972,61 +13082,27 @@ COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 COMFYUI_TEMP_RETENTION_SECONDS = max(300, int(os.getenv("COMFYUI_TEMP_RETENTION_SECONDS", "1800") or "1800"))
 
 _SESSION = requests.Session()
-_NONCES: Dict[str, float] = {}
-_NONCE_LOCK = threading.Lock()
 _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
-
-
-def _cleanup_nonces(now: float) -> None:
-    cutoff = now - max(300, MAX_CLOCK_SKEW_SECONDS * 3)
-    with _NONCE_LOCK:
-        stale = [nonce for nonce, created in _NONCES.items() if created < cutoff]
-        for nonce in stale:
-            _NONCES.pop(nonce, None)
-
-
-def _request_path_with_query() -> str:
-    path = request.path
-    raw_query = request.query_string.decode("utf-8", errors="strict")
-    return f"{path}?{raw_query}" if raw_query else path
 
 
 def _verify_request():
     if not GATEWAY_SECRET:
         return False, "本機閘道未設定 LOCAL_AI_GATEWAY_SECRET"
 
-    timestamp = str(request.headers.get("X-Telemini-Timestamp") or "").strip()
-    nonce = str(request.headers.get("X-Telemini-Nonce") or "").strip()
-    signature = str(request.headers.get("X-Telemini-Signature") or "").strip().lower()
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    scheme, separator, token = authorization.partition(" ")
 
-    if not timestamp or not nonce or not signature:
-        return False, "缺少閘道驗證標頭"
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return False, "缺少或錯誤的 Bearer 驗證標頭"
 
-    try:
-        timestamp_value = int(timestamp)
-    except Exception:
-        return False, "時間戳格式錯誤"
+    # 使用常數時間比較，避免直接字串比較產生時序差異。
+    import secrets
+    if not secrets.compare_digest(token.strip(), GATEWAY_SECRET):
+        return False, "Bearer Token 驗證失敗"
 
-    now = time.time()
-    if abs(now - timestamp_value) > MAX_CLOCK_SKEW_SECONDS:
-        return False, "請求已過期"
-
-    _cleanup_nonces(now)
-    with _NONCE_LOCK:
-        if nonce in _NONCES:
-            return False, "重複請求已拒絕"
-
-    body = request.get_data(cache=True) or b""
-    body_hash = hashlib.sha256(body).hexdigest()
-    canonical = "\n".join([
-        request.method.upper(),
-        _request_path_with_query(),
-        timestamp,
-        nonce,
-        body_hash,
-    ]).encode("utf-8")
+    return True, ""
 ...
-... 已省略 248 行
+... 已省略 236 行
 ```
 
 
@@ -13122,6 +13198,46 @@ CF-Access-Client-Secret
 4. Telemini HMAC：每次請求另有時間戳、nonce、SHA-256 內容雜湊與簽章。
 5. 本機閘道只監聽 127.0.0.1:8787。
 6. Ollama 與 ComfyUI 只監聽 127.0.0.1，不對外公開。
+```
+
+
+================================================================================
+
+# 本機AI閘道\gateway_config.example.json
+
+- 類型：.json
+- 行數：8
+
+## preview
+```text
+{
+  "LOCAL_AI_GATEWAY_SECRET": "ui7Ophml2NJjlWk9woJthgjWY5HxVbWpY0QmEjgAd_N06bcBqvA-bsacLTN7-C41XWGYqhG-HqPx2oRCKkwdgw",
+  "LOCAL_AI_GATEWAY_PORT": 8787,
+  "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+  "COMFYUI_BASE_URL": "http://127.0.0.1:8188",
+  "COMFYUI_ROOT": "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini文生圖\\ComfyUI",
+  "COMFYUI_TEMP_RETENTION_SECONDS": 1800
+}
+```
+
+
+================================================================================
+
+# 本機AI閘道\gateway_config.json
+
+- 類型：.json
+- 行數：8
+
+## preview
+```text
+{
+    "LOCAL_AI_GATEWAY_SECRET":  "ui7Ophml2NJjlWk9woJthgjWY5HxVbWpY0QmEjgAd_N06bcBqvA-bsacLTN7-C41XWGYqhG-HqPx2oRCKkwdgw",
+    "LOCAL_AI_GATEWAY_PORT":  8787,
+    "OLLAMA_BASE_URL":  "http://127.0.0.1:11434",
+    "COMFYUI_BASE_URL":  "http://127.0.0.1:8188",
+    "COMFYUI_ROOT":  "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini???ComfyUI",
+    "COMFYUI_TEMP_RETENTION_SECONDS":  1800
+}
 ```
 
 

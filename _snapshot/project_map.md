@@ -15,6 +15,7 @@ C:\Projects\telemini
 - `__init__.py`
 - `AI_Horde尺寸與工作節點相容修正說明.txt`
 - `AI_Horde生圖外帶說明.txt`
+- `Bearer驗證修正說明.txt`
 - `config.py`
 - `docs\#U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md`
 - `docs\#U56fa#U5b9a#U8eab#U4efd#U63d0#U793a#U8a5e#U751f#U5716#U66f4#U65b0#U8aaa#U660e.md`
@@ -161,6 +162,7 @@ C:\Projects\telemini
 - `副模型競速與圖片Prompt覆蓋說明.txt`
 - `副模型競速與生圖流程檢查結果.txt`
 - `副模型降版說明.txt`
+- `啟動錯誤修正說明.txt`
 - `固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt`
 - `圖片模型fallback覆蓋說明.txt`
 - `圖片等待與模型切換覆蓋說明.txt`
@@ -172,6 +174,8 @@ C:\Projects\telemini
 - `本機AI閘道\app.py`
 - `本機AI閘道\cloudflared-config範例.yml`
 - `本機AI閘道\Cloudflare設定步驟.txt`
+- `本機AI閘道\gateway_config.example.json`
+- `本機AI閘道\gateway_config.json`
 - `本機AI閘道\requirements.txt`
 - `本機AI閘道\設定說明.txt`
 - `本次修復說明.txt`
@@ -693,7 +697,7 @@ C:\Projects\telemini
 - `gateway_enabled()`
 - `gateway_config_error()`
 - `_body_bytes()`
-- `_signed_headers()`
+- `_auth_headers()`
 - `_request()`
 - `gateway_post_json()`
 - `gateway_get_json()`
@@ -1028,8 +1032,7 @@ C:\Projects\telemini
 - `main()`
 
 ### `本機AI閘道\app.py`
-- `_cleanup_nonces()`
-- `_request_path_with_query()`
+- `_load_gateway_config()`
 - `_verify_request()`
 - `_auth_guard()`
 - `_proxy_json()`
