@@ -7500,7 +7500,7 @@ MASK_TO_IMAGE_GLOBAL_RULE = """
 # services\image_store.py
 
 - 類型：.py
-- 行數：303
+- 行數：320
 
 ## imports
 - random
@@ -7588,7 +7588,7 @@ def init_image_tables() -> None:
             status_message_id INTEGER,
             status TEXT NOT NULL DEFAULT 'created',
             horde_request_id TEXT,
-            api_slot INTEGER,
+            api_slot TEXT,
             wait_time INTEGER,
             queue_position INTEGER,
             cancel_requested BOOLEAN DEFAULT FALSE,
@@ -7606,7 +7606,7 @@ def init_image_tables() -> None:
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS source_prompt TEXT")
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_generation_status TEXT DEFAULT 'pending'")
 ...
-... 已省略 223 行
+... 已省略 240 行
 ```
 
 
@@ -12407,6 +12407,38 @@ def should_ignore(path: Path) -> bool:
       "images": [
 ...
 ... 已省略 150 行
+```
+
+
+================================================================================
+
+# 使用說明.txt
+
+- 類型：.txt
+- 行數：20
+
+## preview
+```text
+Telemini ComfyUI api_slot 欄位修正補丁
+
+修改檔案：
+services/image_store.py
+
+修正內容：
+1. 新建 image_generation_jobs 時，api_slot 改為 TEXT。
+2. Render 啟動時自動檢查既有 PostgreSQL 欄位。
+3. 若既有 api_slot 仍是 INTEGER，會自動轉成 TEXT，舊數字資料會保留為文字。
+4. 讓本機生圖流程可寫入 api_slot='comfyui'。
+
+套用方式：
+1. 將 services 資料夾覆蓋到 Telemini 專案根目錄。
+2. git add services/image_store.py
+3. git commit -m "fix comfyui api slot type"
+4. git push
+5. 等 Render 重新部署完成後，再重新按一次生圖。
+
+不需要修改或重啟 Ollama、ComfyUI、Cloudflare Tunnel。
+先前失敗的生圖工作不會自動重跑。
 ```
 
 

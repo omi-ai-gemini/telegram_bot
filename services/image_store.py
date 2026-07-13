@@ -61,7 +61,7 @@ def init_image_tables() -> None:
             status_message_id INTEGER,
             status TEXT NOT NULL DEFAULT 'created',
             horde_request_id TEXT,
-            api_slot INTEGER,
+            api_slot TEXT,
             wait_time INTEGER,
             queue_position INTEGER,
             cancel_requested BOOLEAN DEFAULT FALSE,
@@ -83,6 +83,23 @@ def init_image_tables() -> None:
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_chars_before INTEGER")
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_chars_after INTEGER")
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS status_message_id INTEGER")
+        cursor.execute("""
+        DO $$
+        BEGIN
+            IF EXISTS (
+                SELECT 1
+                FROM information_schema.columns
+                WHERE table_schema = current_schema()
+                  AND table_name = 'image_generation_jobs'
+                  AND column_name = 'api_slot'
+                  AND data_type <> 'text'
+            ) THEN
+                ALTER TABLE image_generation_jobs
+                ALTER COLUMN api_slot TYPE TEXT
+                USING api_slot::TEXT;
+            END IF;
+        END $$
+        """)
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_user_active ON image_generation_jobs (user_id, status, created_at DESC)")
         cursor.execute("CREATE INDEX IF NOT EXISTS idx_image_jobs_recovery ON image_generation_jobs (status, heartbeat_at, created_at)")
         conn.commit()

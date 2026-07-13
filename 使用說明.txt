@@ -1,0 +1,20 @@
+Telemini ComfyUI api_slot 欄位修正補丁
+
+修改檔案：
+services/image_store.py
+
+修正內容：
+1. 新建 image_generation_jobs 時，api_slot 改為 TEXT。
+2. Render 啟動時自動檢查既有 PostgreSQL 欄位。
+3. 若既有 api_slot 仍是 INTEGER，會自動轉成 TEXT，舊數字資料會保留為文字。
+4. 讓本機生圖流程可寫入 api_slot='comfyui'。
+
+套用方式：
+1. 將 services 資料夾覆蓋到 Telemini 專案根目錄。
+2. git add services/image_store.py
+3. git commit -m "fix comfyui api slot type"
+4. git push
+5. 等 Render 重新部署完成後，再重新按一次生圖。
+
+不需要修改或重啟 Ollama、ComfyUI、Cloudflare Tunnel。
+先前失敗的生圖工作不會自動重跑。

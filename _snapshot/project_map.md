@@ -156,6 +156,7 @@ C:\Projects\telemini
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
 - `workflows\txt2img_basic_api.json`
+- `使用說明.txt`
 - `修改檔案清單.txt`
 - `全寫真防肖像改版說明.txt`
 - `副模型真實對話角色修正說明.txt`
