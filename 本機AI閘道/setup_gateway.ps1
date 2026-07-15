@@ -39,6 +39,11 @@ $config = [ordered]@{
     COMFYUI_BASE_URL = "http://127.0.0.1:8188"
     COMFYUI_ROOT = $comfyRoot
     COMFYUI_TEMP_RETENTION_SECONDS = 1800
+    RENDER_BASE_URL = "https://你的服務.onrender.com"
+    LOCAL_AI_WORKER_ENABLED = 1
+    LOCAL_AI_WORKER_ID = "telemini-local-worker"
+    LOCAL_AI_WORKER_POLL_SECONDS = 3
+    LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS = 900
 }
 
 $json = $config | ConvertTo-Json -Depth 4
@@ -59,6 +64,8 @@ Write-Host "ComfyUI root: $comfyRoot"
 Write-Host ""
 Write-Host "Add this environment variable to Render:"
 Write-Host $renderLine
+Write-Host "Also remove or clear LOCAL_AI_GATEWAY_URL on Render to use reverse worker mode."
+Write-Host "Then edit gateway_config.json and set RENDER_BASE_URL to your Render service URL."
 Write-Host $clipboardNote
 Write-Host ""
 Write-Host "Keep gateway_config.json private. Do not commit it to GitHub."

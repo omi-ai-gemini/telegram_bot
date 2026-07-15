@@ -8,9 +8,11 @@ import requests
 from services.local_ai_gateway_client import (
     gateway_config_error,
     gateway_enabled,
+    gateway_reverse_enabled,
     gateway_post_json,
     gateway_requested,
 )
+from services.local_ai_tasks import create_local_ai_task, wait_for_local_ai_task_result
 
 
 _OLLAMA_SESSION = requests.Session()
@@ -87,9 +89,26 @@ def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: in
         },
     }
     if gateway_requested() and not gateway_enabled():
-        return {"ok": False, "message": gateway_config_error() or "本機 AI 閘道設定不完整"}
+        if gateway_reverse_enabled():
+            try:
+                task_id = create_local_ai_task("ollama_generate", payload)
+                waited = wait_for_local_ai_task_result(
+                    task_id,
+                    timeout_seconds=OLLAMA_TIMEOUT_SECONDS,
+                    poll_seconds=2,
+                )
+            except Exception as exc:
+                return {"ok": False, "message": f"建立 Qwen worker 任務失敗：{exc}"}
+            if not waited.get("ok") or not waited.get("bytes"):
+                return {"ok": False, "message": waited.get("message") or "Qwen worker 沒有回傳結果"}
+            try:
+                data = json.loads(waited["bytes"].decode("utf-8"))
+            except Exception as exc:
+                return {"ok": False, "message": f"Qwen worker JSON 解析失敗：{exc}"}
+        else:
+            return {"ok": False, "message": gateway_config_error() or "本機 AI 閘道設定不完整"}
 
-    if gateway_enabled():
+    elif gateway_enabled():
         gateway_result = gateway_post_json(
             "/v1/ollama/generate",
             payload,

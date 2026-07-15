@@ -3684,7 +3684,7 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 # main.py
 
 - 類型：.py
-- 行數：245
+- 行數：250
 
 ## imports
 - config.SECRET_KEY
@@ -3695,6 +3695,7 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 - os
 - routes.admin.admin_bp
 - routes.image_gen.image_gen_bp
+- routes.local_ai_tasks.local_ai_tasks_bp
 - routes.prompt_debug.prompt_debug_bp
 - routes.setting.setting_bp
 - routes.thought.thought_bp
@@ -3709,6 +3710,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
 - services.database.init_db
 - services.image_jobs.recover_active_image_jobs
 - services.image_store.init_image_tables
+- services.local_ai_tasks.cleanup_old_local_ai_tasks
+- services.local_ai_tasks.init_local_ai_task_tables
 - services.media_ai.run_photo_message_in_thread
 - services.media_ai.run_sticker_message_in_thread
 - services.media_ai.run_unsupported_media_in_thread
@@ -3741,6 +3744,7 @@ from routes.setting import setting_bp
 from routes.thought import thought_bp
 from routes.prompt_debug import prompt_debug_bp
 from routes.image_gen import image_gen_bp
+from routes.local_ai_tasks import local_ai_tasks_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
@@ -3754,6 +3758,7 @@ from service_center.db import init_service_center_db
 from service_center.scheduler import start_service_center_announcement_scheduler
 from services.image_store import init_image_tables
 from services.image_jobs import recover_active_image_jobs
+from services.local_ai_tasks import init_local_ai_task_tables, cleanup_old_local_ai_tasks
 from services.media_ai import (
     run_photo_message_in_thread,
     run_sticker_message_in_thread,
@@ -3772,6 +3777,7 @@ app.register_blueprint(thought_bp)
 app.register_blueprint(prompt_debug_bp)
 app.register_blueprint(test_lab_bp)
 app.register_blueprint(image_gen_bp)
+app.register_blueprint(local_ai_tasks_bp)
 
 db_initialized = False
 
@@ -3783,6 +3789,8 @@ def init_once():
         init_test_lab_db()
         init_service_center_db()
         init_image_tables()
+        init_local_ai_task_tables()
+        cleanup_old_local_ai_tasks()
 
         try:
             recover_active_image_jobs()
@@ -3803,13 +3811,8 @@ def init_once():
 
         db_initialized = True
 
-# =========================
-# Webhook（核心入口）
-# =========================
-@app.route("/webhook/<bot_id>", methods=["POST"])
-def webhook(bot_id):
 ...
-... 已省略 165 行
+... 已省略 170 行
 ```
 
 
@@ -4249,6 +4252,121 @@ def _render_generate(auth, context=None, error="", success="", job_id=None, form
         error=error,
 ...
 ... 已省略 208 行
+```
+
+
+================================================================================
+
+# routes\local_ai_tasks.py
+
+- 類型：.py
+- 行數：82
+
+## imports
+- flask.Blueprint
+- flask.jsonify
+- flask.request
+- os
+- secrets
+- services.local_ai_tasks.claim_next_local_ai_task
+- services.local_ai_tasks.complete_local_ai_task
+- services.local_ai_tasks.decode_result_bytes
+- services.local_ai_tasks.fail_local_ai_task
+- services.local_ai_tasks.heartbeat_local_ai_task
+
+## functions
+- _secret
+- _verify_worker
+- _auth_guard
+- local_ai_next_task
+- local_ai_task_heartbeat
+- local_ai_task_result
+- local_ai_task_fail
+
+## preview
+```text
+import os
+import secrets
+
+from flask import Blueprint, jsonify, request
+
+from services.local_ai_tasks import (
+    claim_next_local_ai_task,
+    complete_local_ai_task,
+    decode_result_bytes,
+    fail_local_ai_task,
+    heartbeat_local_ai_task,
+)
+
+
+local_ai_tasks_bp = Blueprint("local_ai_tasks", __name__)
+
+
+def _secret() -> str:
+    return str(os.getenv("LOCAL_AI_GATEWAY_SECRET", "")).strip()
+
+
+def _verify_worker():
+    expected = _secret()
+    if not expected:
+        return False, "Render 未設定 LOCAL_AI_GATEWAY_SECRET"
+    authorization = str(request.headers.get("Authorization") or "").strip()
+    scheme, separator, token = authorization.partition(" ")
+    if not separator or scheme.lower() != "bearer" or not token.strip():
+        return False, "缺少或錯誤的 Bearer 驗證標頭"
+    if not secrets.compare_digest(token.strip(), expected):
+        return False, "Bearer Token 驗證失敗"
+    return True, ""
+
+
+@local_ai_tasks_bp.before_request
+def _auth_guard():
+    ok, message = _verify_worker()
+    if not ok:
+        return jsonify({"ok": False, "message": message}), 401
+    return None
+
+
+@local_ai_tasks_bp.get("/local-ai/tasks/next")
+def local_ai_next_task():
+    worker_id = str(request.args.get("worker_id") or "local-worker").strip()
+    task = claim_next_local_ai_task(worker_id)
+    if not task:
+        return jsonify({"ok": True, "task": None})
+    return jsonify({"ok": True, "task": task})
+
+
+@local_ai_tasks_bp.post("/local-ai/tasks/<int:task_id>/heartbeat")
+def local_ai_task_heartbeat(task_id: int):
+    worker_id = str((request.get_json(silent=True) or {}).get("worker_id") or "").strip()
+    result = heartbeat_local_ai_task(task_id, worker_id=worker_id)
+    return jsonify(result)
+
+
+@local_ai_tasks_bp.post("/local-ai/tasks/<int:task_id>/result")
+def local_ai_task_result(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    image_base64 = str(payload.get("image_base64") or payload.get("result_base64") or "")
+    mime_type = str(payload.get("mime_type") or "image/png").strip() or "image/png"
+    if not image_base64:
+        return jsonify({"ok": False, "message": "缺少 result_base64"}), 400
+    try:
+        image_bytes = decode_result_bytes(image_base64)
+    except Exception:
+        return jsonify({"ok": False, "message": "result_base64 解析失敗"}), 400
+    if not image_bytes:
+        return jsonify({"ok": False, "message": "圖片結果為空"}), 400
+    complete_local_ai_task(task_id, image_bytes, mime_type)
+    return jsonify({"ok": True})
+
+
+@local_ai_tasks_bp.post("/local-ai/tasks/<int:task_id>/fail")
+def local_ai_task_fail(task_id: int):
+    payload = request.get_json(silent=True) or {}
+    message = str(payload.get("message") or "本機 worker 執行失敗")
+    canceled = bool(payload.get("canceled"))
+...
+... 已省略 2 行
 ```
 
 
@@ -6040,7 +6158,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\comfyui_service.py
 
 - 類型：.py
-- 行數：371
+- 行數：418
 
 ## imports
 - os
@@ -6053,6 +6171,10 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 - services.local_ai_gateway_client.gateway_get_json
 - services.local_ai_gateway_client.gateway_post_json
 - services.local_ai_gateway_client.gateway_requested
+- services.local_ai_gateway_client.gateway_reverse_enabled
+- services.local_ai_tasks.cancel_local_ai_task
+- services.local_ai_tasks.create_local_ai_task
+- services.local_ai_tasks.wait_for_local_ai_task_result
 - time
 - typing.Any
 - typing.Callable
@@ -6067,6 +6189,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 - _post_json
 - queue_prompt
 - interrupt
+- _local_task_id_from_prompt
 - _get_history
 - _pick_image_meta
 - _safe_delete_direct_temp
@@ -6088,10 +6211,16 @@ import requests
 from services.local_ai_gateway_client import (
     gateway_config_error,
     gateway_enabled,
+    gateway_reverse_enabled,
     gateway_requested,
     gateway_get_bytes,
     gateway_get_json,
     gateway_post_json,
+)
+from services.local_ai_tasks import (
+    cancel_local_ai_task,
+    create_local_ai_task,
+    wait_for_local_ai_task_result,
 )
 
 
@@ -6107,6 +6236,7 @@ COMFYUI_WIDTH = max(256, int(os.getenv("COMFYUI_WIDTH", "768") or "768"))
 COMFYUI_HEIGHT = max(256, int(os.getenv("COMFYUI_HEIGHT", "1024") or "1024"))
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
+_LOCAL_TASK_PREFIX = "localtask:"
 
 
 def _workflow_seed() -> int:
@@ -6149,15 +6279,8 @@ def build_txt2img_workflow(
                 "negative": ["10", 0],
                 "latent_image": ["14", 0],
             },
-            "class_type": "KSampler",
-            "_meta": {"title": "KSampler"},
-        },
-        "14": {
-            "inputs": {"width": COMFYUI_WIDTH, "height": COMFYUI_HEIGHT, "batch_size": 1},
-            "class_type": "EmptyLatentImage",
-            "_meta": {"title": "空白潛在影像"},
 ...
-... 已省略 291 行
+... 已省略 338 行
 ```
 
 
@@ -7615,7 +7738,7 @@ def init_image_tables() -> None:
 # services\local_ai_gateway_client.py
 
 - 類型：.py
-- 行數：157
+- 行數：163
 
 ## imports
 - json
@@ -7629,6 +7752,7 @@ def init_image_tables() -> None:
 ## functions
 - gateway_requested
 - gateway_enabled
+- gateway_reverse_enabled
 - gateway_config_error
 - _body_bytes
 - _auth_headers
@@ -7667,11 +7791,17 @@ def gateway_enabled() -> bool:
     return bool(LOCAL_AI_GATEWAY_URL and LOCAL_AI_GATEWAY_SECRET)
 
 
+def gateway_reverse_enabled() -> bool:
+    """只設定密鑰、不設定 URL 時，改用本機 worker 主動拉任務。"""
+    return bool(LOCAL_AI_GATEWAY_SECRET and not LOCAL_AI_GATEWAY_URL)
+
+
 def gateway_config_error() -> str:
     if not gateway_requested():
         return ""
     if not LOCAL_AI_GATEWAY_URL:
-        return "已設定本機 AI 閘道密鑰，但缺少 LOCAL_AI_GATEWAY_URL"
+        # 只設定密鑰時代表啟用反向 worker 模式，不是設定錯誤。
+        return ""
     if not LOCAL_AI_GATEWAY_SECRET:
         return "已設定 LOCAL_AI_GATEWAY_URL，但缺少 LOCAL_AI_GATEWAY_SECRET"
     lowered = LOCAL_AI_GATEWAY_URL.lower()
@@ -7713,14 +7843,128 @@ def _request(
     timeout: Optional[int] = None,
 ) -> Dict[str, Any]:
     config_error = gateway_config_error()
-    if config_error:
-        return {"ok": False, "message": config_error}
-    if not gateway_enabled():
-        return {"ok": False, "message": "本機 AI 閘道尚未設定"}
-
-    query = urlencode(params or {}, doseq=True)
 ...
-... 已省略 77 行
+... 已省略 83 行
+```
+
+
+================================================================================
+
+# services\local_ai_tasks.py
+
+- 類型：.py
+- 行數：298
+
+## imports
+- base64
+- datetime.datetime
+- datetime.timedelta
+- json
+- services.database.get_conn
+- time
+- typing.Any
+- typing.Callable
+- typing.Dict
+- typing.Optional
+
+## functions
+- init_local_ai_task_tables
+- create_local_ai_task
+- cancel_local_ai_task
+- claim_next_local_ai_task
+- heartbeat_local_ai_task
+- complete_local_ai_task
+- fail_local_ai_task
+- fetch_local_ai_task_result
+- wait_for_local_ai_task_result
+- cleanup_old_local_ai_tasks
+- encode_result_bytes
+- decode_result_bytes
+
+## preview
+```text
+import base64
+import json
+import time
+from datetime import datetime, timedelta
+from typing import Any, Callable, Dict, Optional
+
+from services.database import get_conn
+
+
+TASK_TIMEOUT_SECONDS = 30 * 60
+
+
+def init_local_ai_task_tables() -> None:
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+        CREATE TABLE IF NOT EXISTS local_ai_tasks (
+            id BIGSERIAL PRIMARY KEY,
+            task_type TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'pending',
+            payload_json TEXT NOT NULL,
+            result_bytes BYTEA,
+            result_mime_type TEXT,
+            error_message TEXT,
+            cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+            worker_id TEXT,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            claimed_at TIMESTAMP,
+            heartbeat_at TIMESTAMP,
+            completed_at TIMESTAMP
+        )
+        """)
+        cursor.execute("""
+        CREATE INDEX IF NOT EXISTS idx_local_ai_tasks_status_id
+        ON local_ai_tasks(status, id)
+        """)
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def create_local_ai_task(task_type: str, payload: Dict[str, Any]) -> int:
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO local_ai_tasks (task_type, payload_json)
+            VALUES (%s, %s)
+            RETURNING id
+            """,
+            (
+                str(task_type),
+                json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+            ),
+        )
+        task_id = int(cursor.fetchone()[0])
+        conn.commit()
+        return task_id
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def cancel_local_ai_task(task_id: int) -> None:
+    conn = get_conn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE local_ai_tasks
+            SET cancel_requested=TRUE,
+                status=CASE WHEN status='pending' THEN 'canceled' ELSE status END,
+                completed_at=CASE WHEN status='pending' THEN CURRENT_TIMESTAMP ELSE completed_at END
+...
+... 已省略 218 行
 ```
 
 
@@ -8835,7 +9079,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：302
+- 行數：321
 
 ## imports
 - json
@@ -8846,6 +9090,9 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 - services.local_ai_gateway_client.gateway_enabled
 - services.local_ai_gateway_client.gateway_post_json
 - services.local_ai_gateway_client.gateway_requested
+- services.local_ai_gateway_client.gateway_reverse_enabled
+- services.local_ai_tasks.create_local_ai_task
+- services.local_ai_tasks.wait_for_local_ai_task_result
 - typing.Any
 - typing.Dict
 - typing.Optional
@@ -8875,9 +9122,11 @@ import requests
 from services.local_ai_gateway_client import (
     gateway_config_error,
     gateway_enabled,
+    gateway_reverse_enabled,
     gateway_post_json,
     gateway_requested,
 )
+from services.local_ai_tasks import create_local_ai_task, wait_for_local_ai_task_result
 
 
 _OLLAMA_SESSION = requests.Session()
@@ -8943,10 +9192,8 @@ def _clean_text(value: Any) -> str:
 
 def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: int = 512, temperature: float = 0.6) -> Dict[str, Any]:
     url = f"{OLLAMA_BASE_URL}/api/generate"
-    payload = {
-        "model": model,
 ...
-... 已省略 222 行
+... 已省略 241 行
 ```
 
 
@@ -10024,6 +10271,18 @@ def user_has_key(user_id: int) -> bool:
 ```text
 文生圖勾選「啟用基準圖」時，系統會讀取這個資料夾內的 male_reference.png 或 female_reference.png 作為基準圖。
 你之後若要替換人物基準圖，直接覆蓋同名檔案即可。
+```
+
+
+================================================================================
+
+# static\image_reference\seed.txt
+
+- 類型：.txt
+- 行數：0
+
+## preview
+```text
 ```
 
 
@@ -13018,9 +13277,10 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 # 本機AI閘道\app.py
 
 - 類型：.py
-- 行數：317
+- 行數：544
 
 ## imports
+- base64
 - flask.Flask
 - flask.Response
 - flask.jsonify
@@ -13049,6 +13309,16 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 - _stale_cleanup_loop
 - _clear_comfy_history_on_start
 - _safe_temp_path
+- _render_headers
+- _render_get
+- _render_post
+- _pick_image_meta
+- _history_error_message
+- _delete_temp_and_history
+- _comfy_run_prompt
+- _ollama_generate
+- _process_render_task
+- _render_worker_loop
 - comfy_view
 - _privacy_headers
 
@@ -13059,6 +13329,7 @@ import os
 import re
 import time
 import threading
+import base64
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -13093,6 +13364,11 @@ def _load_gateway_config() -> None:
         "COMFYUI_ROOT",
         "COMFYUI_TEMP_DIR",
         "COMFYUI_TEMP_RETENTION_SECONDS",
+        "RENDER_BASE_URL",
+        "LOCAL_AI_WORKER_ENABLED",
+        "LOCAL_AI_WORKER_ID",
+        "LOCAL_AI_WORKER_POLL_SECONDS",
+        "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS",
     }
     for key in allowed:
         value = payload.get(key)
@@ -13114,28 +13390,22 @@ MAX_CLOCK_SKEW_SECONDS = max(30, int(os.getenv("LOCAL_AI_GATEWAY_MAX_SKEW", "90"
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 COMFYUI_TEMP_RETENTION_SECONDS = max(300, int(os.getenv("COMFYUI_TEMP_RETENTION_SECONDS", "1800") or "1800"))
+RENDER_BASE_URL = str(os.getenv("RENDER_BASE_URL", "")).strip().rstrip("/")
+LOCAL_AI_WORKER_ENABLED = str(os.getenv("LOCAL_AI_WORKER_ENABLED", "1")).strip().lower() not in {"0", "false", "no", "off"}
+LOCAL_AI_WORKER_ID = str(os.getenv("LOCAL_AI_WORKER_ID", "telemini-local-worker")).strip() or "telemini-local-worker"
+LOCAL_AI_WORKER_POLL_SECONDS = max(2, int(os.getenv("LOCAL_AI_WORKER_POLL_SECONDS", "3") or "3"))
+LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS = max(60, int(os.getenv("LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS", "900") or "900"))
 
 _SESSION = requests.Session()
+_RENDER_SESSION = requests.Session()
 _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
 
 def _verify_request():
     if not GATEWAY_SECRET:
         return False, "本機閘道未設定 LOCAL_AI_GATEWAY_SECRET"
-
-    authorization = str(request.headers.get("Authorization") or "").strip()
-    scheme, separator, token = authorization.partition(" ")
-
-    if not separator or scheme.lower() != "bearer" or not token.strip():
-        return False, "缺少或錯誤的 Bearer 驗證標頭"
-
-    # 使用常數時間比較，避免直接字串比較產生時序差異。
-    import secrets
-    if not secrets.compare_digest(token.strip(), GATEWAY_SECRET):
-        return False, "Bearer Token 驗證失敗"
-
 ...
-... 已省略 237 行
+... 已省略 464 行
 ```
 
 
@@ -13239,7 +13509,7 @@ CF-Access-Client-Secret
 # 本機AI閘道\gateway_config.example.json
 
 - 類型：.json
-- 行數：8
+- 行數：13
 
 ## preview
 ```text
@@ -13249,7 +13519,12 @@ CF-Access-Client-Secret
   "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
   "COMFYUI_BASE_URL": "http://127.0.0.1:8188",
   "COMFYUI_ROOT": "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini文生圖\\ComfyUI",
-  "COMFYUI_TEMP_RETENTION_SECONDS": 1800
+  "COMFYUI_TEMP_RETENTION_SECONDS": 1800,
+  "RENDER_BASE_URL": "https://你的服務.onrender.com",
+  "LOCAL_AI_WORKER_ENABLED": 1,
+  "LOCAL_AI_WORKER_ID": "telemini-local-worker",
+  "LOCAL_AI_WORKER_POLL_SECONDS": 3,
+  "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS": 900
 }
 ```
 
@@ -13293,49 +13568,63 @@ requests
 # 本機AI閘道\設定說明.txt
 
 - 類型：.txt
-- 行數：39
+- 行數：53
 
 ## preview
 ```text
-Telemini 本機 AI 隱私閘道
+Telemini 本機 AI 反向 worker
 
 作用：
-Render 不直接公開連接 Ollama 11434 或 ComfyUI 8188。
-Render 只透過 Cloudflare Tunnel 的 HTTPS 網址呼叫本機閘道。
-每一個請求還會再用共用密鑰做 HMAC-SHA256 簽章、時間戳與一次性 nonce 驗證。
+不再使用 trycloudflare.com 臨時網址，也不需要 Cloudflare Tunnel。
+Render 收到生圖請求後，只把任務存起來。
+本機 worker 主動連到 Render 拉任務，跑完 ComfyUI 後再把圖片回傳 Render。
 
 本機要保持運行：
-1. Ollama
-2. ComfyUI
-3. 本機 AI 閘道
-4. cloudflared
+1. ComfyUI
+2. 本機 AI 閘道 / worker（啟動本機AI閘道.cmd）
 
-第一次設定：
-1. 執行「產生共用密鑰.ps1」。
-2. 複製「閘道設定範例.cmd」，改名為「閘道設定.cmd」。
-3. 填入共用密鑰及正確的 COMFYUI_ROOT。
-4. 雙擊「啟動本機AI閘道.cmd」。
-5. Cloudflare Tunnel 的本機服務指向：http://127.0.0.1:8787
-6. Render 新增：
-   LOCAL_AI_GATEWAY_URL=https://你的閘道網域
-   LOCAL_AI_GATEWAY_SECRET=與本機完全相同的共用密鑰
+Render 環境變數：
+1. 保留：
+   LOCAL_AI_GATEWAY_SECRET=與本機 gateway_config.json 完全相同的共用密鑰
 
-有使用 Cloudflare Access Service Token 時，再於 Render 新增：
-   CF_ACCESS_CLIENT_ID=...
-   CF_ACCESS_CLIENT_SECRET=...
+2. 刪除或留空：
+   LOCAL_AI_GATEWAY_URL
+
+   只填 secret、不填 URL 時，Render 會自動改用反向 worker 模式。
+
+本機 gateway_config.json：
+請填入：
+
+{
+  "LOCAL_AI_GATEWAY_SECRET": "與 Render 完全相同的密鑰",
+  "LOCAL_AI_GATEWAY_PORT": 8787,
+  "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+  "COMFYUI_BASE_URL": "http://127.0.0.1:8188",
+  "COMFYUI_ROOT": "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini文生圖\\ComfyUI",
+  "COMFYUI_TEMP_RETENTION_SECONDS": 1800,
+  "RENDER_BASE_URL": "https://你的服務.onrender.com",
+  "LOCAL_AI_WORKER_ENABLED": 1,
+  "LOCAL_AI_WORKER_ID": "telemini-local-worker",
+  "LOCAL_AI_WORKER_POLL_SECONDS": 3,
+  "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS": 900
+}
+
+啟動方式：
+1. 開 ComfyUI，確認 http://127.0.0.1:8188 可用。
+2. 雙擊「啟動本機AI閘道.cmd」。
+3. 終端機看到：
+   LOCAL AI WORKER STARTED render=https://你的服務.onrender.com
+   代表 worker 已經開始向 Render 拉任務。
 
 安全規則：
-- 不要把 11434 或 8188 做路由器 Port Forwarding。
-- Ollama、ComfyUI、本機閘道都維持 127.0.0.1。
-- Cloudflare Tunnel 只指向 127.0.0.1:8787。
-- 閘道設定.cmd 不要提交到 GitHub。
+- 不要把 11434、8188、8787 做路由器 Port Forwarding。
+- 本機服務都維持 127.0.0.1。
+- Render 與本機 worker 之間使用 Bearer Token，也就是 LOCAL_AI_GATEWAY_SECRET。
+- gateway_config.json 含密鑰，不要提交到 GitHub。
 
 圖片隱私：
-- ComfyUI 使用 PreviewImage。
-- Render 經閘道讀取圖片 bytes 後，閘道會立刻刪除該張 ComfyUI temp 檔。
-- Render 不會把圖片寫進本機磁碟。
-- Telegram 收到圖片後，仍只保存原本圖片管理需要的 Telegram file_id。
-- 圖片管理功能與使用者自行刪除功能照常保留。
+- worker 從 ComfyUI 讀取圖片 bytes 後，會嘗試刪除該張 ComfyUI temp 檔與 history。
+- Render 只暫存 worker 回傳結果，Telegram 發送完成後，系統仍只保留圖片管理所需的 Telegram file_id。
 ```
 
 

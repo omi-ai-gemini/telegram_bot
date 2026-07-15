@@ -3,6 +3,7 @@ import os
 import re
 import time
 import threading
+import base64
 from pathlib import Path
 from urllib.parse import urlencode
 
@@ -37,6 +38,11 @@ def _load_gateway_config() -> None:
         "COMFYUI_ROOT",
         "COMFYUI_TEMP_DIR",
         "COMFYUI_TEMP_RETENTION_SECONDS",
+        "RENDER_BASE_URL",
+        "LOCAL_AI_WORKER_ENABLED",
+        "LOCAL_AI_WORKER_ID",
+        "LOCAL_AI_WORKER_POLL_SECONDS",
+        "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS",
     }
     for key in allowed:
         value = payload.get(key)
@@ -58,8 +64,14 @@ MAX_CLOCK_SKEW_SECONDS = max(30, int(os.getenv("LOCAL_AI_GATEWAY_MAX_SKEW", "90"
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 COMFYUI_TEMP_RETENTION_SECONDS = max(300, int(os.getenv("COMFYUI_TEMP_RETENTION_SECONDS", "1800") or "1800"))
+RENDER_BASE_URL = str(os.getenv("RENDER_BASE_URL", "")).strip().rstrip("/")
+LOCAL_AI_WORKER_ENABLED = str(os.getenv("LOCAL_AI_WORKER_ENABLED", "1")).strip().lower() not in {"0", "false", "no", "off"}
+LOCAL_AI_WORKER_ID = str(os.getenv("LOCAL_AI_WORKER_ID", "telemini-local-worker")).strip() or "telemini-local-worker"
+LOCAL_AI_WORKER_POLL_SECONDS = max(2, int(os.getenv("LOCAL_AI_WORKER_POLL_SECONDS", "3") or "3"))
+LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS = max(60, int(os.getenv("LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS", "900") or "900"))
 
 _SESSION = requests.Session()
+_RENDER_SESSION = requests.Session()
 _PROMPT_ID_RE = re.compile(r"^[A-Za-z0-9_-]{8,128}$")
 
 
@@ -211,6 +223,219 @@ def _safe_temp_path(filename: str, subfolder: str) -> Path:
     return candidate
 
 
+def _render_headers() -> dict:
+    return {
+        "Authorization": f"Bearer {GATEWAY_SECRET}",
+        "Content-Type": "application/json",
+    }
+
+
+def _render_get(path: str, *, params: dict | None = None, timeout: int = 30):
+    return _RENDER_SESSION.get(
+        f"{RENDER_BASE_URL}{path}",
+        params=params or {},
+        headers={"Authorization": f"Bearer {GATEWAY_SECRET}"},
+        timeout=timeout,
+    )
+
+
+def _render_post(path: str, payload: dict, *, timeout: int = 60):
+    return _RENDER_SESSION.post(
+        f"{RENDER_BASE_URL}{path}",
+        json=payload,
+        headers=_render_headers(),
+        timeout=timeout,
+    )
+
+
+def _pick_image_meta(history_payload: dict) -> dict | None:
+    if not isinstance(history_payload, dict) or not history_payload:
+        return None
+    entry = next(iter(history_payload.values()), None)
+    if not isinstance(entry, dict):
+        return None
+    outputs = entry.get("outputs") or {}
+    for node_id in ("25", "18", "19", "16"):
+        node_output = outputs.get(node_id) or {}
+        images = node_output.get("images") or []
+        if images:
+            return images[0]
+    for node_output in outputs.values():
+        if not isinstance(node_output, dict):
+            continue
+        images = node_output.get("images") or []
+        if images:
+            return images[0]
+    return None
+
+
+def _history_error_message(history_payload: dict) -> str:
+    if not isinstance(history_payload, dict) or not history_payload:
+        return ""
+    entry = next(iter(history_payload.values()), None)
+    if not isinstance(entry, dict):
+        return ""
+    status = entry.get("status") or {}
+    if str(status.get("status_str") or "").lower() != "error":
+        return ""
+    return f"ComfyUI 執行失敗：{status.get('messages') or []}"
+
+
+def _delete_temp_and_history(image_meta: dict, prompt_id: str) -> None:
+    try:
+        if str(image_meta.get("type") or "temp") == "temp":
+            temp_path = _safe_temp_path(
+                str(image_meta.get("filename") or ""),
+                str(image_meta.get("subfolder") or ""),
+            )
+            for _ in range(6):
+                try:
+                    if temp_path.is_file():
+                        temp_path.unlink()
+                    break
+                except Exception:
+                    time.sleep(0.25)
+    except Exception as exc:
+        print(f"LOCAL WORKER TEMP DELETE SKIPPED type={type(exc).__name__}", flush=True)
+
+    try:
+        _SESSION.post(
+            f"{COMFYUI_BASE_URL}/history",
+            json={"delete": [str(prompt_id)]},
+            timeout=15,
+        )
+    except Exception:
+        print("LOCAL WORKER HISTORY DELETE FAILED", flush=True)
+
+
+def _comfy_run_prompt(prompt_payload: dict, task_id: int) -> tuple[bytes, str]:
+    response = _SESSION.post(f"{COMFYUI_BASE_URL}/prompt", json=prompt_payload, timeout=60)
+    if not response.ok:
+        raise RuntimeError(f"ComfyUI prompt HTTP {response.status_code}: {response.text[:500]}")
+    data = response.json()
+    prompt_id = str(data.get("prompt_id") or "")
+    if not prompt_id:
+        raise RuntimeError("ComfyUI 沒有回傳 prompt_id")
+
+    started = time.monotonic()
+    last_heartbeat = 0.0
+    while True:
+        if time.monotonic() - started > LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS:
+            try:
+                _SESSION.post(f"{COMFYUI_BASE_URL}/interrupt", timeout=15)
+            except Exception:
+                pass
+            raise TimeoutError(f"ComfyUI 等待超過 {LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS} 秒")
+
+        now = time.monotonic()
+        if now - last_heartbeat >= 5:
+            last_heartbeat = now
+            heartbeat = _render_post(
+                f"/local-ai/tasks/{task_id}/heartbeat",
+                {"worker_id": LOCAL_AI_WORKER_ID},
+                timeout=30,
+            )
+            if heartbeat.ok:
+                heartbeat_payload = heartbeat.json()
+                if heartbeat_payload.get("cancel_requested"):
+                    try:
+                        _SESSION.post(f"{COMFYUI_BASE_URL}/interrupt", timeout=15)
+                    except Exception:
+                        pass
+                    raise KeyboardInterrupt("使用者已取消生圖")
+
+        history_response = _SESSION.get(f"{COMFYUI_BASE_URL}/history/{prompt_id}", timeout=30)
+        if history_response.ok:
+            history_payload = history_response.json()
+            error_message = _history_error_message(history_payload)
+            if error_message:
+                raise RuntimeError(error_message)
+            image_meta = _pick_image_meta(history_payload)
+            if image_meta:
+                query = urlencode({
+                    "filename": image_meta.get("filename", ""),
+                    "subfolder": image_meta.get("subfolder", ""),
+                    "type": image_meta.get("type", "temp"),
+                })
+                view_response = _SESSION.get(f"{COMFYUI_BASE_URL}/view?{query}", timeout=120)
+                if not view_response.ok:
+                    raise RuntimeError(f"ComfyUI view HTTP {view_response.status_code}: {view_response.text[:500]}")
+                image_bytes = bytes(view_response.content)
+                mime_type = view_response.headers.get("Content-Type") or "image/png"
+                _delete_temp_and_history(image_meta, prompt_id)
+                return image_bytes, mime_type
+
+        time.sleep(2)
+
+
+def _ollama_generate(payload: dict) -> tuple[bytes, str]:
+    response = _SESSION.post(f"{OLLAMA_BASE_URL}/api/generate", json=payload, timeout=300)
+    if not response.ok:
+        raise RuntimeError(f"Ollama HTTP {response.status_code}: {response.text[:500]}")
+    return bytes(response.content), response.headers.get("Content-Type") or "application/json"
+
+
+def _process_render_task(task: dict) -> None:
+    task_id = int(task.get("id"))
+    task_type = str(task.get("task_type") or "")
+    payload = task.get("payload") or {}
+    try:
+        if task_type == "comfy_txt2img":
+            result_bytes, mime_type = _comfy_run_prompt(payload, task_id)
+        elif task_type == "ollama_generate":
+            result_bytes, mime_type = _ollama_generate(payload)
+        else:
+            raise RuntimeError(f"不支援的任務類型：{task_type}")
+        encoded = base64.b64encode(result_bytes).decode("ascii")
+        response = _render_post(
+            f"/local-ai/tasks/{task_id}/result",
+            {"result_base64": encoded, "mime_type": mime_type},
+            timeout=180,
+        )
+        if not response.ok:
+            raise RuntimeError(f"回傳結果失敗 HTTP {response.status_code}: {response.text[:500]}")
+        print(f"LOCAL AI TASK COMPLETED id={task_id}", flush=True)
+    except KeyboardInterrupt as exc:
+        _render_post(
+            f"/local-ai/tasks/{task_id}/fail",
+            {"message": str(exc) or "使用者已取消生圖", "canceled": True},
+            timeout=30,
+        )
+        print(f"LOCAL AI TASK CANCELED id={task_id}", flush=True)
+    except Exception as exc:
+        _render_post(
+            f"/local-ai/tasks/{task_id}/fail",
+            {"message": str(exc)[:1000]},
+            timeout=30,
+        )
+        print(f"LOCAL AI TASK FAILED id={task_id} error={exc}", flush=True)
+
+
+def _render_worker_loop() -> None:
+    if not LOCAL_AI_WORKER_ENABLED or not RENDER_BASE_URL:
+        return
+    print(f"LOCAL AI WORKER STARTED render={RENDER_BASE_URL}", flush=True)
+    while True:
+        try:
+            response = _render_get(
+                "/local-ai/tasks/next",
+                params={"worker_id": LOCAL_AI_WORKER_ID},
+                timeout=30,
+            )
+            if response.ok:
+                payload = response.json()
+                task = payload.get("task")
+                if task:
+                    print(f"LOCAL AI TASK CLAIMED id={task.get('id')} type={task.get('task_type')}", flush=True)
+                    _process_render_task(task)
+                    continue
+            else:
+                print(f"LOCAL AI WORKER POLL HTTP {response.status_code}: {response.text[:300]}", flush=True)
+        except Exception as exc:
+            print(f"LOCAL AI WORKER POLL FAILED: {exc}", flush=True)
+        time.sleep(LOCAL_AI_WORKER_POLL_SECONDS)
+
+
 @app.get("/v1/comfy/view")
 def comfy_view():
     filename = str(request.args.get("filename") or "").strip()
@@ -314,4 +539,6 @@ if __name__ == "__main__":
     _cleanup_stale_temp_files()
     _clear_comfy_history_on_start()
     threading.Thread(target=_stale_cleanup_loop, daemon=True).start()
+    if RENDER_BASE_URL and LOCAL_AI_WORKER_ENABLED:
+        threading.Thread(target=_render_worker_loop, daemon=True).start()
     app.run(host="127.0.0.1", port=GATEWAY_PORT, threaded=True, debug=False)

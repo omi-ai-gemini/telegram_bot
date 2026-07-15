@@ -10,10 +10,16 @@ import requests
 from services.local_ai_gateway_client import (
     gateway_config_error,
     gateway_enabled,
+    gateway_reverse_enabled,
     gateway_requested,
     gateway_get_bytes,
     gateway_get_json,
     gateway_post_json,
+)
+from services.local_ai_tasks import (
+    cancel_local_ai_task,
+    create_local_ai_task,
+    wait_for_local_ai_task_result,
 )
 
 
@@ -29,6 +35,7 @@ COMFYUI_WIDTH = max(256, int(os.getenv("COMFYUI_WIDTH", "768") or "768"))
 COMFYUI_HEIGHT = max(256, int(os.getenv("COMFYUI_HEIGHT", "1024") or "1024"))
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
+_LOCAL_TASK_PREFIX = "localtask:"
 
 
 def _workflow_seed() -> int:
@@ -159,6 +166,22 @@ def build_txt2img_workflow(
 
 
 def _post_json(path: str, payload: Dict[str, Any], timeout: int = 60) -> Dict[str, Any]:
+    if gateway_reverse_enabled():
+        if path != "/prompt":
+            return {"ok": False, "message": f"反向 worker 模式不支援直接呼叫：{path}"}
+        try:
+            task_id = create_local_ai_task("comfy_txt2img", payload)
+        except Exception as exc:
+            return {"ok": False, "message": f"建立本機 worker 任務失敗：{exc}"}
+        return {
+            "ok": True,
+            "data": {
+                "prompt_id": f"{_LOCAL_TASK_PREFIX}{task_id}",
+                "task_id": task_id,
+                "mode": "local_worker",
+            },
+        }
+
     if gateway_requested() and not gateway_enabled():
         return {"ok": False, "message": gateway_config_error() or "本機 AI 閘道設定不完整"}
     if gateway_enabled():
@@ -205,6 +228,16 @@ def interrupt() -> None:
             _COMFY_SESSION.post(f"{COMFYUI_BASE_URL}/interrupt", timeout=10)
     except Exception:
         return
+
+
+def _local_task_id_from_prompt(prompt_id: str) -> Optional[int]:
+    text = str(prompt_id or "")
+    if not text.startswith(_LOCAL_TASK_PREFIX):
+        return None
+    try:
+        return int(text[len(_LOCAL_TASK_PREFIX):])
+    except Exception:
+        return None
 
 
 def _get_history(prompt_id: str) -> Dict[str, Any]:
@@ -333,6 +366,16 @@ def wait_for_prompt_image(
 ) -> Dict[str, Any]:
     timeout_seconds = int(timeout_seconds or COMFYUI_TIMEOUT_SECONDS)
     poll_seconds = int(poll_seconds or COMFYUI_POLL_SECONDS)
+    local_task_id = _local_task_id_from_prompt(prompt_id)
+    if local_task_id is not None:
+        return wait_for_local_ai_task_result(
+            local_task_id,
+            timeout_seconds=timeout_seconds,
+            poll_seconds=poll_seconds,
+            cancel_check=cancel_check,
+            progress_callback=progress_callback,
+        )
+
     started = time.monotonic()
 
     while True:
@@ -343,6 +386,10 @@ def wait_for_prompt_image(
                 pass
 
         if cancel_check and cancel_check():
+            local_task_id = _local_task_id_from_prompt(prompt_id)
+            if local_task_id is not None:
+                cancel_local_ai_task(local_task_id)
+                return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
             interrupt()
             return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
 

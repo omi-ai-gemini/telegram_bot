@@ -77,6 +77,7 @@ C:\Projects\telemini
 - `requirements.txt`
 - `routes\admin.py`
 - `routes\image_gen.py`
+- `routes\local_ai_tasks.py`
 - `routes\prompt_debug.py`
 - `routes\setting.py`
 - `routes\thought.py`
@@ -107,6 +108,7 @@ C:\Projects\telemini
 - `services\image_prompt.py`
 - `services\image_store.py`
 - `services\local_ai_gateway_client.py`
+- `services\local_ai_tasks.py`
 - `services\media_ai.py`
 - `services\memory.py`
 - `services\memory_summary.py`
@@ -128,6 +130,7 @@ C:\Projects\telemini
 - `services\user_notice.py`
 - `services\user_router.py`
 - `static\image_reference\#U57fa#U6e96#U5716#U653e#U7f6e#U8aaa#U660e.txt`
+- `static\image_reference\seed.txt`
 - `static\image_reference\基準圖放置說明.txt`
 - `templates\character_form.html`
 - `templates\chat_persona_form.html`
@@ -287,6 +290,15 @@ C:\Projects\telemini
 - `image_library_preview()`
 - `image_library_rename()`
 - `image_library_delete()`
+
+### `routes\local_ai_tasks.py`
+- `_secret()`
+- `_verify_worker()`
+- `_auth_guard()`
+- `local_ai_next_task()`
+- `local_ai_task_heartbeat()`
+- `local_ai_task_result()`
+- `local_ai_task_fail()`
 
 ### `routes\prompt_debug.py`
 - `_auth_from_request()`
@@ -529,6 +541,7 @@ C:\Projects\telemini
 - `_post_json()`
 - `queue_prompt()`
 - `interrupt()`
+- `_local_task_id_from_prompt()`
 - `_get_history()`
 - `_pick_image_meta()`
 - `_safe_delete_direct_temp()`
@@ -696,6 +709,7 @@ C:\Projects\telemini
 ### `services\local_ai_gateway_client.py`
 - `gateway_requested()`
 - `gateway_enabled()`
+- `gateway_reverse_enabled()`
 - `gateway_config_error()`
 - `_body_bytes()`
 - `_auth_headers()`
@@ -703,6 +717,20 @@ C:\Projects\telemini
 - `gateway_post_json()`
 - `gateway_get_json()`
 - `gateway_get_bytes()`
+
+### `services\local_ai_tasks.py`
+- `init_local_ai_task_tables()`
+- `create_local_ai_task()`
+- `cancel_local_ai_task()`
+- `claim_next_local_ai_task()`
+- `heartbeat_local_ai_task()`
+- `complete_local_ai_task()`
+- `fail_local_ai_task()`
+- `fetch_local_ai_task_result()`
+- `wait_for_local_ai_task_result()`
+- `cleanup_old_local_ai_tasks()`
+- `encode_result_bytes()`
+- `decode_result_bytes()`
 
 ### `services\media_ai.py`
 - `_text()`
@@ -1046,5 +1074,15 @@ C:\Projects\telemini
 - `_stale_cleanup_loop()`
 - `_clear_comfy_history_on_start()`
 - `_safe_temp_path()`
+- `_render_headers()`
+- `_render_get()`
+- `_render_post()`
+- `_pick_image_meta()`
+- `_history_error_message()`
+- `_delete_temp_and_history()`
+- `_comfy_run_prompt()`
+- `_ollama_generate()`
+- `_process_render_task()`
+- `_render_worker_loop()`
 - `comfy_view()`
 - `_privacy_headers()`

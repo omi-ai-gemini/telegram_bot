@@ -26,11 +26,17 @@ def gateway_enabled() -> bool:
     return bool(LOCAL_AI_GATEWAY_URL and LOCAL_AI_GATEWAY_SECRET)
 
 
+def gateway_reverse_enabled() -> bool:
+    """只設定密鑰、不設定 URL 時，改用本機 worker 主動拉任務。"""
+    return bool(LOCAL_AI_GATEWAY_SECRET and not LOCAL_AI_GATEWAY_URL)
+
+
 def gateway_config_error() -> str:
     if not gateway_requested():
         return ""
     if not LOCAL_AI_GATEWAY_URL:
-        return "已設定本機 AI 閘道密鑰，但缺少 LOCAL_AI_GATEWAY_URL"
+        # 只設定密鑰時代表啟用反向 worker 模式，不是設定錯誤。
+        return ""
     if not LOCAL_AI_GATEWAY_SECRET:
         return "已設定 LOCAL_AI_GATEWAY_URL，但缺少 LOCAL_AI_GATEWAY_SECRET"
     lowered = LOCAL_AI_GATEWAY_URL.lower()

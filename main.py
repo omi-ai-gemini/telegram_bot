@@ -11,6 +11,7 @@ from routes.setting import setting_bp
 from routes.thought import thought_bp
 from routes.prompt_debug import prompt_debug_bp
 from routes.image_gen import image_gen_bp
+from routes.local_ai_tasks import local_ai_tasks_bp
 from test_lab.db import init_test_lab_db
 from test_lab.routes import test_lab_bp
 from test_lab.service import should_skip_main_user_config
@@ -24,6 +25,7 @@ from service_center.db import init_service_center_db
 from service_center.scheduler import start_service_center_announcement_scheduler
 from services.image_store import init_image_tables
 from services.image_jobs import recover_active_image_jobs
+from services.local_ai_tasks import init_local_ai_task_tables, cleanup_old_local_ai_tasks
 from services.media_ai import (
     run_photo_message_in_thread,
     run_sticker_message_in_thread,
@@ -42,6 +44,7 @@ app.register_blueprint(thought_bp)
 app.register_blueprint(prompt_debug_bp)
 app.register_blueprint(test_lab_bp)
 app.register_blueprint(image_gen_bp)
+app.register_blueprint(local_ai_tasks_bp)
 
 db_initialized = False
 
@@ -53,6 +56,8 @@ def init_once():
         init_test_lab_db()
         init_service_center_db()
         init_image_tables()
+        init_local_ai_task_tables()
+        cleanup_old_local_ai_tasks()
 
         try:
             recover_active_image_jobs()

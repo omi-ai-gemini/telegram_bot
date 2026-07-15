@@ -69,6 +69,7 @@
 📁 routes/
   📄 admin.py
   📄 image_gen.py
+  📄 local_ai_tasks.py
   📄 prompt_debug.py
   📄 setting.py
   📄 thought.py
@@ -101,6 +102,7 @@
   📄 image_prompt.py
   📄 image_store.py
   📄 local_ai_gateway_client.py
+  📄 local_ai_tasks.py
   📄 media_ai.py
   📄 memory.py
   📄 memory_summary.py
@@ -124,6 +126,7 @@
 📁 static/
   📁 image_reference/
     📄 #U57fa#U6e96#U5716#U653e#U7f6e#U8aaa#U660e.txt
+    📄 seed.txt
     📄 基準圖放置說明.txt
 📁 templates/
   📄 character_form.html
