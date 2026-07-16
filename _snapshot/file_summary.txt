@@ -7516,7 +7516,7 @@ def _prepare_mask_canvas(
 # services\image_prompt.py
 
 - 類型：.py
-- 行數：316
+- 行數：381
 
 ## imports
 - re
@@ -7553,14 +7553,12 @@ FIXED_TAGS: Dict[str, str] = {
 }
 
 
-# 文生圖固定人物身份只負責角色一致性，不把人物推成棚拍美女肖像。
+# 文生圖固定人物身份維持真人感與角色一致性；美感細節由下方詞庫補空。
 TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     "female": [
         "one adult East Asian woman in her twenties",
-        "realistic everyday appearance rather than an idealized beauty model",
-        "soft oval face with slight natural asymmetry",
-        "dark brown almond-shaped eyes with natural double eyelids",
-        "small straight nose and naturally shaped lips",
+        "naturally attractive real-person appearance",
+        "harmonious facial proportions with slight natural asymmetry",
         "realistic light skin with visible natural texture and subtle imperfections",
         "slim naturally proportioned body",
         "natural black hair only as the fallback when no newer request changes it",
@@ -7568,10 +7566,8 @@ TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     ],
     "male": [
         "one adult East Asian man in his twenties",
-        "realistic everyday appearance rather than an idealized fashion model",
-        "balanced masculine oval face with slight natural asymmetry",
-        "dark brown almond-shaped eyes",
-        "straight natural nose and naturally shaped lips",
+        "naturally handsome real-person appearance",
+        "harmonious masculine facial proportions with slight natural asymmetry",
         "realistic light skin with visible natural texture and subtle imperfections",
         "lean naturally proportioned body",
         "natural short black hair only as the fallback when no newer request changes it",
@@ -7580,41 +7576,45 @@ TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
 }
 
 
-PHOTO_REALISM_RULE = """
-Create a genuine real-camera photograph. The default visual language is candid lifestyle photography, documentary photography, editorial location photography, travel photography, or an unstaged everyday snapshot. The image must look captured in a real place by a physical camera, not designed as AI beauty artwork.
+BEAUTY_LIBRARY_RULES: Dict[str, str] = {
+    "female": r"""
+BEAUTY COMPLETION LIBRARY — FEMALE:
+Use the newest user request first. Explicitly specified face shape, eyes, eyebrows, nose, lips, makeup, skin, age, ethnicity, or style are locked and must never be replaced. Only fill facial parts that the user did not specify. Choose one coherent preset; never mix conflicting presets into a patchwork face.
 
-Use believable ambient light, realistic exposure, natural dynamic range, ordinary lens perspective, physically plausible shadows, real fabric folds, natural hair strands, visible skin texture, pores, tiny imperfections, slight facial asymmetry, and lived-in environmental details. Avoid glamour retouching, commercial beauty lighting, plastic skin, synthetic perfection, fantasy rendering, illustration, anime, CGI, 3D, game-art styling, and overprocessed HDR.
+Default natural-attractive preset:
+face and proportions: harmonious facial proportions, balanced facial features, refined but realistic facial structure, soft oval face, gentle natural jawline
+eyes: almond-shaped clear expressive eyes, balanced eye spacing, realistic eyelid detail
+eyebrows: natural softly arched eyebrows, individual eyebrow hairs
+nose: proportionate nose bridge, refined natural nose shape, balanced nose proportions
+lips: well-shaped natural lips, natural lip contour, subtle cupid's bow
+makeup: minimal natural makeup, subtle blush, soft natural lip color
+skin: natural skin texture, subtle pores, fine skin details, healthy complexion, minimal retouching
 
-Treat the newest explicit request as the highest-priority visual instruction. Ignore older details that conflict with it. Do not add unrelated people, props, redesigns, captions, subtitles, watermarks, logos, or invented writing.
-""".strip()
+Sweet/cute preset, only when requested with cute, sweet, innocent, youthful, or similar wording:
+soft youthful facial proportions, softly rounded cheeks, gentle facial contour, slightly round bright expressive eyes, soft natural eyebrows, delicate natural nose shape, gentle natural lips, soft natural makeup, fresh blush, delicate lip tint, natural skin texture
 
+Elegant/mature preset, only when requested with mature, elegant, cool, refined, glamorous, or similar wording:
+refined facial structure, elegant facial contour, balanced mature facial proportions, defined but natural jawline, elongated almond eyes, calm refined eyes, softly arched natural eyebrows, defined but natural nose bridge, refined natural lip shape, refined natural makeup, softly defined eye makeup, natural skin texture
 
-NON_PORTRAIT_COMPOSITION_RULE = """
-PORTRAIT_POLICY: BLOCK
-This is not a portrait session. Do not default to a face-centered composition. Use an environmental medium-wide, three-quarter-body, knee-up, or full-body photograph. Keep enough camera distance to show the requested location, clothing, posture, action, hands, interacting objects, and surrounding environment. The person should occupy only part of the frame and the location must remain visually meaningful.
+Do not add exaggerated giant eyes, extremely pointed chin, tiny artificial nose, heavy makeup, cosmetic-surgery look, generic influencer face, or plastic beauty-filter skin.
+""".strip(),
+    "male": r"""
+BEAUTY COMPLETION LIBRARY — MALE:
+Use the newest user request first. Explicitly specified face shape, eyes, eyebrows, nose, lips, grooming, skin, age, ethnicity, or style are locked and must never be replaced. Only fill facial parts that the user did not specify. Choose one coherent preset; never mix conflicting presets into a patchwork face.
 
-Prefer candid activity, natural body language, off-center composition, ordinary eye-level camera placement, and 35mm-to-50mm environmental perspective. Do not automatically make the subject stare into the camera. Do not crop at the shoulders or chest. Do not let the face dominate the image. Do not replace the requested scene with a blurred empty background.
-""".strip()
+Default natural-handsome preset:
+face and proportions: harmonious facial proportions, balanced masculine facial features, refined but realistic facial structure, natural jawline
+eyes: clear expressive eyes, balanced eye spacing, realistic eyelid detail
+eyebrows: natural well-shaped eyebrows, individual eyebrow hairs
+nose: proportionate nose bridge, refined natural nose shape, balanced nose proportions
+lips: well-shaped natural lips, balanced lip proportions
+skin: healthy natural skin texture, subtle pores, realistic facial skin
 
+Sunny/clean-cut preset, only when requested with sunny, fresh, youthful, boy-next-door, approachable, or similar wording:
+clean-cut handsome appearance, balanced facial proportions, fresh youthful facial structure, natural facial contour, bright expressive eyes, neat natural eyebrows, proportionate natural nose bridge, natural lip shape, natural smile, approachable expression, healthy complexion, natural skin texture
 
-PORTRAIT_ALLOWED_COMPOSITION_RULE = """
-PORTRAIT_POLICY: ALLOW_EXPLICIT
-The newest request explicitly requires portrait-oriented framing. Follow the requested portrait, close-up, headshot, profile image, selfie, or studio composition precisely, while keeping it a believable natural camera photograph with realistic skin and restrained retouching.
-""".strip()
-
-
-IMAGE_TO_IMAGE_GLOBAL_RULE = """
-Use the supplied source image as the identity and visual reference, then perform a real photographic edit. The newest explicit request is the required result and must be completed clearly. Do not return the source unchanged, do not merely resize it, and do not hide behind tiny texture changes when a visible wardrobe, pose, action, object, framing, or scene change was requested.
-
-Preserve the same recognizable person and all unrequested visual elements as closely as possible. Larger requested changes may alter pose, body position, hands, camera distance, crop, viewpoint, background, furniture, objects, lighting, and scene composition when necessary. When the newest request explicitly asks to keep the background unchanged, keep the original room, furniture, layout, and scene structure unchanged as much as possible. When the newest request explicitly asks to change the pose or body position, actually change it decisively instead of returning a near-identical pose. Do not introduce an unrequested close-up, beauty crop, headshot, or face-dominant portrait.
-
-The finished edit must retain a genuine real-camera appearance with natural skin texture, realistic ambient light, believable perspective, and no CGI, illustration, anime, plastic skin, or beauty-advertisement finish.
-""".strip()
-
-
-MASK_TO_IMAGE_GLOBAL_RULE = """
 ...
-... 已省略 236 行
+... 已省略 301 行
 ```
 
 
@@ -12577,6 +12577,100 @@ def should_ignore(path: Path) -> bool:
 
 ================================================================================
 
+# workflows\img&txt2img_basic_api.json
+
+- 類型：.json
+- 行數：281
+
+## preview
+```text
+{
+  "12": {
+    "inputs": {
+      "ckpt_name": "cyberrealisticXL_v100.safetensors"
+    },
+    "class_type": "CheckpointLoaderSimple",
+    "_meta": {
+      "title": "載入檢查點"
+    }
+  },
+  "13": {
+    "inputs": {
+      "seed": 390065055536685,
+      "steps": 25,
+      "cfg": 5,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "29",
+        0
+      ],
+      "positive": [
+        "25",
+        0
+      ],
+      "negative": [
+        "26",
+        0
+      ],
+      "latent_image": [
+        "14",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "KSampler"
+    }
+  },
+  "14": {
+    "inputs": {
+      "width": 768,
+      "height": 1024,
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空白潛在影像"
+    }
+  },
+  "15": {
+    "inputs": {
+      "filename_prefix": "ComfyUI",
+      "images": [
+        "18",
+        0
+      ]
+    },
+    "class_type": "SaveImage",
+    "_meta": {
+      "title": "儲存圖片"
+    }
+  },
+  "16": {
+    "inputs": {
+      "samples": [
+        "13",
+        0
+      ],
+      "vae": [
+        "12",
+        2
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE 解碼"
+    }
+  },
+...
+... 已省略 201 行
+```
+
+
+================================================================================
+
 # workflows\txt2img_basic_api.json
 
 - 類型：.json
@@ -12674,30 +12768,14 @@ def should_ignore(path: Path) -> bool:
 # 使用說明.txt
 
 - 類型：.txt
-- 行數：20
+- 行數：4
 
 ## preview
 ```text
-Telemini ComfyUI api_slot 欄位修正補丁
-
-修改檔案：
-services/image_store.py
-
-修正內容：
-1. 新建 image_generation_jobs 時，api_slot 改為 TEXT。
-2. Render 啟動時自動檢查既有 PostgreSQL 欄位。
-3. 若既有 api_slot 仍是 INTEGER，會自動轉成 TEXT，舊數字資料會保留為文字。
-4. 讓本機生圖流程可寫入 api_slot='comfyui'。
-
-套用方式：
-1. 將 services 資料夾覆蓋到 Telemini 專案根目錄。
-2. git add services/image_store.py
-3. git commit -m "fix comfyui api slot type"
-4. git push
-5. 等 Render 重新部署完成後，再重新按一次生圖。
-
-不需要修改或重啟 Ollama、ComfyUI、Cloudflare Tunnel。
-先前失敗的生圖工作不會自動重跑。
+本次修正：
+1. 預設防大頭再加強，除非使用者明確要求肖像／特寫。
+2. 文生圖若未指定背景，會依使用者文字自動推斷合適背景，而不是留空背景或模糊散景。
+3. 強化負面詞，進一步壓制 headshot / portrait / face-only framing。
 ```
 
 
@@ -13178,6 +13256,37 @@ git push
 
 ================================================================================
 
+# 更新說明.txt
+
+- 類型：.txt
+- 行數：19
+
+## preview
+```text
+Telemini 純文生圖美感詞庫補丁
+
+修改檔案：
+services/image_prompt.py
+
+更新內容：
+1. 套用在 Telemini 正式專案，不是本機測試工具。
+2. 女性詞庫：自然耐看、甜美可愛、成熟精緻。
+3. 男性詞庫：自然耐看、陽光清爽、成熟冷峻。
+4. 使用者明確指定的臉型、眼睛、鼻子、嘴唇、妝容等內容優先，不會被詞庫覆蓋。
+5. 只有使用者沒指定的部位才由 Qwen 從同一套美感方向補齊。
+6. 同一張圖禁止混搭互相衝突的模板，降低拼裝臉。
+7. 保留既有無指定背景自動補自然背景、非肖像構圖與真人皮膚規則。
+
+使用方式：
+將 services/image_prompt.py 覆蓋到 Telemini 專案相同路徑後部署。
+
+
+本次修正：純文生圖預設強制防大頭／肖像構圖。只有使用者明確要求肖像、特寫、大頭照、自拍、證件照或臉部近拍時才解除。正面固定補中遠景、膝上與相機拉遠；負面固定補完整肖像／特寫禁止詞。
+```
+
+
+================================================================================
+
 # 服務中心公告推播覆蓋說明.txt
 
 - 類型：.txt
@@ -13534,13 +13643,15 @@ CF-Access-Client-Secret
 # 本機AI閘道\gateway_config.json
 
 - 類型：.json
-- 行數：8
+- 行數：10
 
 ## preview
 ```text
 {
     "LOCAL_AI_GATEWAY_SECRET":  "ui7Ophml2NJjlWk9woJthgjWY5HxVbWpY0QmEjgAd_N06bcBqvA-bsacLTN7-C41XWGYqhG-HqPx2oRCKkwdgw",
     "LOCAL_AI_GATEWAY_PORT":  8787,
+    "RENDER_BASE_URL": "https://telemini-jc31.onrender.com",
+    "LOCAL_AI_WORKER_ENABLED": 1,
     "OLLAMA_BASE_URL":  "http://127.0.0.1:11434",
     "COMFYUI_BASE_URL":  "http://127.0.0.1:8188",
     "COMFYUI_ROOT":  "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini???ComfyUI",

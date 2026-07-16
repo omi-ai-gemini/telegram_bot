@@ -158,6 +158,7 @@ C:\Projects\telemini
 - `tools\apply_blocked_retry_patch.py`
 - `tools\encrypt_existing_plaintext.py`
 - `tools\project_snapshot.py`
+- `workflows\img&txt2img_basic_api.json`
 - `workflows\txt2img_basic_api.json`
 - `使用說明.txt`
 - `修改檔案清單.txt`
@@ -172,6 +173,7 @@ C:\Projects\telemini
 - `圖片等待與模型切換覆蓋說明.txt`
 - `媒體輸入覆蓋說明.txt`
 - `局部遮罩畫筆修復說明.txt`
+- `更新說明.txt`
 - `服務中心公告推播覆蓋說明.txt`
 - `服務中心硬檢查覆蓋說明.txt`
 - `服務中心管理員判定修復說明.txt`

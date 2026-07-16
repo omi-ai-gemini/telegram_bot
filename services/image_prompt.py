@@ -18,14 +18,12 @@ FIXED_TAGS: Dict[str, str] = {
 }
 
 
-# 文生圖固定人物身份只負責角色一致性，不把人物推成棚拍美女肖像。
+# 文生圖固定人物身份維持真人感與角色一致性；美感細節由下方詞庫補空。
 TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     "female": [
         "one adult East Asian woman in her twenties",
-        "realistic everyday appearance rather than an idealized beauty model",
-        "soft oval face with slight natural asymmetry",
-        "dark brown almond-shaped eyes with natural double eyelids",
-        "small straight nose and naturally shaped lips",
+        "naturally attractive real-person appearance",
+        "harmonious facial proportions with slight natural asymmetry",
         "realistic light skin with visible natural texture and subtle imperfections",
         "slim naturally proportioned body",
         "natural black hair only as the fallback when no newer request changes it",
@@ -33,15 +31,58 @@ TEXT_IDENTITY_PROFILES: Dict[str, List[str]] = {
     ],
     "male": [
         "one adult East Asian man in his twenties",
-        "realistic everyday appearance rather than an idealized fashion model",
-        "balanced masculine oval face with slight natural asymmetry",
-        "dark brown almond-shaped eyes",
-        "straight natural nose and naturally shaped lips",
+        "naturally handsome real-person appearance",
+        "harmonious masculine facial proportions with slight natural asymmetry",
         "realistic light skin with visible natural texture and subtle imperfections",
         "lean naturally proportioned body",
         "natural short black hair only as the fallback when no newer request changes it",
         "recognizable character identity shown as part of a real scene rather than a face showcase",
     ],
+}
+
+
+BEAUTY_LIBRARY_RULES: Dict[str, str] = {
+    "female": r"""
+BEAUTY COMPLETION LIBRARY — FEMALE:
+Use the newest user request first. Explicitly specified face shape, eyes, eyebrows, nose, lips, makeup, skin, age, ethnicity, or style are locked and must never be replaced. Only fill facial parts that the user did not specify. Choose one coherent preset; never mix conflicting presets into a patchwork face.
+
+Default natural-attractive preset:
+face and proportions: harmonious facial proportions, balanced facial features, refined but realistic facial structure, soft oval face, gentle natural jawline
+eyes: almond-shaped clear expressive eyes, balanced eye spacing, realistic eyelid detail
+eyebrows: natural softly arched eyebrows, individual eyebrow hairs
+nose: proportionate nose bridge, refined natural nose shape, balanced nose proportions
+lips: well-shaped natural lips, natural lip contour, subtle cupid's bow
+makeup: minimal natural makeup, subtle blush, soft natural lip color
+skin: natural skin texture, subtle pores, fine skin details, healthy complexion, minimal retouching
+
+Sweet/cute preset, only when requested with cute, sweet, innocent, youthful, or similar wording:
+soft youthful facial proportions, softly rounded cheeks, gentle facial contour, slightly round bright expressive eyes, soft natural eyebrows, delicate natural nose shape, gentle natural lips, soft natural makeup, fresh blush, delicate lip tint, natural skin texture
+
+Elegant/mature preset, only when requested with mature, elegant, cool, refined, glamorous, or similar wording:
+refined facial structure, elegant facial contour, balanced mature facial proportions, defined but natural jawline, elongated almond eyes, calm refined eyes, softly arched natural eyebrows, defined but natural nose bridge, refined natural lip shape, refined natural makeup, softly defined eye makeup, natural skin texture
+
+Do not add exaggerated giant eyes, extremely pointed chin, tiny artificial nose, heavy makeup, cosmetic-surgery look, generic influencer face, or plastic beauty-filter skin.
+""".strip(),
+    "male": r"""
+BEAUTY COMPLETION LIBRARY — MALE:
+Use the newest user request first. Explicitly specified face shape, eyes, eyebrows, nose, lips, grooming, skin, age, ethnicity, or style are locked and must never be replaced. Only fill facial parts that the user did not specify. Choose one coherent preset; never mix conflicting presets into a patchwork face.
+
+Default natural-handsome preset:
+face and proportions: harmonious facial proportions, balanced masculine facial features, refined but realistic facial structure, natural jawline
+eyes: clear expressive eyes, balanced eye spacing, realistic eyelid detail
+eyebrows: natural well-shaped eyebrows, individual eyebrow hairs
+nose: proportionate nose bridge, refined natural nose shape, balanced nose proportions
+lips: well-shaped natural lips, balanced lip proportions
+skin: healthy natural skin texture, subtle pores, realistic facial skin
+
+Sunny/clean-cut preset, only when requested with sunny, fresh, youthful, boy-next-door, approachable, or similar wording:
+clean-cut handsome appearance, balanced facial proportions, fresh youthful facial structure, natural facial contour, bright expressive eyes, neat natural eyebrows, proportionate natural nose bridge, natural lip shape, natural smile, approachable expression, healthy complexion, natural skin texture
+
+Mature/cool preset, only when requested with mature, cool, elite, dominant, executive, stern, or similar wording:
+mature handsome appearance, defined masculine facial structure, strong natural jawline, composed facial contour, deep-set calm eyes, straight natural eyebrows, refined nose bridge, well-shaped natural lips, composed expression, cool mature presence, realistic facial skin
+
+Do not add exaggerated bodybuilder features, overly square artificial jaw, extreme brow ridge, cosmetic-surgery look, generic idol face, or plastic beauty-filter skin.
+""".strip(),
 }
 
 
@@ -55,16 +96,36 @@ Treat the newest explicit request as the highest-priority visual instruction. Ig
 
 
 NON_PORTRAIT_COMPOSITION_RULE = """
-PORTRAIT_POLICY: BLOCK
-This is not a portrait session. Do not default to a face-centered composition. Use an environmental medium-wide, three-quarter-body, knee-up, or full-body photograph. Keep enough camera distance to show the requested location, clothing, posture, action, hands, interacting objects, and surrounding environment. The person should occupy only part of the frame and the location must remain visually meaningful.
+PORTRAIT_POLICY: BLOCK — MANDATORY
+Unless the newest user request explicitly asks for a portrait, close-up, headshot, selfie, profile picture, passport photo, ID photo, or face close-up, the final generated prompt MUST use this default composition:
+medium-long shot, three-quarter body shot, visible from head to knees, camera positioned farther away, more environment visible, balanced subject-to-background composition, subject not filling the frame.
 
-Prefer candid activity, natural body language, off-center composition, ordinary eye-level camera placement, and 35mm-to-50mm environmental perspective. Do not automatically make the subject stare into the camera. Do not crop at the shoulders or chest. Do not let the face dominate the image. Do not replace the requested scene with a blurred empty background.
+The final negative prompt MUST include:
+portrait, close-up, extreme close-up, headshot, face-only shot, portrait crop, bust shot, shoulder-up shot, chest-up framing, tight framing, zoomed-in face, large face in frame, face filling the frame.
+
+This is not a portrait session. Keep enough camera distance to show the requested location, clothing, posture, action, hands, interacting objects, and surrounding environment. The person should occupy only part of the frame and the location must remain visually meaningful. Prefer candid activity, natural body language, off-center composition, ordinary eye-level camera placement, and 35mm-to-50mm environmental perspective. Do not automatically make the subject stare into the camera. Do not crop at the shoulders or chest. Do not replace the requested scene with a blurred empty background.
 """.strip()
 
 
 PORTRAIT_ALLOWED_COMPOSITION_RULE = """
 PORTRAIT_POLICY: ALLOW_EXPLICIT
 The newest request explicitly requires portrait-oriented framing. Follow the requested portrait, close-up, headshot, profile image, selfie, or studio composition precisely, while keeping it a believable natural camera photograph with realistic skin and restrained retouching.
+""".strip()
+
+
+DEFAULT_BACKGROUND_INFERENCE_RULE = """
+BACKGROUND_POLICY: AUTO_INFER_WHEN_UNSPECIFIED
+When the newest request does not explicitly specify a background or scene, do not leave the subject in an empty, generic, or meaningless backdrop. Infer a simple but suitable real-world setting from the request itself, using the clothing, action, mood, weather, time of day, and theme.
+
+Examples of good inference:
+- casual daily wear or undefined daily scene -> natural modern urban background or realistic everyday public environment
+- café, dessert, date, relaxed sitting -> cozy cafe or restaurant environment
+- office wear, business, formal, meeting -> modern office or professional indoor environment
+- homewear, bedroom, sofa, pajamas -> realistic home interior
+- sportswear, exercise, training -> realistic sports or fitness environment
+- rain, neon, night, city -> realistic urban street at night with readable surroundings
+
+The inferred background must stay supportive, realistic, and visually readable. It must not overpower the subject and must not collapse into a blank studio, plain wall, or anonymous bokeh blur unless the newest request explicitly asks for such a background.
 """.strip()
 
 
@@ -87,8 +148,10 @@ The result must look like a local edit to a real photograph, with matching camer
 
 
 TEXT_NEGATIVE_PROMPT_STRICT = (
-    "portrait, close-up portrait, face-only portrait, headshot, beauty headshot, bust shot, "
-    "medium close-up, shoulder-up crop, chest-up portrait, face filling frame, centered face, "
+    "portrait, close-up, extreme close-up, close-up portrait, face-only shot, face-only portrait, "
+    "headshot, beauty headshot, portrait crop, bust shot, medium close-up, shoulder-up shot, "
+    "shoulder-up crop, chest-up framing, chest-up portrait, tight framing, zoomed-in face, "
+    "large face in frame, face filling the frame, face filling frame, centered face, "
     "profile picture, passport photo, ID photo, studio portrait, glamour portrait, beauty portrait, "
     "fashion beauty campaign, commercial beauty lighting, automatic looking at camera, "
     "extreme shallow depth of field, empty bokeh background, blurred unrecognizable environment, "
@@ -264,6 +327,8 @@ def build_image_prompt(
         parts.append(PHOTO_REALISM_RULE)
         parts.append(PORTRAIT_ALLOWED_COMPOSITION_RULE if portrait_requested else NON_PORTRAIT_COMPOSITION_RULE)
         parts.append("CHARACTER IDENTITY: " + ", ".join(TEXT_IDENTITY_PROFILES[gender]))
+        parts.append(BEAUTY_LIBRARY_RULES[gender])
+        parts.append(DEFAULT_BACKGROUND_INFERENCE_RULE)
         negative = (
             TEXT_NEGATIVE_PROMPT_PORTRAIT_ALLOWED
             if portrait_requested
