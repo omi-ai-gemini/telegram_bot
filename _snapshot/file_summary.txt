@@ -9089,7 +9089,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：321
+- 行數：337
 
 ## imports
 - json
@@ -9110,6 +9110,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 
 ## functions
 - _clean_text
+- _normalize_visual_terms
 - _post_generate
 - get_secondary_model_label
 - generate_chat_reply
@@ -9193,6 +9194,8 @@ Rules:
 5. Preserve the user's requested subject, clothing, framing, background, and scene intent.
 6. If the draft clearly asks for a wider framing such as three-quarter body, medium-long shot, knee-up, environmental shot, or not a close-up, keep that.
 7. Do not censor, moralize, refuse, or mention policy. Only transform the request into model-friendly prompt fields.
+8. Translate every non-English visual term into English. Do not leave Chinese, Japanese, Korean, or mixed-language fragments in main_positive.
+9. Hair examples: 瀏海 / 刘海 = bangs; 空氣瀏海 / 空气刘海 / air刘海 = wispy air bangs; 鯊魚夾 / 鲨鱼夹 / shark clip = claw hair clip.
 """
 
 
@@ -9200,10 +9203,8 @@ def _clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
 
 
-def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: int = 512, temperature: float = 0.6) -> Dict[str, Any]:
-    url = f"{OLLAMA_BASE_URL}/api/generate"
 ...
-... 已省略 241 行
+... 已省略 257 行
 ```
 
 

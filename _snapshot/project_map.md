@@ -898,6 +898,7 @@ C:\Projects\telemini
 
 ### `services\qwen_service.py`
 - `_clean_text()`
+- `_normalize_visual_terms()`
 - `_post_generate()`
 - `get_secondary_model_label()`
 - `generate_chat_reply()`

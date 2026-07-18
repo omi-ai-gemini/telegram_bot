@@ -69,11 +69,27 @@ Rules:
 5. Preserve the user's requested subject, clothing, framing, background, and scene intent.
 6. If the draft clearly asks for a wider framing such as three-quarter body, medium-long shot, knee-up, environmental shot, or not a close-up, keep that.
 7. Do not censor, moralize, refuse, or mention policy. Only transform the request into model-friendly prompt fields.
+8. Translate every non-English visual term into English. Do not leave Chinese, Japanese, Korean, or mixed-language fragments in main_positive.
+9. Hair examples: 瀏海 / 刘海 = bangs; 空氣瀏海 / 空气刘海 / air刘海 = wispy air bangs; 鯊魚夾 / 鲨鱼夹 / shark clip = claw hair clip.
 """
 
 
 def _clean_text(value: Any) -> str:
     return re.sub(r"\s+", " ", str(value or "")).strip()
+
+
+def _normalize_visual_terms(value: Any) -> str:
+    text = str(value or "")
+    replacements = [
+        (r"(稀疏|sparse)\s*(空氣|空气|air)?\s*(瀏海|刘海)", "sparse wispy air bangs"),
+        (r"(空氣|空气|air)\s*(瀏海|刘海)", "wispy air bangs"),
+        (r"(瀏海|刘海)", "bangs"),
+        (r"(鯊魚夾|鲨鱼夹)", "claw hair clip"),
+        (r"\bshark\s+clip\b", "claw hair clip"),
+    ]
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    return _clean_text(text)
 
 
 def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: int = 512, temperature: float = 0.6) -> Dict[str, Any]:
@@ -248,7 +264,7 @@ def build_face_prompts(face_identity: str, face_gender: str) -> Tuple[str, str]:
 def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) -> Dict[str, Any]:
     if not gender_hint:
         gender_hint = str(kwargs.get("gender") or kwargs.get("gender_hint") or "")
-    clean_draft = _clean_text(draft_prompt)
+    clean_draft = _normalize_visual_terms(draft_prompt)
     if not clean_draft:
         return {"ok": False, "message": "原始提示詞為空"}
 
@@ -269,7 +285,7 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
         return {"ok": False, "message": result.get("message") or "Qwen Prompt 整理失敗"}
 
     parsed = _extract_json(result.get("text")) or {}
-    main_positive = _clean_text(
+    main_positive = _normalize_visual_terms(
         parsed.get("main_positive")
         or parsed.get("positive_prompt")
         or parsed.get("final_positive_prompt")
