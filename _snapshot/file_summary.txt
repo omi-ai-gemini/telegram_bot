@@ -7246,7 +7246,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：1026
+- 行數：1137
 
 ## imports
 - datetime.datetime
@@ -7272,6 +7272,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.image_prepare.prepare_img2img_source
 - services.image_store.download_image_asset
 - services.image_store.save_image_asset
+- services.local_ai_tasks.cancel_local_ai_task
 - services.qwen_service.build_face_prompts
 - services.qwen_service.get_secondary_model_label
 - services.qwen_service.organize_image_prompt
@@ -7311,6 +7312,9 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - _save_generated_telegram_photo
 - _job_cancel_requested
 - _is_local_task_prompt
+- _local_task_id_from_prompt
+- _qwen_retryable_error
+- _wait_for_qwen_retake
 - _finish_omi_txt2img_result
 - _process_comfy_txt2img
 - process_image_job
@@ -7341,6 +7345,7 @@ from services.qwen_service import build_face_prompts, get_secondary_model_label,
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
+from services.local_ai_tasks import cancel_local_ai_task
 from services.telegram_service import delete_message, edit_message_text, send_message, send_photo_bytes
 
 
@@ -7353,6 +7358,7 @@ PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS = max(
 )
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
+QWEN_RETRY_SECONDS = 30
 BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
 BASE_REFERENCE_FILES = {
     "male": "male_reference.png",
@@ -7398,10 +7404,8 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
     if not is_encrypted(value):
         return _text(value)
     try:
-        return decrypt_text(value, aad=aad_for("image_generation_jobs", field, job_id))
-    except Exception as exc:
 ...
-... 已省略 946 行
+... 已省略 1057 行
 ```
 
 

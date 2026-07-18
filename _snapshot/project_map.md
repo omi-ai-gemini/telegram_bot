@@ -680,6 +680,9 @@ C:\Projects\telemini
 - `_save_generated_telegram_photo()`
 - `_job_cancel_requested()`
 - `_is_local_task_prompt()`
+- `_local_task_id_from_prompt()`
+- `_qwen_retryable_error()`
+- `_wait_for_qwen_retake()`
 - `_finish_omi_txt2img_result()`
 - `_process_comfy_txt2img()`
 - `process_image_job()`

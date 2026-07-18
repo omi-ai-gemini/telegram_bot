@@ -19,6 +19,7 @@ from services.qwen_service import build_face_prompts, get_secondary_model_label,
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
+from services.local_ai_tasks import cancel_local_ai_task
 from services.telegram_service import delete_message, edit_message_text, send_message, send_photo_bytes
 
 
@@ -31,6 +32,7 @@ PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS = max(
 )
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
+QWEN_RETRY_SECONDS = 30
 BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
 BASE_REFERENCE_FILES = {
     "male": "male_reference.png",
@@ -470,6 +472,66 @@ def _is_local_task_prompt(prompt_id: Any) -> bool:
     return str(prompt_id or "").startswith("localtask:")
 
 
+def _local_task_id_from_prompt(prompt_id: Any) -> Optional[int]:
+    text = str(prompt_id or "")
+    if not text.startswith("localtask:"):
+        return None
+    try:
+        return int(text.split(":", 1)[1])
+    except Exception:
+        return None
+
+
+def _qwen_retryable_error(message: Any) -> bool:
+    text = _text(message)
+    retry_tokens = [
+        "AI 匝道等待超過",
+        "Qwen worker 沒有回傳結果",
+        "建立 Qwen worker 任務失敗",
+        "本機 AI 閘道設定不完整",
+        "Ollama 連線失敗",
+        "Qwen 閘道呼叫失敗",
+    ]
+    return any(token in text for token in retry_tokens)
+
+
+def _wait_for_qwen_retake(job: Dict[str, Any], error_message: str) -> bool:
+    elapsed = _elapsed_seconds(job.get("created_at"))
+    if elapsed >= PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS:
+        _fail(
+            job,
+            "AI 匝道等待超過 24 小時，Qwen 無法補考",
+            code="QWEN_RETAKE_TIMEOUT",
+            public_text="生圖申請已暫存超過 24 小時，任務取消",
+        )
+        return False
+
+    _update_job(
+        job["id"],
+        status="prompting",
+        prompt_generation_status="pending",
+        prompt_error=_text(error_message)[:500],
+        heartbeat_at=datetime.utcnow(),
+    )
+    _edit_status_message(
+        job,
+        (
+            "生圖申請已暫存\n"
+            "等待 AI 匝道連線中\n"
+            "重新連線後會先讓 Qwen 補考整理 prompt\n"
+            "暫存期限：24 小時"
+        ),
+    )
+
+    deadline = time.monotonic() + QWEN_RETRY_SECONDS
+    while time.monotonic() < deadline:
+        if _job_cancel_requested(job["id"]):
+            _cancel(_get_job(job["id"]) or job)
+            return False
+        time.sleep(1)
+    return True
+
+
 def _finish_omi_txt2img_result(job: Dict[str, Any], waited: Dict[str, Any]) -> bool:
     if waited.get("canceled"):
         _cancel(_get_job(job["id"]) or job)
@@ -512,26 +574,75 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
 
     existing_prompt_id = _text(job.get("horde_request_id"))
     if _is_local_task_prompt(existing_prompt_id):
+        if _text(job.get("prompt_generation_status")) == "fallback":
+            local_task_id = _local_task_id_from_prompt(existing_prompt_id)
+            if local_task_id is not None:
+                try:
+                    cancel_local_ai_task(local_task_id)
+                except Exception as exc:
+                    print(f"QWEN RETAKE CANCEL FALLBACK TASK FAILED job_id={job['id']}:", exc, flush=True)
+            _update_job(
+                job["id"],
+                status="prompting",
+                horde_request_id=None,
+                api_slot=None,
+                started_at=None,
+                queued_notified=True,
+                processing_notified=False,
+                prompt_generation_status="pending",
+                prompt_error="等待 AI 匝道連線後讓 Qwen 補考",
+                heartbeat_at=datetime.utcnow(),
+            )
+            job = _get_job(job["id"]) or job
+        else:
+            _edit_status_message(
+                job,
+                (
+                    "生圖申請已暫存\n"
+                    "等待 AI 匝道連線中\n"
+                    "開啟 OMI 自架模型後會自動開始生圖\n"
+                    "暫存期限：24 小時"
+                ),
+            )
+            waited = wait_for_prompt_image(
+                existing_prompt_id,
+                timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
+                cancel_check=lambda: _job_cancel_requested(job["id"]),
+                progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
+            )
+            return _finish_omi_txt2img_result(job, waited)
+
+    while True:
+        if _job_cancel_requested(job["id"]):
+            _cancel(_get_job(job["id"]) or job)
+            return True
+
+        secondary_label = get_secondary_model_label() or "qwen2.5:7b"
+        organized = organize_image_prompt(source_prompt, gender_hint=job.get("gender") or "")
+        organize_error = _text(organized.get("message"))
+        if organized.get("ok"):
+            break
+
+        if _qwen_retryable_error(organize_error):
+            if not _wait_for_qwen_retake(_get_job(job["id"]) or job, organize_error):
+                return True
+            job = _get_job(job["id"]) or job
+            continue
+
+        break
+
+    if not organized.get("ok") and _qwen_retryable_error(organize_error):
         _edit_status_message(
             job,
             (
                 "生圖申請已暫存\n"
                 "等待 AI 匝道連線中\n"
-                "開啟 OMI 自架模型後會自動開始生圖\n"
+                "重新連線後會先讓 Qwen 補考整理 prompt\n"
                 "暫存期限：24 小時"
             ),
         )
-        waited = wait_for_prompt_image(
-            existing_prompt_id,
-            timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
-            cancel_check=lambda: _job_cancel_requested(job["id"]),
-            progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
-        )
-        return _finish_omi_txt2img_result(job, waited)
+        return True
 
-    secondary_label = get_secondary_model_label() or "qwen2.5:7b"
-    organized = organize_image_prompt(source_prompt, gender_hint=job.get("gender") or "")
-    organize_error = _text(organized.get("message"))
     if organized.get("ok"):
         prompt_preview = organized.get("text") or organized.get("main_positive") or source_prompt
         _update_job(
