@@ -375,10 +375,36 @@ def _ollama_generate(payload: dict) -> tuple[bytes, str]:
     return bytes(response.content), response.headers.get("Content-Type") or "application/json"
 
 
+def _task_heartbeat_loop(task_id: int, stop_event: threading.Event) -> None:
+    while not stop_event.wait(5):
+        try:
+            heartbeat = _render_post(
+                f"/local-ai/tasks/{task_id}/heartbeat",
+                {"worker_id": LOCAL_AI_WORKER_ID},
+                timeout=30,
+            )
+            if heartbeat.ok:
+                payload = heartbeat.json()
+                if payload.get("cancel_requested"):
+                    print(f"LOCAL AI TASK CANCEL REQUESTED id={task_id}", flush=True)
+                    return
+            else:
+                print(f"LOCAL AI TASK HEARTBEAT HTTP {heartbeat.status_code}: {heartbeat.text[:300]}", flush=True)
+        except Exception as exc:
+            print(f"LOCAL AI TASK HEARTBEAT FAILED id={task_id}: {exc}", flush=True)
+
+
 def _process_render_task(task: dict) -> None:
     task_id = int(task.get("id"))
     task_type = str(task.get("task_type") or "")
     payload = task.get("payload") or {}
+    heartbeat_stop = threading.Event()
+    heartbeat_thread = threading.Thread(
+        target=_task_heartbeat_loop,
+        args=(task_id, heartbeat_stop),
+        daemon=True,
+    )
+    heartbeat_thread.start()
     try:
         if task_type == "comfy_txt2img":
             result_bytes, mime_type = _comfy_run_prompt(payload, task_id)
@@ -409,6 +435,8 @@ def _process_render_task(task: dict) -> None:
             timeout=30,
         )
         print(f"LOCAL AI TASK FAILED id={task_id} error={exc}", flush=True)
+    finally:
+        heartbeat_stop.set()
 
 
 def _render_worker_loop() -> None:

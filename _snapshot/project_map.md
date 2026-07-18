@@ -167,6 +167,7 @@ C:\Projects\telemini
 - `副模型競速與圖片Prompt覆蓋說明.txt`
 - `副模型競速與生圖流程檢查結果.txt`
 - `副模型降版說明.txt`
+- `匝道重連任務回收修正說明.txt`
 - `啟動錯誤修正說明.txt`
 - `固定身份提示詞生圖_最新版相容修正版覆蓋說明.txt`
 - `圖片模型fallback覆蓋說明.txt`
@@ -1093,6 +1094,7 @@ C:\Projects\telemini
 - `_delete_temp_and_history()`
 - `_comfy_run_prompt()`
 - `_ollama_generate()`
+- `_task_heartbeat_loop()`
 - `_process_render_task()`
 - `_render_worker_loop()`
 - `comfy_view()`

@@ -7863,13 +7863,14 @@ def _request(
 # services\local_ai_tasks.py
 
 - 類型：.py
-- 行數：310
+- 行數：340
 
 ## imports
 - base64
 - datetime.datetime
 - datetime.timedelta
 - json
+- os
 - services.database.get_conn
 - time
 - typing.Any
@@ -7895,6 +7896,7 @@ def _request(
 ```text
 import base64
 import json
+import os
 import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
@@ -7904,6 +7906,10 @@ from services.database import get_conn
 
 TASK_TIMEOUT_SECONDS = 30 * 60
 PENDING_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
+STALE_IN_PROGRESS_SECONDS = max(
+    75,
+    int(os.getenv("LOCAL_AI_TASK_STALE_SECONDS", "120") or "120"),
+)
 
 
 def init_local_ai_task_tables() -> None:
@@ -7968,13 +7974,8 @@ def cancel_local_ai_task(task_id: int) -> None:
     conn = get_conn()
     try:
         cursor = conn.cursor()
-        cursor.execute(
-            """
-            UPDATE local_ai_tasks
-            SET cancel_requested=TRUE,
-                status=CASE WHEN status='pending' THEN 'canceled' ELSE status END,
 ...
-... 已省略 230 行
+... 已省略 260 行
 ```
 
 
@@ -13050,6 +13051,48 @@ Telemini 副模型降版
 
 ================================================================================
 
+# 匝道重連任務回收修正說明.txt
+
+- 類型：.txt
+- 行數：30
+
+## preview
+```text
+Telemini 匝道重連任務回收修正
+
+問題判斷：
+- 本機 worker 領到任務後，Render 端 local_ai_tasks 會從 pending 變成 in_progress。
+- 如果這時關閉或重啟本機匝道，舊任務可能停在 in_progress。
+- 重啟後 worker 只會拉 pending 任務，所以看起來像「匝道正常，但任務沒有進去」。
+
+本次修正：
+1. Render 端會在 worker 拉任務前，先把超過 120 秒沒有心跳的 in_progress 任務退回 pending。
+2. Render 啟動清理時也會回收這種斷線卡住任務，而不是直接等 30 分鐘後標失敗。
+3. 本機匝道 worker 執行任務時會固定送心跳，包含 Qwen / Ollama 這種阻塞呼叫。
+
+覆蓋檔案：
+- services/local_ai_tasks.py
+- 本機AI閘道/app.py
+
+套用後：
+1. 覆蓋專案同名檔案。
+2. Render 重新部署。
+3. 本機匝道關閉後重新開啟。
+4. 本機視窗應看到：
+   LOCAL AI WORKER STARTED render=你的 Render 網址
+5. 有任務時應看到：
+   LOCAL AI TASK CLAIMED id=... type=ollama_generate
+   或
+   LOCAL AI TASK CLAIMED id=... type=comfy_txt2img
+
+可選環境變數：
+- LOCAL_AI_TASK_STALE_SECONDS=120
+  預設 120 秒；代表 worker 超過多久沒有心跳就視為斷線，任務退回佇列。
+```
+
+
+================================================================================
+
 # 啟動錯誤修正說明.txt
 
 - 類型：.txt
@@ -13397,7 +13440,7 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 # 本機AI閘道\app.py
 
 - 類型：.py
-- 行數：544
+- 行數：572
 
 ## imports
 - base64
@@ -13437,6 +13480,7 @@ SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743']
 - _delete_temp_and_history
 - _comfy_run_prompt
 - _ollama_generate
+- _task_heartbeat_loop
 - _process_render_task
 - _render_worker_loop
 - comfy_view
@@ -13525,7 +13569,7 @@ def _verify_request():
     if not GATEWAY_SECRET:
         return False, "本機閘道未設定 LOCAL_AI_GATEWAY_SECRET"
 ...
-... 已省略 464 行
+... 已省略 492 行
 ```
 
 

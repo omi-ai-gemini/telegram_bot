@@ -1,5 +1,6 @@
 import base64
 import json
+import os
 import time
 from datetime import datetime, timedelta
 from typing import Any, Callable, Dict, Optional
@@ -9,6 +10,10 @@ from services.database import get_conn
 
 TASK_TIMEOUT_SECONDS = 30 * 60
 PENDING_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
+STALE_IN_PROGRESS_SECONDS = max(
+    75,
+    int(os.getenv("LOCAL_AI_TASK_STALE_SECONDS", "120") or "120"),
+)
 
 
 def init_local_ai_task_tables() -> None:
@@ -95,6 +100,24 @@ def claim_next_local_ai_task(worker_id: str) -> Optional[Dict[str, Any]]:
     conn = get_conn()
     try:
         cursor = conn.cursor()
+        cursor.execute(
+            """
+            UPDATE local_ai_tasks
+            SET status='pending',
+                worker_id=NULL,
+                claimed_at=NULL,
+                heartbeat_at=NULL,
+                error_message=NULL
+            WHERE status='in_progress'
+              AND heartbeat_at < %s
+              AND created_at >= %s
+              AND cancel_requested=FALSE
+            """,
+            (
+                datetime.utcnow() - timedelta(seconds=STALE_IN_PROGRESS_SECONDS),
+                datetime.utcnow() - timedelta(seconds=PENDING_TASK_TIMEOUT_SECONDS),
+            ),
+        )
         cursor.execute("""
             UPDATE local_ai_tasks
             SET status='in_progress',
@@ -275,13 +298,20 @@ def cleanup_old_local_ai_tasks() -> None:
         cursor.execute(
             """
             UPDATE local_ai_tasks
-            SET status='failed',
-                error_message='本機 worker 超時未回報',
-                completed_at=CURRENT_TIMESTAMP
+            SET status='pending',
+                worker_id=NULL,
+                claimed_at=NULL,
+                heartbeat_at=NULL,
+                error_message=NULL
             WHERE status='in_progress'
               AND heartbeat_at < %s
+              AND created_at >= %s
+              AND cancel_requested=FALSE
             """,
-            (datetime.utcnow() - timedelta(seconds=TASK_TIMEOUT_SECONDS),),
+            (
+                datetime.utcnow() - timedelta(seconds=STALE_IN_PROGRESS_SECONDS),
+                datetime.utcnow() - timedelta(seconds=PENDING_TASK_TIMEOUT_SECONDS),
+            ),
         )
         cursor.execute(
             """
