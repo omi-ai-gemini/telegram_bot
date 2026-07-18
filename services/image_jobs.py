@@ -1,3 +1,4 @@
+import os
 import secrets
 import threading
 import time
@@ -24,6 +25,10 @@ from services.telegram_service import delete_message, edit_message_text, send_me
 ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
 QUEUE_TIMEOUT_SECONDS = 30 * 60
+PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS = max(
+    60 * 60,
+    int(os.getenv("OMI_TXT2IMG_QUEUE_TIMEOUT_SECONDS", str(24 * 60 * 60)) or str(24 * 60 * 60)),
+)
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
 BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
@@ -461,6 +466,40 @@ def _job_cancel_requested(job_id: int) -> bool:
     return bool(current.get("cancel_requested"))
 
 
+def _is_local_task_prompt(prompt_id: Any) -> bool:
+    return str(prompt_id or "").startswith("localtask:")
+
+
+def _finish_omi_txt2img_result(job: Dict[str, Any], waited: Dict[str, Any]) -> bool:
+    if waited.get("canceled"):
+        _cancel(_get_job(job["id"]) or job)
+        return True
+    if not waited.get("ok") or not waited.get("bytes"):
+        _fail(job, waited.get("message") or "OMI 自架模型沒有回傳圖片", code="OMI_RESULT_FAILED")
+        return True
+
+    sent = send_photo_bytes(
+        job["bot_id"],
+        job["chat_id"],
+        waited["bytes"],
+        filename=f"telemini_{job['id']}.png",
+        mime_type=waited.get("mime_type") or "image/png",
+    )
+    if not _extract_message_id(sent):
+        _fail(job, "圖片已生成，但傳送到 Telegram 失敗", code="TELEGRAM_SEND_FAILED")
+        return True
+
+    _save_generated_telegram_photo(job, sent)
+    _update_job(
+        job["id"],
+        status="completed",
+        completed_at=datetime.utcnow(),
+        worker_token=None,
+    )
+    _delete_status_message(job)
+    return True
+
+
 def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
     source_prompt = _decrypt_prompt(
         job["id"],
@@ -470,6 +509,25 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
     if not source_prompt:
         _fail(job, "生圖提示詞讀取失敗", code="PROMPT_READ_FAILED")
         return True
+
+    existing_prompt_id = _text(job.get("horde_request_id"))
+    if _is_local_task_prompt(existing_prompt_id):
+        _edit_status_message(
+            job,
+            (
+                "生圖申請已暫存\n"
+                "等待 AI 匝道連線中\n"
+                "開啟 OMI 自架模型後會自動開始生圖\n"
+                "暫存期限：24 小時"
+            ),
+        )
+        waited = wait_for_prompt_image(
+            existing_prompt_id,
+            timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
+            cancel_check=lambda: _job_cancel_requested(job["id"]),
+            progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
+        )
+        return _finish_omi_txt2img_result(job, waited)
 
     secondary_label = get_secondary_model_label() or "qwen2.5:7b"
     organized = organize_image_prompt(source_prompt, gender_hint=job.get("gender") or "")
@@ -485,7 +543,7 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
             prompt_chars_before=len(source_prompt),
             prompt_chars_after=len(prompt_preview),
         )
-        _edit_status_message(job, "prompt整理完成，正在送入 ComfyUI")
+        _edit_status_message(job, "prompt整理完成，正在送入 OMI 自架模型")
     else:
         fallback_positive = source_prompt
         fallback_negative = (
@@ -513,7 +571,7 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
             prompt_chars_before=len(source_prompt),
             prompt_chars_after=len(fallback_positive),
         )
-        _edit_status_message(job, "prompt整理失敗，已改用原始提示詞，正在送入 ComfyUI")
+        _edit_status_message(job, "prompt整理失敗，已改用原始提示詞，正在送入 OMI 自架模型")
 
     if _job_cancel_requested(job["id"]):
         _cancel(_get_job(job["id"]) or job)
@@ -529,53 +587,40 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
     _update_job(job["id"], status="submitting", heartbeat_at=datetime.utcnow())
     queued = queue_prompt(workflow)
     if not queued.get("ok"):
-        _fail(job, queued.get("message") or "ComfyUI 任務送出失敗", code="COMFYUI_SUBMIT_FAILED")
+        _fail(job, queued.get("message") or "OMI 自架模型任務送出失敗", code="OMI_SUBMIT_FAILED")
         return True
 
+    prompt_id = str(queued.get("prompt_id"))
+    is_local_task = _is_local_task_prompt(prompt_id)
     _update_job(
         job["id"],
-        status="processing",
-        horde_request_id=str(queued.get("prompt_id")),
-        api_slot="comfyui",
-        started_at=datetime.utcnow(),
+        status="queued" if is_local_task else "processing",
+        horde_request_id=prompt_id,
+        api_slot="omi_local_worker" if is_local_task else "comfyui",
+        started_at=None if is_local_task else datetime.utcnow(),
         heartbeat_at=datetime.utcnow(),
         queued_notified=True,
-        processing_notified=True,
+        processing_notified=not is_local_task,
     )
-    _edit_status_message(job, "正在生圖")
+    _edit_status_message(
+        job,
+        (
+            "生圖申請已暫存\n"
+            "等待 AI 匝道連線中\n"
+            "開啟 OMI 自架模型後會自動開始生圖\n"
+            "暫存期限：24 小時"
+        )
+        if is_local_task
+        else "正在生圖",
+    )
 
     waited = wait_for_prompt_image(
-        str(queued.get("prompt_id")),
+        prompt_id,
+        timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
         cancel_check=lambda: _job_cancel_requested(job["id"]),
         progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
     )
-    if waited.get("canceled"):
-        _cancel(_get_job(job["id"]) or job)
-        return True
-    if not waited.get("ok") or not waited.get("bytes"):
-        _fail(job, waited.get("message") or "ComfyUI 沒有回傳圖片", code="COMFYUI_RESULT_FAILED")
-        return True
-
-    sent = send_photo_bytes(
-        job["bot_id"],
-        job["chat_id"],
-        waited["bytes"],
-        filename=f"telemini_{job['id']}.png",
-        mime_type=waited.get("mime_type") or "image/png",
-    )
-    if not _extract_message_id(sent):
-        _fail(job, "圖片已生成，但傳送到 Telegram 失敗", code="TELEGRAM_SEND_FAILED")
-        return True
-
-    _save_generated_telegram_photo(job, sent)
-    _update_job(
-        job["id"],
-        status="completed",
-        completed_at=datetime.utcnow(),
-        worker_token=None,
-    )
-    _delete_status_message(job)
-    return True
+    return _finish_omi_txt2img_result(job, waited)
 
 
 def process_image_job(
@@ -761,7 +806,7 @@ def process_image_job(
                 request_profile=request_profile,
             )
             if not submitted.get("ok"):
-                _fail(job, submitted.get("message") or "AI Horde 拒絕任務", code="SUBMIT_FAILED")
+                _fail(job, submitted.get("message") or "其他生圖功能暫時無法送出", code="SUBMIT_FAILED")
                 return
 
             initial_queue_text = _queue_text({}, _elapsed_seconds(job.get("created_at")))
@@ -805,7 +850,7 @@ def process_image_job(
             if not check.get("ok"):
                 status_code = check.get("status_code")
                 if status_code == 404:
-                    _fail(job, "AI Horde 找不到這個任務", code="HORDE_JOB_NOT_FOUND")
+                    _fail(job, "找不到這個舊版生圖任務", code="LEGACY_JOB_NOT_FOUND")
                     return
                 _update_job(job_id, heartbeat_at=datetime.utcnow())
                 time.sleep(POLL_SECONDS)
@@ -856,7 +901,7 @@ def process_image_job(
                     _update_job(job_id, queued_notified=True)
 
             if check.get("faulted"):
-                _fail(job, "AI Horde 回報任務異常", code="HORDE_FAULTED")
+                _fail(job, "舊版生圖任務回報異常", code="LEGACY_JOB_FAULTED")
                 return
 
             if check.get("is_possible") is False and not (job.get("started_at") or job.get("status") == "processing"):
@@ -879,7 +924,7 @@ def process_image_job(
                 generations = status.get("generations") or []
                 generation = generations[0] if generations else None
                 if not generation:
-                    _fail(job, "AI Horde 沒有回傳圖片", code="RESULT_EMPTY")
+                    _fail(job, "舊版生圖服務沒有回傳圖片", code="RESULT_EMPTY")
                     return
 
                 image = download_generated_image(generation.get("img"))

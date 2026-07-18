@@ -4841,7 +4841,7 @@ def init_service_center_db():
 # service_center\handler.py
 
 - 類型：.py
-- 行數：603
+- 行數：755
 
 ## imports
 - config.SERVICE_CENTER_ADMIN_IDS
@@ -4875,6 +4875,7 @@ def init_service_center_db():
 - _main_menu_markup
 - _back_menu_markup
 - _cancel_input_markup
+- _manual_markup
 - _home_text
 - _format_announcement
 - _notice_text
@@ -4882,6 +4883,8 @@ def init_service_center_db():
 - _wifi_text
 - _gemini_text
 - _manual_text
+- _manual_section_text
+- _manual_title_by_action
 - _status_text
 - _admin_text
 - _text_by_action
@@ -4978,7 +4981,7 @@ def is_service_center_bot(bot_id):
 
 def _admin_ids():
 ...
-... 已省略 523 行
+... 已省略 675 行
 ```
 
 
@@ -7243,11 +7246,12 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：981
+- 行數：1026
 
 ## imports
 - datetime.datetime
 - datetime.timezone
+- os
 - pathlib.Path
 - secrets
 - services.aihorde_service.cancel_image_request
@@ -7306,6 +7310,8 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - _resolve_reference
 - _save_generated_telegram_photo
 - _job_cancel_requested
+- _is_local_task_prompt
+- _finish_omi_txt2img_result
 - _process_comfy_txt2img
 - process_image_job
 - run_image_job_in_thread
@@ -7314,6 +7320,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 
 ## preview
 ```text
+import os
 import secrets
 import threading
 import time
@@ -7340,6 +7347,10 @@ from services.telegram_service import delete_message, edit_message_text, send_me
 ACTIVE_STATUSES = ("created", "prompting", "submitting", "queued", "processing")
 MAX_ACTIVE_PER_USER = 3
 QUEUE_TIMEOUT_SECONDS = 30 * 60
+PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS = max(
+    60 * 60,
+    int(os.getenv("OMI_TXT2IMG_QUEUE_TIMEOUT_SECONDS", str(24 * 60 * 60)) or str(24 * 60 * 60)),
+)
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
 BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
@@ -7389,13 +7400,8 @@ def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str
     try:
         return decrypt_text(value, aad=aad_for("image_generation_jobs", field, job_id))
     except Exception as exc:
-        print("IMAGE PROMPT DECRYPT ERROR:", exc, flush=True)
-        return ""
-
-
-
 ...
-... 已省略 901 行
+... 已省略 946 行
 ```
 
 
@@ -7853,7 +7859,7 @@ def _request(
 # services\local_ai_tasks.py
 
 - 類型：.py
-- 行數：298
+- 行數：310
 
 ## imports
 - base64
@@ -7893,6 +7899,7 @@ from services.database import get_conn
 
 
 TASK_TIMEOUT_SECONDS = 30 * 60
+PENDING_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
 
 
 def init_local_ai_task_tables() -> None:
@@ -7962,9 +7969,8 @@ def cancel_local_ai_task(task_id: int) -> None:
             UPDATE local_ai_tasks
             SET cancel_requested=TRUE,
                 status=CASE WHEN status='pending' THEN 'canceled' ELSE status END,
-                completed_at=CASE WHEN status='pending' THEN CURRENT_TIMESTAMP ELSE completed_at END
 ...
-... 已省略 218 行
+... 已省略 230 行
 ```
 
 
@@ -10613,8 +10619,8 @@ def user_has_key(user_id: int) -> bool:
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。文生圖可另外勾選啟用基準圖。任務會在背景執行，不影響聊天室繼續對話。</p>
-  <div class="notice">隱私提醒：圖片、遮罩與提示詞會送往 AI Horde 社群運算節點。遮罩模式需要支援 inpainting 的工作節點，排隊時間可能比一般生圖長。</div>
+  <p class="desc">目前優先開放 OMI 自架模型純文生圖。純文生圖任務會在背景執行，不影響聊天室繼續對話；其他生圖功能敬請期待。</p>
+  <div class="notice">隱私提醒：純文生圖會交由 OMI 自架模型處理；AI 匝道未連線時，純文生圖申請可暫存 24 小時，開啟 AI 匝道後會自動排入生圖。圖文生圖、整體圖生圖與局部遮罩功能仍維持原本流程，後續完整支援敬請期待。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
 

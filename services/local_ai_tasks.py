@@ -8,6 +8,7 @@ from services.database import get_conn
 
 
 TASK_TIMEOUT_SECONDS = 30 * 60
+PENDING_TASK_TIMEOUT_SECONDS = 24 * 60 * 60
 
 
 def init_local_ai_task_tables() -> None:
@@ -249,8 +250,8 @@ def wait_for_local_ai_task_result(
             return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
 
         if time.monotonic() - started > int(timeout_seconds or TASK_TIMEOUT_SECONDS):
-            cancel_local_ai_task(task_id)
-            return {"ok": False, "message": f"本機 worker 等待超過 {timeout_seconds} 秒"}
+            fail_local_ai_task(task_id, f"AI 匝道等待超過 {timeout_seconds} 秒")
+            return {"ok": False, "message": f"AI 匝道等待超過 {timeout_seconds} 秒"}
 
         result = fetch_local_ai_task_result(task_id)
         if result.get("done"):
@@ -281,6 +282,17 @@ def cleanup_old_local_ai_tasks() -> None:
               AND heartbeat_at < %s
             """,
             (datetime.utcnow() - timedelta(seconds=TASK_TIMEOUT_SECONDS),),
+        )
+        cursor.execute(
+            """
+            UPDATE local_ai_tasks
+            SET status='failed',
+                error_message='AI 匝道等待超過一天未連線',
+                completed_at=CURRENT_TIMESTAMP
+            WHERE status='pending'
+              AND created_at < %s
+            """,
+            (datetime.utcnow() - timedelta(seconds=PENDING_TASK_TIMEOUT_SECONDS),),
         )
         conn.commit()
     except Exception:

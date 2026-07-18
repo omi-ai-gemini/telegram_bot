@@ -154,7 +154,7 @@ def submit_image_request(
 ) -> Dict[str, Any]:
     keys = _keys()
     if not keys:
-        return {"ok": False, "message": "尚未設定 AI_HORDE_API_KEY_1 / AI_HORDE_API_KEY_2"}
+        return {"ok": False, "message": "OMI 自架模型目前優先開放純文生圖，其他生圖功能敬請期待。"}
 
     preferred_index = (int(job_id) - 1) % len(keys)
     ordered = keys[preferred_index:] + keys[:preferred_index]
@@ -218,14 +218,14 @@ def submit_image_request(
             payload["params"]["denoising_strength"] = _pick_denoising_strength("img2img", prompt, request_profile=request_profile)
 
     print(
-        "AI HORDE SUBMIT PREPARED "
+        "LEGACY IMAGE SUBMIT PREPARED "
         f"job_id={job_id} mode={mode} profile={request_profile or mode} model={model_name!r} "
         f"size={width}x{height} steps={steps} cfg={cfg_scale} "
         f"has_mask={has_mask} denoise={payload['params'].get('denoising_strength')}",
         flush=True,
     )
 
-    last_error = "AI Horde 送出失敗"
+    last_error = "舊版生圖服務送出失敗"
     for index, (slot, key) in enumerate(ordered):
         try:
             res = _SESSION.post(
@@ -235,7 +235,7 @@ def submit_image_request(
                 timeout=45,
             )
         except Exception as exc:
-            last_error = f"AI Horde 連線失敗：{exc}"
+            last_error = f"舊版生圖服務連線失敗：{exc}"
             if index + 1 < len(ordered):
                 continue
             return {"ok": False, "message": last_error}

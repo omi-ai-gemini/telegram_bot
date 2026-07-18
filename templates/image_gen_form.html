@@ -20,8 +20,8 @@
 <body>
 <div class="page"><div class="card">
   <h1>📸 生圖設定</h1>
-  <p class="desc">可使用文生圖、整體圖生圖，或只修改圈選區域的遮罩模式。文生圖可另外勾選啟用基準圖。任務會在背景執行，不影響聊天室繼續對話。</p>
-  <div class="notice">隱私提醒：圖片、遮罩與提示詞會送往 AI Horde 社群運算節點。遮罩模式需要支援 inpainting 的工作節點，排隊時間可能比一般生圖長。</div>
+  <p class="desc">目前優先開放 OMI 自架模型純文生圖。純文生圖任務會在背景執行，不影響聊天室繼續對話；其他生圖功能敬請期待。</p>
+  <div class="notice">隱私提醒：純文生圖會交由 OMI 自架模型處理；AI 匝道未連線時，純文生圖申請可暫存 24 小時，開啟 AI 匝道後會自動排入生圖。圖文生圖、整體圖生圖與局部遮罩功能仍維持原本流程，後續完整支援敬請期待。</div>
   {% if error %}<div class="error">{{ error }}</div>{% endif %}
   {% if success %}<div class="success">{{ success }}{% if job_id %}<br><span class="job">任務代號：{{ job_id }}</span>{% endif %}</div>{% endif %}
 
@@ -224,7 +224,7 @@
   function resetMask(clearHistory=true){
     if(!maskCanvas.width)return;
     // 前端編輯層使用透明=保護、白色=修改。
-    // 送出前才轉成 AI Horde 需要的黑白 PNG，避免黑色不透明遮罩造成整張全紅。
+    // 送出前才轉成模型需要的黑白 PNG，避免黑色不透明遮罩造成整張全紅。
     maskCtx.clearRect(0,0,maskCanvas.width,maskCanvas.height);
     if(clearHistory)history=[];
     maskTouched=false;

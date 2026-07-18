@@ -357,6 +357,7 @@ C:\Projects\telemini
 - `_main_menu_markup()`
 - `_back_menu_markup()`
 - `_cancel_input_markup()`
+- `_manual_markup()`
 - `_home_text()`
 - `_format_announcement()`
 - `_notice_text()`
@@ -364,6 +365,8 @@ C:\Projects\telemini
 - `_wifi_text()`
 - `_gemini_text()`
 - `_manual_text()`
+- `_manual_section_text()`
+- `_manual_title_by_action()`
 - `_status_text()`
 - `_admin_text()`
 - `_text_by_action()`
@@ -676,6 +679,8 @@ C:\Projects\telemini
 - `_resolve_reference()`
 - `_save_generated_telegram_photo()`
 - `_job_cancel_requested()`
+- `_is_local_task_prompt()`
+- `_finish_omi_txt2img_result()`
 - `_process_comfy_txt2img()`
 - `process_image_job()`
 - `run_image_job_in_thread()`

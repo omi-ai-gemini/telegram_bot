@@ -162,6 +162,54 @@ def _cancel_input_markup():
     }
 
 
+def _manual_markup(section="svc:manual"):
+    if section != "svc:manual":
+        return {
+            "inline_keyboard": [
+                [
+                    {"text": "人物設定", "callback_data": "svc:manual:persona"},
+                    {"text": "劇本設定", "callback_data": "svc:manual:story"},
+                ],
+                [
+                    {"text": "記憶設定", "callback_data": "svc:manual:memory"},
+                    {"text": "回覆風格", "callback_data": "svc:manual:style"},
+                ],
+                [
+                    {"text": "生圖設定", "callback_data": "svc:manual:image"},
+                    {"text": "常用指令", "callback_data": "svc:manual:commands"},
+                ],
+                [
+                    {"text": "疑難排除", "callback_data": "svc:manual:fix"},
+                    {"text": "⬅️ 說明首頁", "callback_data": "svc:manual"},
+                ],
+                [
+                    {"text": "⬅️ 回服務中心", "callback_data": "svc:home"},
+                ],
+            ]
+        }
+
+    return {
+        "inline_keyboard": [
+            [
+                {"text": "人物設定", "callback_data": "svc:manual:persona"},
+                {"text": "劇本設定", "callback_data": "svc:manual:story"},
+            ],
+            [
+                {"text": "記憶設定", "callback_data": "svc:manual:memory"},
+                {"text": "回覆風格", "callback_data": "svc:manual:style"},
+            ],
+            [
+                {"text": "生圖設定", "callback_data": "svc:manual:image"},
+                {"text": "常用指令", "callback_data": "svc:manual:commands"},
+            ],
+            [
+                {"text": "疑難排除", "callback_data": "svc:manual:fix"},
+                {"text": "⬅️ 回服務中心", "callback_data": "svc:home"},
+            ],
+        ]
+    }
+
+
 def _home_text():
     return (
         "Telemini 服務中心\n\n"
@@ -241,17 +289,101 @@ def _gemini_text():
 
 
 def _manual_text():
-    return (
-        "📘 操作說明\n\n"
-        "常用指令：\n"
-        "/setting 或 /設定：開啟人物、劇本、記憶與風格設定\n"
-        "/memory 或 /記憶：查看近期記憶與摘要記憶\n"
-        "/reply 或 /回覆：當上一輪沒有回覆時手動補救\n"
-        "/hidden：開發者功能鍵盤\n\n"
-        "服務中心：\n"
-        "Telemini Wifi 可以加入新的遊戲 bot。\n"
-        "Gemini API 可以寫入或更新你的 API Key。"
-    )
+    return _manual_section_text("svc:manual")
+
+
+def _manual_section_text(section):
+    section = _text_id(section)
+    pages = {
+        "svc:manual": (
+            "📘 操作說明\n\n"
+            "選一個功能區，看最短路徑。\n"
+            "每頁只放必要操作，不塞整本說明書。"
+        ),
+        "svc:manual:persona": (
+            "👤 人物設定\n\n"
+            "入口：/setting → 人物設定\n\n"
+            "可設定：\n"
+            "• 聊天模式人物形象\n"
+            "• 使用者稱呼與互動基調\n"
+            "• AI 開場白，可留空\n\n"
+            "效果：影響一般聊天，不等於劇本角色卡。"
+        ),
+        "svc:manual:story": (
+            "🎬 劇本設定\n\n"
+            "入口：/setting → 開始劇本\n\n"
+            "可設定：\n"
+            "• 劇場模式角色\n"
+            "• 場景、關係、世界觀\n"
+            "• 劇情開場與互動方向\n\n"
+            "適合：長劇情、角色扮演、固定情境。"
+        ),
+        "svc:manual:memory": (
+            "🧠 記憶設定\n\n"
+            "入口：/setting → 記憶設定\n"
+            "快速查看：/memory 或 /記憶\n\n"
+            "可操作：\n"
+            "• 最近短期記憶\n"
+            "• 摘要記憶\n"
+            "• 重點記憶新增、修改、刪除\n\n"
+            "提示：重點記憶最適合放固定偏好與長期設定。"
+        ),
+        "svc:manual:style": (
+            "🎚 回覆風格\n\n"
+            "入口：/setting → 回覆風格\n\n"
+            "可設定：\n"
+            "• 聊天模式風格\n"
+            "• 劇場模式風格\n"
+            "• 預設文字可直接改，不必重寫整段\n\n"
+            "效果：控制語氣、節奏、情緒密度與回覆長短。"
+        ),
+        "svc:manual:image": (
+            "📸 生圖設定\n\n"
+            "入口：聊天訊息下方生圖按鈕，或 /hidden → 生圖\n\n"
+            "目前重點：\n"
+            "• 純文生圖走 OMI 自架模型\n"
+            "• AI 匝道未連線時可暫存 24 小時\n"
+            "• 開啟 AI 匝道後自動排入生圖\n\n"
+            "其他圖文生圖、整體圖生圖、局部遮罩：敬請期待。"
+        ),
+        "svc:manual:commands": (
+            "⌨️ 常用指令\n\n"
+            "/setting 或 /設定\n"
+            "開啟人物、劇本、記憶、風格設定。\n\n"
+            "/memory 或 /記憶\n"
+            "查看近期記憶、摘要記憶、重點記憶。\n\n"
+            "/reply 或 /回覆\n"
+            "上一輪沒回覆時手動補救。\n\n"
+            "/hidden\n"
+            "開啟開發者功能鍵盤。"
+        ),
+        "svc:manual:fix": (
+            "🩹 疑難排除\n\n"
+            "沒有回覆：\n"
+            "按 /reply 補救。\n\n"
+            "設定選單不見：\n"
+            "重新輸入 /setting。\n\n"
+            "記憶怪怪的：\n"
+            "用 /memory 檢查，必要時刪掉單筆。\n\n"
+            "生圖沒開始：\n"
+            "確認 OMI 自架模型與 AI 匝道已開啟。"
+        ),
+    }
+    return pages.get(section, pages["svc:manual"])
+
+
+def _manual_title_by_action(action):
+    titles = {
+        "svc:manual": "操作說明",
+        "svc:manual:persona": "人物設定",
+        "svc:manual:story": "劇本設定",
+        "svc:manual:memory": "記憶設定",
+        "svc:manual:style": "回覆風格",
+        "svc:manual:image": "生圖設定",
+        "svc:manual:commands": "常用指令",
+        "svc:manual:fix": "疑難排除",
+    }
+    return titles.get(_text_id(action), "操作說明")
 
 
 def _status_text():
@@ -282,6 +414,9 @@ def _admin_text(user_id):
 
 
 def _text_by_action(action, user_id=None):
+    if _text_id(action).startswith("svc:manual"):
+        return _manual_section_text(action)
+
     if action == "svc:notice":
         return _notice_text()
 
@@ -510,7 +645,15 @@ def handle_service_center_message(user_id, bot_id, chat_id, user_text, message_i
         )
         return True
 
-    if text in ["/menu", "/服務中心", "/help", "/manual", "/說明"]:
+    if text in ["/manual", "/說明"]:
+        send_message(
+            chat_id=chat_id,
+            text=_manual_text(),
+            reply_markup=_manual_markup(),
+        )
+        return True
+
+    if text in ["/menu", "/服務中心", "/help"]:
         send_message(
             chat_id=chat_id,
             text=_home_text(),
@@ -571,6 +714,15 @@ def handle_service_center_callback(user_id, bot_id, chat_id, message_id, callbac
             message_id=message_id,
             text="已取消目前輸入。\n\n" + _home_text(),
             reply_markup=_main_menu_markup(user_id),
+        )
+        return True
+
+    if action.startswith("svc:manual"):
+        edit_message_text(
+            chat_id=chat_id,
+            message_id=message_id,
+            text=_manual_section_text(action),
+            reply_markup=_manual_markup(action),
         )
         return True
 
