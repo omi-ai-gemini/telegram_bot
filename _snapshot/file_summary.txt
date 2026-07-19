@@ -9107,7 +9107,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：683
+- 行數：755
 
 ## imports
 - json
@@ -9135,6 +9135,11 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 - _apply_visual_translation_locks
 - _portrait_requested
 - _apply_identity_and_composition_locks
+- _test_normalize_visual_terms
+- _test_apply_visual_translation_locks
+- _test_has_explicit_background
+- _test_infer_background_terms
+- _test_apply_locks
 - _post_generate
 - _post_chat
 - get_secondary_model_label
@@ -9213,7 +9218,7 @@ FACE_IDENTITY_PREFIX = {
 IMAGE_PROMPT_SYSTEM = r"""
 你是 Telemini 的圖片提示詞整理器。
 
-你只把使用者需求忠實整理為 ComfyUI／SDXL 可用的四組英文提示詞，並只輸出 JSON。這是純文生圖流程，沒有參考圖。
+你只把使用者的中文需求忠實整理為 ComfyUI／SDXL 可用的四組英文提示詞，並只輸出 JSON。這是純文生圖流程，沒有參考圖。
 
 固定欄位：
 main_positive：人物、國籍或族群、性別、外觀、服裝或裸體狀態、動作、表情、構圖、背景、光線、寫實攝影風格。
@@ -9229,7 +9234,7 @@ face_negative：只寫臉部錯誤，例如鬥雞眼、不對稱眼睛、錯誤�
 5. 使用者說「可愛、甜美、清純、甜妹」時，使用甜美可愛型預設。
 6. 使用者說「成熟、氣質、冷感、御姐、優雅」時，使用成熟精緻型預設。
 ...
-... 已省略 603 行
+... 已省略 675 行
 ```
 
 

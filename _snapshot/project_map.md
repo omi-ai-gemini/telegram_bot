@@ -916,6 +916,11 @@ C:\Projects\telemini
 - `_apply_visual_translation_locks()`
 - `_portrait_requested()`
 - `_apply_identity_and_composition_locks()`
+- `_test_normalize_visual_terms()`
+- `_test_apply_visual_translation_locks()`
+- `_test_has_explicit_background()`
+- `_test_infer_background_terms()`
+- `_test_apply_locks()`
 - `_post_generate()`
 - `_post_chat()`
 - `get_secondary_model_label()`

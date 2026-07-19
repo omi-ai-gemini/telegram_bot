@@ -63,7 +63,7 @@ FACE_IDENTITY_PREFIX = {
 IMAGE_PROMPT_SYSTEM = r"""
 你是 Telemini 的圖片提示詞整理器。
 
-你只把使用者需求忠實整理為 ComfyUI／SDXL 可用的四組英文提示詞，並只輸出 JSON。這是純文生圖流程，沒有參考圖。
+你只把使用者的中文需求忠實整理為 ComfyUI／SDXL 可用的四組英文提示詞，並只輸出 JSON。這是純文生圖流程，沒有參考圖。
 
 固定欄位：
 main_positive：人物、國籍或族群、性別、外觀、服裝或裸體狀態、動作、表情、構圖、背景、光線、寫實攝影風格。
@@ -321,6 +321,128 @@ def _apply_identity_and_composition_locks(source_text: str, fields: Dict[str, st
             "face filling the frame", "centered face", "profile picture", "passport photo",
             "ID photo", "studio portrait", "glamour portrait", "beauty portrait",
         ])
+
+
+def _test_normalize_visual_terms(text: str) -> str:
+    replacements = [
+        ("稀疏空氣瀏海", "sparse wispy air bangs"),
+        ("稀疏空气刘海", "sparse wispy air bangs"),
+        ("sparse air刘海", "sparse wispy air bangs"),
+        ("空氣瀏海", "wispy air bangs"),
+        ("空气刘海", "wispy air bangs"),
+        ("air刘海", "wispy air bangs"),
+        ("瀏海", "bangs"),
+        ("刘海", "bangs"),
+        ("鯊魚夾", "claw hair clip"),
+        ("鲨鱼夹", "claw hair clip"),
+        ("shark clip", "claw hair clip"),
+    ]
+    normalized = str(text or "")
+    for source, target in replacements:
+        normalized = normalized.replace(source, target)
+    return " ".join(normalized.split())
+
+
+def _test_apply_visual_translation_locks(user_text: str, fields: Dict[str, str]) -> None:
+    for key in IMAGE_PROMPT_KEYS:
+        fields[key] = _test_normalize_visual_terms(fields.get(key, ""))
+
+    normalized_user = _test_normalize_visual_terms(user_text)
+    if _has_claw_clip_updo_request(user_text) or _has_claw_clip_updo_request(normalized_user):
+        fields["main_positive"] = _add_terms(_remove_terms(fields["main_positive"], [
+            "long hair tied back with claw hair clip",
+            "hair tied back with claw hair clip",
+            "ponytail", "low ponytail", "hair tail", "loose hanging hair", "formal bun", "tight bun"
+        ]), [
+            "compact rounded claw clip updo at the back of the head",
+            "all long hair gathered upward and secured with a claw hair clip",
+            "bun-like shape but not a formal bun",
+            "no loose hanging hair tail"
+        ])
+        fields["main_negative"] = _add_terms(fields["main_negative"], [
+            "loose hanging hair", "loose ponytail", "low ponytail", "long hair tail",
+            "hair falling from the clip", "single hair bundle", "formal bun", "tight bun"
+        ])
+
+
+def _test_has_explicit_background(text: str) -> bool:
+    keywords = (
+        "背景", "場景", "在", "室內", "室外", "街", "路", "巷", "咖啡廳", "咖啡店", "餐廳", "酒吧",
+        "辦公室", "公司", "教室", "校園", "公園", "海邊", "沙灘", "森林", "山", "河", "湖", "神社", "寺",
+        "房間", "客廳", "臥室", "床上", "浴室", "廚房", "陽台", "夜市", "商場", "地鐵", "車站",
+        "street", "cafe", "restaurant", "office", "park", "beach", "forest", "bedroom", "living room", "bathroom", "city"
+    )
+    return any(k.lower() in str(text or "").lower() for k in keywords)
+
+
+def _test_infer_background_terms(user_text: str) -> list[str]:
+    if any(k in user_text for k in ("海邊", "沙灘", "泳裝", "比基尼", "泳池")):
+        return ["natural beach background", "realistic seaside environment", "daylight", "more environment visible"]
+    if any(k in user_text for k in ("咖啡", "咖啡廳", "咖啡店", "下午茶", "甜點")):
+        return ["cozy cafe background", "realistic indoor environment", "warm natural lighting", "visible environmental context"]
+    if any(k in user_text for k in ("辦公", "上班", "公司", "西裝", "襯衫", "商務", "會議")):
+        return ["modern office background", "realistic indoor workspace", "clean professional environment", "visible environmental context"]
+    if any(k in user_text for k in ("臥室", "睡衣", "床", "房間", "居家", "客廳", "沙發")):
+        return ["realistic home interior background", "clean living environment", "natural indoor lighting", "visible room context"]
+    if any(k in user_text for k in ("運動", "健身", "跑步", "瑜伽", "球", "gym")):
+        return ["realistic sports environment", "natural activity background", "visible environmental context"]
+    if any(k in user_text for k in ("雨", "夜", "晚", "夜晚", "霓虹", "街拍", "都市", "城市")):
+        return ["realistic urban street background", "visible city environment", "environmental lighting", "more environment visible"]
+    if any(k in user_text for k in ("和服", "浴衣", "神社", "寺", "日式")):
+        return ["realistic traditional Japanese setting", "visible environmental context", "natural background"]
+    if any(k in user_text for k in ("校園", "學生", "教室", "圖書館")):
+        return ["realistic campus background", "visible school environment", "natural daylight"]
+    return ["natural modern urban background", "realistic environment", "soft daylight", "subtle depth of field", "visible environmental context"]
+
+
+def _test_apply_locks(user_text: str, fields: Dict[str, str]) -> None:
+    _test_apply_visual_translation_locks(user_text, fields)
+
+    rules = [
+        (("中國", "中国"), ["Chinese", "Han Chinese facial features"], ["Japanese", "Taiwanese", "Korean"]),
+        (("日本",), ["Japanese", "natural Japanese facial features"], ["Chinese", "Han Chinese", "Taiwanese", "Korean"]),
+        (("台灣", "台湾"), ["Taiwanese", "East Asian facial features"], ["Japanese", "Han Chinese", "Korean"]),
+        (("韓國", "韩国"), ["Korean", "natural Korean facial features"], ["Japanese", "Chinese", "Han Chinese", "Taiwanese"]),
+    ]
+    for keywords, required, conflicts in rules:
+        if any(k in user_text for k in keywords):
+            fields["main_positive"] = _add_terms(_remove_terms(fields["main_positive"], conflicts), required)
+            fields["face_positive"] = _add_terms(_remove_terms(fields["face_positive"], conflicts), required)
+            break
+
+    portrait_keywords = (
+        "肖像", "人像照", "人像攝影", "特寫", "特写", "大頭照", "大头照",
+        "頭像", "头像", "證件照", "证件照", "自拍", "近拍臉", "脸部近拍", "胸像",
+        "portrait", "headshot", "close-up", "close up", "selfie", "profile picture", "passport photo", "id photo"
+    )
+    portrait_requested = any(k.lower() in user_text.lower() for k in portrait_keywords)
+
+    if not portrait_requested:
+        fields["main_positive"] = _add_terms(_remove_terms(fields["main_positive"], [
+            "portrait", "headshot", "close-up", "close up", "bust shot", "shoulder-up", "chest-up", "selfie", "profile picture"
+        ]), [
+            "medium-long shot", "three-quarter body shot", "visible from head to knees",
+            "camera positioned farther away", "more environment visible",
+            "balanced subject-to-background composition", "subject not filling the frame",
+            "environment clearly readable", "hands visible when reasonable", "not face-focused"
+        ])
+        fields["main_negative"] = _add_terms(fields["main_negative"], [
+            "portrait", "close-up", "extreme close-up", "close-up portrait", "face-only shot", "face-only portrait",
+            "headshot", "beauty headshot", "portrait crop", "bust shot", "medium close-up", "shoulder-up shot",
+            "shoulder-up crop", "chest-up framing", "chest-up portrait", "tight framing", "zoomed-in face",
+            "large face in frame", "face filling the frame", "centered face", "profile picture", "passport photo",
+            "ID photo", "studio portrait", "glamour portrait", "beauty portrait"
+        ])
+
+    if not _test_has_explicit_background(user_text):
+        fields["main_positive"] = _add_terms(fields["main_positive"], _test_infer_background_terms(user_text))
+        fields["main_negative"] = _add_terms(fields["main_negative"], [
+            "empty background", "blank background", "plain studio backdrop", "blurred unrecognizable environment"
+        ])
+
+    if any(k in user_text for k in ("全身照", "完整全身", "全身")):
+        fields["main_positive"] = _add_terms(fields["main_positive"], ["full body shot", "entire body visible", "feet visible"])
+        fields["main_negative"] = _add_terms(fields["main_negative"], ["cropped feet", "cropped body", "close-up", "headshot"])
 
 
 def _post_generate(
@@ -585,19 +707,13 @@ def build_face_prompts(face_identity: str, face_gender: str) -> Tuple[str, str]:
 
 
 def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) -> Dict[str, Any]:
-    if not gender_hint:
-        gender_hint = str(kwargs.get("gender") or kwargs.get("gender_hint") or "")
-    clean_draft = _normalize_visual_terms(draft_prompt)
-    if not clean_draft:
+    user_text = _clean_text(draft_prompt)
+    if not user_text:
         return {"ok": False, "message": "原始提示詞為空"}
-
-    prompt = clean_draft
-    if str(gender_hint or "").strip():
-        prompt = f"{prompt}\n\n性別提示：{str(gender_hint or '').strip()}"
 
     result = _post_chat(
         model=OLLAMA_PROMPT_MODEL,
-        user_text=prompt,
+        user_text=user_text,
         system=IMAGE_PROMPT_SYSTEM,
         num_predict=OLLAMA_PROMPT_NUM_PREDICT,
         temperature=0.2,
@@ -607,60 +723,16 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
         return {"ok": False, "message": result.get("message") or "Qwen Prompt 整理失敗"}
 
     parsed = _extract_json(result.get("text")) or {}
-    main_positive = _normalize_visual_terms(
-        parsed.get("main_positive")
-        or parsed.get("positive_prompt")
-        or parsed.get("final_positive_prompt")
-    )
-    main_negative = _clean_text(
-        parsed.get("main_negative")
-        or parsed.get("negative_prompt")
-        or parsed.get("final_negative_prompt")
-    )
-    face_positive = _normalize_visual_terms(
-        parsed.get("face_positive")
-        or parsed.get("face_prompt")
-        or parsed.get("face_detailer_positive")
-    )
-    face_negative = _clean_text(
-        parsed.get("face_negative")
-        or parsed.get("face_negative_prompt")
-        or parsed.get("face_detailer_negative")
-    )
-    face_identity = _clean_text(parsed.get("face_identity") or parsed.get("identity")) or _infer_identity(clean_draft)
-    face_gender = _clean_text(parsed.get("face_gender") or parsed.get("gender")) or _infer_gender(clean_draft, gender_hint)
+    fields: Dict[str, str] = {}
+    for key in IMAGE_PROMPT_KEYS:
+        value = parsed.get(key)
+        if not isinstance(value, str) or not value.strip():
+            return {"ok": False, "message": f"Qwen 缺少欄位：{key}"}
+        fields[key] = " ".join(value.strip().split())
 
-    if face_identity not in {"Chinese", "Japanese", "Korean", "Taiwanese", "Western", "EastAsian"}:
-        face_identity = _infer_identity(face_identity or clean_draft)
-    if face_gender.lower() not in {"woman", "man"}:
-        face_gender = _infer_gender(face_gender or clean_draft, gender_hint)
-    else:
-        face_gender = face_gender.lower()
-
-    if not main_positive:
-        return {"ok": False, "message": "Qwen 沒有輸出可用的 main_positive"}
-
-    if not main_negative:
-        main_negative = (
-            "close-up, extreme close-up, headshot, face-only shot, portrait crop, upper-face crop, "
-            "zoomed-in face, tight framing, cropped body, face filling the frame, anime, cartoon, "
-            "illustration, blurry, low quality, deformed face, bad anatomy, extra limbs, plastic skin"
-        )
-
-    fallback_face_positive, fallback_face_negative = build_face_prompts(face_identity, face_gender)
-    if not face_positive:
-        face_positive = fallback_face_positive
-    if not face_negative:
-        face_negative = fallback_face_negative
-
-    fields = {
-        "main_positive": main_positive,
-        "main_negative": main_negative,
-        "face_positive": face_positive,
-        "face_negative": face_negative,
-    }
-    _apply_visual_translation_locks(clean_draft, fields)
-    _apply_identity_and_composition_locks(clean_draft, fields)
+    _test_apply_locks(user_text, fields)
+    face_identity = _infer_identity(user_text)
+    face_gender = _infer_gender(user_text, gender_hint)
 
     assembled = (
         f"main_positive: {fields['main_positive']}\n"
