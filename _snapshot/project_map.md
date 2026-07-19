@@ -285,6 +285,7 @@ C:\Projects\telemini
 - `_image_privacy_headers()`
 - `_decode_mask_data_url()`
 - `_token()`
+- `_build_qwen_source_prompt()`
 - `_auth()`
 - `_render_generate()`
 - `image_generate_page()`
@@ -904,6 +905,8 @@ C:\Projects\telemini
 - `_remove_terms()`
 - `_has_claw_clip_updo_request()`
 - `_apply_visual_translation_locks()`
+- `_portrait_requested()`
+- `_apply_identity_and_composition_locks()`
 - `_post_generate()`
 - `get_secondary_model_label()`
 - `generate_chat_reply()`

@@ -63,6 +63,32 @@ def _token():
     return request.values.get("token", "")
 
 
+def _build_qwen_source_prompt(
+    *,
+    source_text,
+    prompt_mode,
+    fixed_tag,
+    supplement_prompt,
+    custom_prompt,
+):
+    if str(prompt_mode or "").strip() == "custom":
+        return str(custom_prompt or "").strip()
+
+    parts = []
+    base = str(source_text or "").strip()
+    tag = str(fixed_tag or "").strip()
+    supplement = str(supplement_prompt or "").strip()
+
+    if base:
+        parts.append(base)
+    if tag:
+        parts.append(f"固定標籤：{tag}")
+    if supplement:
+        parts.append(f"補充提示詞：{supplement}")
+
+    return "\n".join(parts).strip()
+
+
 def _auth(page_type):
     auth = verify_image_token(_token(), expected_page=page_type)
     if not auth.get("ok"):
@@ -197,6 +223,17 @@ def image_generate_submit():
     except ValueError as exc:
         return _render_generate(auth, context, error=str(exc), form=form, status=400)
 
+    qwen_source_prompt = None
+    if generation_mode == "text" and reference_type == "system_prompt":
+        qwen_source_prompt = _build_qwen_source_prompt(
+            source_text=source_text,
+            prompt_mode=prompt_mode,
+            fixed_tag=fixed_tag,
+            supplement_prompt=supplement_prompt,
+            custom_prompt=custom_prompt,
+        )
+    job_prompt = qwen_source_prompt or final_prompt
+
     created = create_image_job(
         user_id=auth["user_id"],
         bot_id=auth["bot_id"],
@@ -207,7 +244,7 @@ def image_generate_submit():
         prompt_mode=prompt_mode,
         source_choice=source_choice,
         fixed_tag=fixed_tag,
-        final_prompt=final_prompt,
+        final_prompt=job_prompt,
         reference_type=reference_type,
         reference_code=reference_code or None,
         custom_upload=custom_upload,

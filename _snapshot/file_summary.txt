@@ -4125,7 +4125,7 @@ def add_key_route():
 # routes\image_gen.py
 
 - 類型：.py
-- 行數：288
+- 行數：325
 
 ## imports
 - base64
@@ -4151,6 +4151,7 @@ def add_key_route():
 - _image_privacy_headers
 - _decode_mask_data_url
 - _token
+- _build_qwen_source_prompt
 - _auth
 - _render_generate
 - image_generate_page
@@ -4235,23 +4236,23 @@ def _token():
     return request.values.get("token", "")
 
 
-def _auth(page_type):
-    auth = verify_image_token(_token(), expected_page=page_type)
-    if not auth.get("ok"):
-        return auth, (auth.get("message") or "連結驗證失敗", 403)
-    return auth, None
+def _build_qwen_source_prompt(
+    *,
+    source_text,
+    prompt_mode,
+    fixed_tag,
+    supplement_prompt,
+    custom_prompt,
+):
+    if str(prompt_mode or "").strip() == "custom":
+        return str(custom_prompt or "").strip()
 
-
-def _render_generate(auth, context=None, error="", success="", job_id=None, form=None, status=200):
-    return render_template(
-        "image_gen_form.html",
-        token=_token(),
-        auth=auth,
-        context=context or {},
-        fixed_tags=list(FIXED_TAGS.keys()),
-        error=error,
+    parts = []
+    base = str(source_text or "").strip()
+    tag = str(fixed_tag or "").strip()
+    supplement = str(supplement_prompt or "").strip()
 ...
-... 已省略 208 行
+... 已省略 245 行
 ```
 
 
@@ -9090,7 +9091,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：499
+- 行數：605
 
 ## imports
 - json
@@ -9116,6 +9117,8 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 - _remove_terms
 - _has_claw_clip_updo_request
 - _apply_visual_translation_locks
+- _portrait_requested
+- _apply_identity_and_composition_locks
 - _post_generate
 - get_secondary_model_label
 - generate_chat_reply
@@ -9153,6 +9156,14 @@ OLLAMA_PROMPT_MODEL = str(os.getenv("OLLAMA_PROMPT_MODEL", OLLAMA_DEPUTY_MODEL))
 OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180") or "180"))
 OLLAMA_CHAT_NUM_PREDICT = max(64, int(os.getenv("OLLAMA_CHAT_NUM_PREDICT", "512") or "512"))
 OLLAMA_PROMPT_NUM_PREDICT = max(128, int(os.getenv("OLLAMA_PROMPT_NUM_PREDICT", "1200") or "1200"))
+
+IMAGE_PROMPT_KEYS = ("main_positive", "main_negative", "face_positive", "face_negative")
+IMAGE_PROMPT_SCHEMA = {
+    "type": "object",
+    "properties": {key: {"type": "string"} for key in IMAGE_PROMPT_KEYS},
+    "required": list(IMAGE_PROMPT_KEYS),
+    "additionalProperties": False,
+}
 
 
 FACE_NEGATIVE = (
@@ -9200,16 +9211,8 @@ face_negative：只寫臉部錯誤，例如鬥雞眼、不對稱眼睛、錯誤�
 4. 使用者只說「美女、漂亮、好看、正妹、美麗」而沒有細分外貌時，使用自然耐看型預設。
 5. 使用者說「可愛、甜美、清純、甜妹」時，使用甜美可愛型預設。
 6. 使用者說「成熟、氣質、冷感、御姐、優雅」時，使用成熟精緻型預設。
-7. 使用者只說「帥哥、帥氣、好看的男人」而沒有細分外貌時，使用男性自然耐看型預設。
-8. 使用者說「陽光、清爽、鄰家、年輕、少年感」時，使用男性陽光清爽型預設。
-9. 使用者說「成熟、冷峻、菁英、霸氣、總裁感」時，使用男性成熟冷峻型預設。
-10. 預設禁止肖像照與大頭構圖。除非使用者明確要求肖像、特寫、大頭照、自拍、證件照、個人頭像、臉部近拍或胸像，main_positive 必須加入 medium-long shot, three-quarter body shot, visible from head to knees, camera positioned farther away, more environment visible, balanced subject-to-background composition, subject not filling the frame, environment clearly readable, hands visible when reasonable；main_negative 必須加入 portrait, close-up, extreme close-up, close-up portrait, face-only shot, face-only portrait, headshot, beauty headshot, portrait crop, bust shot, medium close-up, shoulder-up shot, shoulder-up crop, chest-up framing, chest-up portrait, tight framing, zoomed-in face, large face in frame, face filling the frame, centered face, profile picture, passport photo, ID photo, studio portrait, glamour portrait, beauty portrait。
-11. 若使用者沒有指定背景或場景，必須依據人物服裝、動作、氣氛、時間、天氣與主題，自動補一個適合且不搶主體的真實背景；不要留成空白背景，也不要只給模糊散景。若仍無足夠線索，再使用自然、乾淨、可閱讀的日常真實環境。
-12. 若使用者沒有指定動作，補 natural standing pose；若沒有指定表情，補 relaxed natural expression。
-13. 使用者說不要特寫時，main_positive 必須包含 three-quarter body shot, medium-long shot, visible from head to knees, camera positioned farther away；main_negative 必須包含 close-up, extreme close-up, headshot, face-only shot, tight framing, face filling the frame。
-14. 使用者說全身時，main_positive 必須包含 full body shot, entire body visible, feet visible；main_negative 必須包含 cropped feet, cropped body, close-up, headshot。
 ...
-... 已省略 419 行
+... 已省略 525 行
 ```
 
 
@@ -14339,48 +14342,59 @@ services/aihorde_service.py
 # 覆蓋說明.txt
 
 - 類型：.txt
-- 行數：38
+- 行數：49
 
 ## preview
 ```text
-Telemini 遮罩操作、文生圖基準圖、生圖狀態整合外帶包
+Telemini 純文生圖同步測試機 Prompt 補丁
 
-直接把本壓縮檔內容解壓到 Telemini 專案根目錄並覆蓋同名檔案。
-
-修改檔案：
+覆蓋檔案：
 - routes/image_gen.py
-- services/image_jobs.py
-- templates/image_gen_form.html
+- services/qwen_service.py
 
-加入／恢復：
-- static/image_reference/male_reference.png
-- static/image_reference/female_reference.png
-- static/image_reference/基準圖放置說明.txt
+本次重點：
+1. 純文生圖、不啟用基準圖時，線上版會改成跟測試機一樣：
+   使用者原始提示詞 → Qwen 四欄整理 → ComfyUI
 
-本次內容：
-1. 遮罩預設為全黑空遮罩：預設沒有任何區域會被修改，不是整張全遮罩。
-2. 修正生圖頁 token 無法載入聊天室圖片預覽的問題。
-3. 遮罩畫筆支援 Pointer Events；舊版 Telegram WebView 自動改用滑鼠／觸控事件。
-4. 塗抹、擦除、復原、清空、反轉按鈕會顯示明確操作狀態。
-5. 文生圖新增「啟用基準圖」勾選：
-   - 關閉：維持純文字文生圖。
-   - 開啟：依男／女性別讀取對應系統基準圖，作為人物外觀參考。
-6. 排隊中維持動態顯示排隊位置、預計等待與已等待時間。
-7. 工作節點開始生成時，同一則訊息改成「正在生圖」。
-8. 圖片確實傳進 Telegram 後，才刪除「正在生圖」訊息。
-9. 失敗或取消時，仍會刪除狀態訊息並送出對應錯誤代號與「刪除訊息」按鈕。
-10. 30 分鐘只限制排隊階段；已開始生成不會因排隊逾時取消。
+2. 純文生圖不再先把提示詞包成 image_prompt.py 的大段英文規則後才交給 Qwen。
+   這是線上版和測試機出圖感覺不同的主要原因。
 
-不新增資料表，不修改 requirements.txt。
+3. 圖文生圖、啟用基準圖、使用者上傳圖、聊天室圖片、遮罩修改維持原樣。
 
-部署前檢查：
-python -m compileall -q routes services
+4. Qwen Prompt 整理補上測試機同方向：
+   - 固定四欄：main_positive、main_negative、face_positive、face_negative
+   - 使用 JSON schema 約束四欄輸出
+   - 男女各三套美感詞庫
+   - FaceDetailer 優先吃 Qwen 回傳的 face_positive / face_negative
 
-部署後判讀 Log：
-- 純文字文生圖：mode=txt2img reference_type=system_prompt
-- 啟用基準圖：mode=img2img reference_type=system_reference
-- 遮罩局部修改：mode=inpainting has_mask=True
-- 開始生成：IMAGE GENERATION STARTED
+5. 保留程式端翻譯修復：
+   - 瀏海／刘海／air刘海 → bangs / wispy air bangs
+   - 稀疏空氣瀏海／sparse air刘海 → sparse wispy air bangs
+   - 鯊魚夾／shark clip → claw hair clip
+   - 腦後鯊魚夾收髮 → compact rounded claw clip updo at the back of the head
+
+6. 保留程式端硬鎖：
+   - 中國／中國人 → Chinese、Han Chinese facial features、natural Chinese facial structure
+   - 移除並負面化 Western、Caucasian、European、blue eyes、blonde hair 等衝突詞
+   - 沒明確要求特寫時，強制加入 medium-long shot、three-quarter body shot、visible from head to knees
+   - 負面提示強制加入 portrait、close-up、headshot、face-only shot、tight framing 等防大頭詞
+
+套用方式：
+1. 解壓縮本補丁。
+2. 把 routes/image_gen.py 覆蓋到 Telemini 專案相同路徑。
+3. 把 services/qwen_service.py 覆蓋到 Telemini 專案相同路徑。
+4. 推上 GitHub。
+5. Render 重新部署。
+6. 本機 AI 匝道不用重開；除非你同時改了本機閘道程式。
+
+驗證方式：
+在專案根目錄執行：
+python -m py_compile routes/image_gen.py services/qwen_service.py
+
+預期效果：
+- 線上純文生圖整理 prompt 的行為會更接近「文生圖測試_美版v2」。
+- 使用者打「中國人」時，不會被大段包裝 prompt 稀釋權重。
+- 未要求特寫時，會更穩定壓制大頭照與肖像構圖。
 ```
 
 

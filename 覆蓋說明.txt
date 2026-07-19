@@ -1,38 +1,49 @@
-Telemini 遮罩操作、文生圖基準圖、生圖狀態整合外帶包
+Telemini 純文生圖同步測試機 Prompt 補丁
 
-直接把本壓縮檔內容解壓到 Telemini 專案根目錄並覆蓋同名檔案。
-
-修改檔案：
+覆蓋檔案：
 - routes/image_gen.py
-- services/image_jobs.py
-- templates/image_gen_form.html
+- services/qwen_service.py
 
-加入／恢復：
-- static/image_reference/male_reference.png
-- static/image_reference/female_reference.png
-- static/image_reference/基準圖放置說明.txt
+本次重點：
+1. 純文生圖、不啟用基準圖時，線上版會改成跟測試機一樣：
+   使用者原始提示詞 → Qwen 四欄整理 → ComfyUI
 
-本次內容：
-1. 遮罩預設為全黑空遮罩：預設沒有任何區域會被修改，不是整張全遮罩。
-2. 修正生圖頁 token 無法載入聊天室圖片預覽的問題。
-3. 遮罩畫筆支援 Pointer Events；舊版 Telegram WebView 自動改用滑鼠／觸控事件。
-4. 塗抹、擦除、復原、清空、反轉按鈕會顯示明確操作狀態。
-5. 文生圖新增「啟用基準圖」勾選：
-   - 關閉：維持純文字文生圖。
-   - 開啟：依男／女性別讀取對應系統基準圖，作為人物外觀參考。
-6. 排隊中維持動態顯示排隊位置、預計等待與已等待時間。
-7. 工作節點開始生成時，同一則訊息改成「正在生圖」。
-8. 圖片確實傳進 Telegram 後，才刪除「正在生圖」訊息。
-9. 失敗或取消時，仍會刪除狀態訊息並送出對應錯誤代號與「刪除訊息」按鈕。
-10. 30 分鐘只限制排隊階段；已開始生成不會因排隊逾時取消。
+2. 純文生圖不再先把提示詞包成 image_prompt.py 的大段英文規則後才交給 Qwen。
+   這是線上版和測試機出圖感覺不同的主要原因。
 
-不新增資料表，不修改 requirements.txt。
+3. 圖文生圖、啟用基準圖、使用者上傳圖、聊天室圖片、遮罩修改維持原樣。
 
-部署前檢查：
-python -m compileall -q routes services
+4. Qwen Prompt 整理補上測試機同方向：
+   - 固定四欄：main_positive、main_negative、face_positive、face_negative
+   - 使用 JSON schema 約束四欄輸出
+   - 男女各三套美感詞庫
+   - FaceDetailer 優先吃 Qwen 回傳的 face_positive / face_negative
 
-部署後判讀 Log：
-- 純文字文生圖：mode=txt2img reference_type=system_prompt
-- 啟用基準圖：mode=img2img reference_type=system_reference
-- 遮罩局部修改：mode=inpainting has_mask=True
-- 開始生成：IMAGE GENERATION STARTED
+5. 保留程式端翻譯修復：
+   - 瀏海／刘海／air刘海 → bangs / wispy air bangs
+   - 稀疏空氣瀏海／sparse air刘海 → sparse wispy air bangs
+   - 鯊魚夾／shark clip → claw hair clip
+   - 腦後鯊魚夾收髮 → compact rounded claw clip updo at the back of the head
+
+6. 保留程式端硬鎖：
+   - 中國／中國人 → Chinese、Han Chinese facial features、natural Chinese facial structure
+   - 移除並負面化 Western、Caucasian、European、blue eyes、blonde hair 等衝突詞
+   - 沒明確要求特寫時，強制加入 medium-long shot、three-quarter body shot、visible from head to knees
+   - 負面提示強制加入 portrait、close-up、headshot、face-only shot、tight framing 等防大頭詞
+
+套用方式：
+1. 解壓縮本補丁。
+2. 把 routes/image_gen.py 覆蓋到 Telemini 專案相同路徑。
+3. 把 services/qwen_service.py 覆蓋到 Telemini 專案相同路徑。
+4. 推上 GitHub。
+5. Render 重新部署。
+6. 本機 AI 匝道不用重開；除非你同時改了本機閘道程式。
+
+驗證方式：
+在專案根目錄執行：
+python -m py_compile routes/image_gen.py services/qwen_service.py
+
+預期效果：
+- 線上純文生圖整理 prompt 的行為會更接近「文生圖測試_美版v2」。
+- 使用者打「中國人」時，不會被大段包裝 prompt 稀釋權重。
+- 未要求特寫時，會更穩定壓制大頭照與肖像構圖。

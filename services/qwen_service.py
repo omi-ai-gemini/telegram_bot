@@ -24,6 +24,14 @@ OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180") 
 OLLAMA_CHAT_NUM_PREDICT = max(64, int(os.getenv("OLLAMA_CHAT_NUM_PREDICT", "512") or "512"))
 OLLAMA_PROMPT_NUM_PREDICT = max(128, int(os.getenv("OLLAMA_PROMPT_NUM_PREDICT", "1200") or "1200"))
 
+IMAGE_PROMPT_KEYS = ("main_positive", "main_negative", "face_positive", "face_negative")
+IMAGE_PROMPT_SCHEMA = {
+    "type": "object",
+    "properties": {key: {"type": "string"} for key in IMAGE_PROMPT_KEYS},
+    "required": list(IMAGE_PROMPT_KEYS),
+    "additionalProperties": False,
+}
+
 
 FACE_NEGATIVE = (
     "cross-eyed, asymmetrical eyes, mismatched eyes, deformed eyes, blurry eyes, "
@@ -230,7 +238,100 @@ def _apply_visual_translation_locks(source_text: str, fields: Dict[str, str]) ->
         ])
 
 
-def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: int = 512, temperature: float = 0.6) -> Dict[str, Any]:
+def _portrait_requested(text: str) -> bool:
+    source = str(text or "").lower()
+    positive_patterns = (
+        "肖像", "人像照", "人像攝影", "人像摄影", "特寫", "特写", "大頭照", "大头照",
+        "頭像", "头像", "證件照", "证件照", "自拍", "近拍臉", "脸部近拍", "臉部近拍", "胸像",
+        "portrait", "headshot", "close-up", "close up", "selfie", "profile picture",
+        "passport photo", "id photo", "studio portrait", "beauty portrait",
+    )
+    negative_patterns = (
+        "不要特寫", "不要特写", "不要大頭", "不要大头", "不要肖像", "不要人像",
+        "避免特寫", "避免特写", "避免大頭", "避免大头", "不是特寫", "不是特写",
+        "全身", "三分之二身", "四分之三身", "膝上", "中遠景", "中远景", "遠景", "远景",
+        "街拍", "生活照", "環境照", "場景照", "full body", "three-quarter body",
+        "knee-up", "medium-long", "medium wide", "wide shot", "environmental shot",
+        "not a portrait", "no portrait", "avoid portrait",
+    )
+    if any(token in source for token in negative_patterns):
+        return False
+    return any(token in source for token in positive_patterns)
+
+
+def _apply_identity_and_composition_locks(source_text: str, fields: Dict[str, str]) -> None:
+    source = str(source_text or "").lower()
+
+    identity_rules = [
+        (
+            ("中國", "中国", "中國人", "中国人", "華人", "华人", "漢人", "汉人", "chinese", "han chinese"),
+            ["Chinese", "Han Chinese facial features", "natural Chinese facial structure"],
+            [
+                "Western", "Caucasian", "European", "white woman", "white man", "white girl", "white boy",
+                "American", "Russian", "Ukrainian", "French", "British", "Nordic", "Slavic",
+                "Japanese", "Korean", "Taiwanese", "Southeast Asian", "Thai", "Vietnamese", "Filipino",
+                "Latina", "Middle Eastern", "Indian", "South Asian", "blue eyes", "green eyes",
+                "gray eyes", "grey eyes", "blonde hair", "blond hair", "platinum blonde hair",
+                "red hair", "light-colored eyes", "light colored eyes",
+            ],
+        ),
+        (
+            ("日本", "日本人", "japanese"),
+            ["Japanese", "natural Japanese facial features", "natural Japanese facial structure"],
+            ["Western", "Caucasian", "European", "Chinese", "Han Chinese", "Korean", "Taiwanese"],
+        ),
+        (
+            ("韓國", "韩国", "韓國人", "韩国人", "korean"),
+            ["Korean", "natural Korean facial features", "natural Korean facial structure"],
+            ["Western", "Caucasian", "European", "Chinese", "Han Chinese", "Japanese", "Taiwanese"],
+        ),
+        (
+            ("台灣", "台湾", "台灣人", "台湾人", "taiwan", "taiwanese"),
+            ["Taiwanese", "East Asian facial features", "natural Taiwanese facial structure"],
+            ["Western", "Caucasian", "European", "Chinese mainland", "Japanese", "Korean"],
+        ),
+    ]
+
+    for keywords, required, conflicts in identity_rules:
+        if any(keyword in source for keyword in keywords):
+            fields["main_positive"] = _add_terms(_remove_terms(fields.get("main_positive"), conflicts), required)
+            fields["face_positive"] = _add_terms(_remove_terms(fields.get("face_positive"), conflicts), required)
+            fields["main_negative"] = _add_terms(fields.get("main_negative"), conflicts)
+            break
+
+    if not _portrait_requested(source_text):
+        fields["main_positive"] = _add_terms(
+            _remove_terms(fields.get("main_positive"), [
+                "portrait", "headshot", "close-up", "close up", "bust shot", "shoulder-up",
+                "chest-up", "selfie", "profile picture", "studio portrait", "beauty portrait",
+                "face-focused", "face dominant", "tight crop",
+            ]),
+            [
+                "medium-long shot", "three-quarter body shot", "visible from head to knees",
+                "camera positioned farther away", "more environment visible",
+                "balanced subject-to-background composition", "subject not filling the frame",
+                "environment clearly readable", "hands visible when reasonable", "not face-focused",
+            ],
+        )
+        fields["main_negative"] = _add_terms(fields.get("main_negative"), [
+            "portrait", "close-up", "extreme close-up", "close-up portrait", "face-only shot",
+            "face-only portrait", "headshot", "beauty headshot", "portrait crop", "bust shot",
+            "medium close-up", "shoulder-up shot", "shoulder-up crop", "chest-up framing",
+            "chest-up portrait", "tight framing", "zoomed-in face", "large face in frame",
+            "face filling the frame", "centered face", "profile picture", "passport photo",
+            "ID photo", "studio portrait", "glamour portrait", "beauty portrait",
+        ])
+
+
+def _post_generate(
+    *,
+    model: str,
+    prompt: str,
+    system: str = "",
+    num_predict: int = 512,
+    temperature: float = 0.6,
+    format_schema: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
     url = f"{OLLAMA_BASE_URL}/api/generate"
     payload = {
         "model": model,
@@ -240,8 +341,11 @@ def _post_generate(*, model: str, prompt: str, system: str = "", num_predict: in
         "options": {
             "temperature": float(temperature),
             "num_predict": int(num_predict),
+            "num_ctx": 8192,
         },
     }
+    if format_schema:
+        payload["format"] = format_schema
     if gateway_requested() and not gateway_enabled():
         if gateway_reverse_enabled():
             try:
@@ -419,6 +523,7 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
         system=IMAGE_PROMPT_SYSTEM,
         num_predict=OLLAMA_PROMPT_NUM_PREDICT,
         temperature=0.2,
+        format_schema=IMAGE_PROMPT_SCHEMA,
     )
     if not result.get("ok"):
         return {"ok": False, "message": result.get("message") or "Qwen Prompt 整理失敗"}
@@ -477,6 +582,7 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
         "face_negative": face_negative,
     }
     _apply_visual_translation_locks(clean_draft, fields)
+    _apply_identity_and_composition_locks(clean_draft, fields)
 
     assembled = (
         f"main_positive: {fields['main_positive']}\n"
