@@ -1,7 +1,10 @@
+import copy
+import json
 import os
 import random
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlencode
 
@@ -36,10 +39,20 @@ COMFYUI_HEIGHT = max(256, int(os.getenv("COMFYUI_HEIGHT", "1024") or "1024"))
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 _LOCAL_TASK_PREFIX = "localtask:"
+TXT2IMG_WORKFLOW_FILE = Path(__file__).resolve().parent.parent / "workflows" / "txt2img_basic_api.json"
 
 
 def _workflow_seed() -> int:
     return random.SystemRandom().randint(1, 2**62)
+
+
+def _load_txt2img_workflow_template() -> Optional[Dict[str, Any]]:
+    try:
+        workflow = json.loads(TXT2IMG_WORKFLOW_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"TXT2IMG WORKFLOW TEMPLATE READ FAILED path={TXT2IMG_WORKFLOW_FILE}: {exc}", flush=True)
+        return None
+    return copy.deepcopy(workflow) if isinstance(workflow, dict) else None
 
 
 def build_txt2img_workflow(
@@ -49,6 +62,18 @@ def build_txt2img_workflow(
     face_positive: str,
     face_negative: str,
 ) -> Dict[str, Any]:
+    template = _load_txt2img_workflow_template()
+    if template:
+        template["10"]["inputs"]["text"] = str(main_negative or "")
+        template["11"]["inputs"]["text"] = str(main_positive or "")
+        template["23"]["inputs"]["text"] = str(face_positive or "")
+        template["24"]["inputs"]["text"] = str(face_negative or "")
+        template["13"]["inputs"]["seed"] = _workflow_seed()
+        template["19"]["inputs"]["seed"] = _workflow_seed()
+        if template.get("15", {}).get("class_type") == "SaveImage":
+            template["15"].setdefault("inputs", {})["filename_prefix"] = "Telemini_OMI_Text"
+        return template
+
     return {
         "10": {
             "inputs": {"text": str(main_negative or ""), "clip": ["12", 1]},
@@ -349,7 +374,7 @@ def _download_view(image_meta: Dict[str, Any], prompt_id: str = "") -> Dict[str,
         "bytes": response.content,
         "mime_type": response.headers.get("Content-Type") or "image/png",
     }
-    if not _safe_delete_direct_temp(image_meta):
+    if str(image_meta.get("type") or "temp") == "temp" and not _safe_delete_direct_temp(image_meta):
         return {"ok": False, "message": "圖片已讀取，但 ComfyUI temp 暫存清除失敗；請設定 COMFYUI_ROOT"}
     if prompt_id and not _delete_direct_history(prompt_id):
         return {"ok": False, "message": "圖片已讀取，但 ComfyUI history 清除失敗"}

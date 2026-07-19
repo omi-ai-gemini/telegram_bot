@@ -1,22 +1,39 @@
-Telemini 純文生圖：測試機 Qwen Chat 同步補丁
+Telemini 純文生圖：同步測試機完整補丁
 
-用途：
-1. 純文生圖的 Prompt 整理改成接近本機測試機流程：Ollama /api/chat + system/user messages + JSON schema。
-2. 保留四欄 Prompt：main_positive、main_negative、face_positive、face_negative。
-3. 保留中國人 / Han Chinese、防外國人、防大頭照、防肖像近拍、空氣瀏海、鯊魚夾髮型等鎖定修復。
-4. 圖文生圖、參考圖、遮罩等其他模式維持原樣。
+本次目標：
+把線上純文生圖流程同步到本機測試機的核心做法。
+
+包含內容：
+1. Qwen Prompt 整理走 Ollama /api/chat messages。
+2. Qwen 輸出四欄：main_positive、main_negative、face_positive、face_negative。
+3. 純文生圖 ComfyUI workflow 改成讀 workflows/txt2img_basic_api.json 模板。
+4. workflows/txt2img_basic_api.json 已同步為測試機的 文生圖_API工作流_空Prompt.json。
+5. 線上只替換節點 10、11、23、24 的 prompt，以及節點 13、19 的 seed。
+6. Qwen 整理失敗時不再用原始中文 prompt 硬生，改暫存等 Qwen 補考。
+7. 生圖狀態與完成圖片會附上「查看整理 Prompt」按鈕，可看線上實際整理後的四欄 prompt。
+8. 新增 /image 與 /生圖 快捷指令，用來直接開啟生圖設定。
+9. 服務中心常用指令與生圖入口說明補上 /image。
 
 覆蓋位置：
+- services/comfyui_service.py -> 專案 services/comfyui_service.py
+- services/image_jobs.py -> 專案 services/image_jobs.py
+- services/image_actions.py -> 專案 services/image_actions.py
 - services/qwen_service.py -> 專案 services/qwen_service.py
 - routes/image_gen.py -> 專案 routes/image_gen.py
-- 本機AI閘道/app.py -> 本機 AI 匝道資料夾內的 app.py
+- templates/image_prompt_debug.html -> 專案 templates/image_prompt_debug.html
+- handlers/message_handler.py -> 專案 handlers/message_handler.py
+- workflows/txt2img_basic_api.json -> 專案 workflows/txt2img_basic_api.json
+- service_center/handler.py -> 專案 service_center/handler.py
+- 本機AI閘道/app.py -> 本機 AI 匝道資料夾內 app.py
 
-重要：
-這次補丁同時改 Render 專案端與本機 AI 匝道端。
-覆蓋後請重新部署 Render，並重啟本機 AI 匝道。
-如果只更新 Render、不重啟本機匝道，Render 送出的 ollama_chat 任務可能無法被本機 worker 處理。
+重要套用順序：
+1. 覆蓋 Render 專案端檔案並重新部署。
+2. 覆蓋本機 AI 匝道 app.py。
+3. 重啟本機 AI 匝道。
+4. 再送新的純文生圖任務測試。
 
-本次關鍵差異：
-舊線上版 Qwen Prompt 整理走 /api/generate。
-測試機走 /api/chat messages。
-本補丁把線上純文生圖整理流程同步為 /api/chat messages，降低 Qwen 忘記族群、構圖與環境要求的機率。
+測試重點：
+- Telegram 輸入 /image，應出現開啟生圖設定按鈕。
+- 純文生圖送出後，狀態訊息應有「查看整理 Prompt」按鈕。
+- prompt 成功後 debug 頁應看到四欄英文 prompt。
+- ComfyUI 任務應使用 workflows/txt2img_basic_api.json 模板，而不是程式手寫 workflow。

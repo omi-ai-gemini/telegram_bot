@@ -117,3 +117,21 @@ def send_hidden_image_link(bot_id: Any, chat_id: Any, action_id: Any) -> bool:
         },
     )
     return True
+
+
+def send_image_command_link(bot_id: Any, chat_id: Any, user_id: Any) -> bool:
+    try:
+        from services.ai_actions import _create_latest_hidden_action_from_memory, _get_latest_ai_action_id
+
+        action_id = _get_latest_ai_action_id(bot_id, chat_id, user_id)
+        if not action_id:
+            action_id = _create_latest_hidden_action_from_memory(bot_id, chat_id, user_id)
+    except Exception as exc:
+        print("IMAGE COMMAND ACTION LOOKUP ERROR:", exc, flush=True)
+        action_id = None
+
+    if not action_id:
+        send_message(bot_id, chat_id, "目前沒有可用的 AI 回覆可開啟生圖，請先和 AI 對話一次。")
+        return False
+
+    return send_hidden_image_link(bot_id, chat_id, action_id)

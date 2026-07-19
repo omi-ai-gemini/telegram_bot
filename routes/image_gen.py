@@ -6,7 +6,7 @@ from flask import Blueprint, Response, jsonify, render_template, request
 
 from services.image_actions import load_action_context
 from services.image_auth import verify_image_token
-from services.image_jobs import create_image_job
+from services.image_jobs import create_image_job, get_image_job_prompt_debug
 from services.image_prompt import FIXED_TAGS, build_image_prompt
 from services.image_store import (
     delete_image_asset,
@@ -259,6 +259,30 @@ def image_generate_submit():
         success="prompt生成中，請回 Telegram 查看狀態。",
         job_id=created.get("job_id"),
         form=form,
+    )
+
+
+@image_gen_bp.route("/image/prompt_debug/<int:job_id>", methods=["GET"])
+def image_prompt_debug_page(job_id):
+    auth, error = _auth("prompt_debug")
+    if error:
+        return error
+    payload = get_image_job_prompt_debug(
+        job_id,
+        user_id=auth["user_id"],
+        bot_id=auth["bot_id"],
+        chat_id=auth["chat_id"],
+    )
+    if not payload:
+        return "找不到這筆生圖任務，或你沒有查看權限", 404
+    return render_template(
+        "image_prompt_debug.html",
+        auth=auth,
+        job=payload["job"],
+        source_prompt=payload["source_prompt"],
+        final_prompt=payload["final_prompt"],
+        fields=payload["fields"],
+        expires_at=auth.get("expires_at", 0),
     )
 
 

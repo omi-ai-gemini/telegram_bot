@@ -137,6 +137,7 @@ C:\Projects\telemini
 - `templates\developer.html`
 - `templates\image_gen_form.html`
 - `templates\image_library.html`
+- `templates\image_prompt_debug.html`
 - `templates\important_memory_form.html`
 - `templates\index.html`
 - `templates\login.html`
@@ -223,6 +224,7 @@ C:\Projects\telemini
 ### `routes\image_gen.py`
 - `/image/generate` → `image_generate_page`
 - `/image/generate` → `image_generate_submit`
+- `/image/prompt_debug/<int:job_id>` → `image_prompt_debug_page`
 - `/setting/images` → `image_library_page`
 - `/setting/images/preview/<identifier>` → `image_library_preview`
 - `/setting/images/rename` → `image_library_rename`
@@ -290,6 +292,7 @@ C:\Projects\telemini
 - `_render_generate()`
 - `image_generate_page()`
 - `image_generate_submit()`
+- `image_prompt_debug_page()`
 - `image_library_page()`
 - `image_library_preview()`
 - `image_library_rename()`
@@ -544,6 +547,7 @@ C:\Projects\telemini
 
 ### `services\comfyui_service.py`
 - `_workflow_seed()`
+- `_load_txt2img_workflow_template()`
 - `build_txt2img_workflow()`
 - `_post_json()`
 - `queue_prompt()`
@@ -647,6 +651,7 @@ C:\Projects\telemini
 - `get_image_library_url()`
 - `load_action_context()`
 - `send_hidden_image_link()`
+- `send_image_command_link()`
 
 ### `services\image_auth.py`
 - `_text()`
@@ -660,12 +665,16 @@ C:\Projects\telemini
 - `_text()`
 - `_extract_message_id()`
 - `_cancel_markup()`
+- `_prompt_debug_url()`
+- `_job_status_markup()`
 - `_delete_notice_markup()`
 - `_encrypt_prompt()`
 - `_decrypt_prompt()`
 - `_count_active()`
 - `create_image_job()`
 - `_get_job()`
+- `_split_prompt_preview()`
+- `get_image_job_prompt_debug()`
 - `_claim_job()`
 - `_update_job()`
 - `_elapsed_seconds()`

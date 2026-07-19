@@ -9,7 +9,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "主生圖負面提示詞"
     }
   },
   "11": {
@@ -22,7 +22,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "主生圖正面提示詞"
     }
   },
   "12": {
@@ -36,7 +36,7 @@
   },
   "13": {
     "inputs": {
-      "seed": 402326381105677,
+      "seed": 1,
       "steps": 25,
       "cfg": 5.5,
       "sampler_name": "dpmpp_2m",
@@ -77,14 +77,15 @@
   },
   "15": {
     "inputs": {
+      "filename_prefix": "Telemini_Qwen_Test",
       "images": [
         "18",
         0
       ]
     },
-    "class_type": "PreviewImage",
+    "class_type": "SaveImage",
     "_meta": {
-      "title": "預覽圖片（不寫入 output）"
+      "title": "儲存圖片"
     }
   },
   "16": {
@@ -133,7 +134,7 @@
       "guide_size": 512,
       "guide_size_for": true,
       "max_size": 1024,
-      "seed": 597178762179918,
+      "seed": 1,
       "steps": 20,
       "cfg": 5,
       "sampler_name": "euler",
@@ -203,7 +204,7 @@
   },
   "23": {
     "inputs": {
-      "text": "young Chinese woman, Han Chinese facial features, natural Chinese facial structure, natural detailed eyes, symmetrical eyes, detailed dark brown irises, realistic eyelashes, natural eye reflections, subtle natural makeup, realistic skin texture, clean facial details",
+      "text": "",
       "clip": [
         "12",
         1
@@ -211,12 +212,12 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "FaceDetailer 正面提示詞"
     }
   },
   "24": {
     "inputs": {
-      "text": "cross-eyed, asymmetrical eyes, mismatched eyes, deformed eyes, blurry eyes, malformed pupils, extra pupils, deformed face, bad anatomy, blurry, low quality, plastic skin, over-smoothed face",
+      "text": "",
       "clip": [
         "12",
         1
@@ -224,7 +225,7 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "FaceDetailer 負面提示詞"
     }
   }
 }

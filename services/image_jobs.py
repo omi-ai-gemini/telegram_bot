@@ -5,6 +5,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 from services.aihorde_service import (
     cancel_image_request,
@@ -15,6 +16,7 @@ from services.aihorde_service import (
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
+from services.image_auth import create_image_token
 from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
@@ -51,11 +53,36 @@ def _extract_message_id(result):
 
 
 def _cancel_markup(job_id: int):
-    return {
-        "inline_keyboard": [[
-            {"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}
-        ]]
-    }
+    return {"inline_keyboard": [[{"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}]]}
+
+
+def _prompt_debug_url(job: Dict[str, Any]) -> Optional[str]:
+    base_url = str(os.getenv("BASE_URL") or "").rstrip("/")
+    if not base_url or not job.get("id"):
+        return None
+    try:
+        token = create_image_token(
+            user_id=job.get("user_id"),
+            bot_id=job.get("bot_id"),
+            chat_id=job.get("chat_id"),
+            page_type="prompt_debug",
+            action_id=job.get("action_id"),
+            ttl_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
+        )
+    except Exception as exc:
+        print(f"IMAGE PROMPT DEBUG TOKEN ERROR job_id={job.get('id')}: {exc}", flush=True)
+        return None
+    return f"{base_url}/image/prompt_debug/{int(job['id'])}?{urlencode({'token': token})}"
+
+
+def _job_status_markup(job: Dict[str, Any], allow_cancel: bool = True):
+    keyboard = []
+    prompt_url = _prompt_debug_url(job)
+    if prompt_url:
+        keyboard.append([{"text": "查看整理 Prompt", "url": prompt_url}])
+    if allow_cancel:
+        keyboard.append([{"text": "取消生圖", "callback_data": f"image_cancel:{int(job['id'])}"}])
+    return {"inline_keyboard": keyboard}
 
 
 def _delete_notice_markup(job_id: int):
@@ -179,7 +206,13 @@ def create_image_job(
         bot_id,
         chat_id,
         "prompt生成中",
-        reply_markup=_cancel_markup(job_id),
+        reply_markup=_job_status_markup({
+            "id": job_id,
+            "user_id": user_id,
+            "bot_id": bot_id,
+            "chat_id": chat_id,
+            "action_id": action_id,
+        }),
     )
     status_message_id = _extract_message_id(status_sent)
     if status_message_id:
@@ -228,6 +261,64 @@ def _get_job(job_id: int) -> Optional[Dict[str, Any]]:
         return dict(zip(keys, r))
     finally:
         conn.close()
+
+
+def _split_prompt_preview(text: str) -> Dict[str, str]:
+    fields = {
+        "main_positive": "",
+        "main_negative": "",
+        "face_positive": "",
+        "face_negative": "",
+    }
+    current_key = None
+    for raw_line in str(text or "").splitlines():
+        line = raw_line.strip()
+        matched_key = None
+        for key in fields:
+            prefix = f"{key}:"
+            if line.startswith(prefix):
+                matched_key = key
+                fields[key] = line[len(prefix):].strip()
+                break
+        if matched_key:
+            current_key = matched_key
+        elif current_key and line:
+            fields[current_key] = f"{fields[current_key]}\n{line}".strip()
+    return fields
+
+
+def get_image_job_prompt_debug(job_id: Any, user_id: Any, bot_id: Any, chat_id: Any) -> Optional[Dict[str, Any]]:
+    try:
+        job_id = int(job_id)
+    except Exception:
+        return None
+
+    job = _get_job(job_id)
+    if not job:
+        return None
+    if _text(job.get("user_id")) != _text(user_id):
+        return None
+    if _text(job.get("bot_id")) != _text(bot_id):
+        return None
+    if _text(job.get("chat_id")) != _text(chat_id):
+        return None
+
+    source_prompt = _decrypt_prompt(
+        job["id"],
+        job.get("source_prompt") or "",
+        field="source_prompt",
+    )
+    final_prompt = _decrypt_prompt(
+        job["id"],
+        job.get("final_prompt") or "",
+        field="final_prompt",
+    )
+    return {
+        "job": job,
+        "source_prompt": source_prompt,
+        "final_prompt": final_prompt,
+        "fields": _split_prompt_preview(final_prompt),
+    }
 
 
 def _claim_job(job_id: int, worker_token: str) -> bool:
@@ -321,7 +412,7 @@ def _edit_status_message(
     allow_cancel: bool = True,
 ) -> Optional[int]:
     message_id = job.get("status_message_id")
-    reply_markup = _cancel_markup(job["id"]) if allow_cancel else {"inline_keyboard": []}
+    reply_markup = _job_status_markup(job, allow_cancel=allow_cancel)
     edited = None
     if message_id:
         edited = edit_message_text(
@@ -488,9 +579,13 @@ def _qwen_retryable_error(message: Any) -> bool:
         "AI 匝道等待超過",
         "Qwen worker 沒有回傳結果",
         "建立 Qwen worker 任務失敗",
+        "Qwen worker JSON 解析失敗",
         "本機 AI 閘道設定不完整",
         "Ollama 連線失敗",
+        "Ollama HTTP",
         "Qwen 閘道呼叫失敗",
+        "不支援的任務類型",
+        "ollama_chat",
     ]
     return any(token in text for token in retry_tokens)
 
@@ -546,6 +641,7 @@ def _finish_omi_txt2img_result(job: Dict[str, Any], waited: Dict[str, Any]) -> b
         waited["bytes"],
         filename=f"telemini_{job['id']}.png",
         mime_type=waited.get("mime_type") or "image/png",
+        reply_markup=_job_status_markup(job, allow_cancel=False),
     )
     if not _extract_message_id(sent):
         _fail(job, "圖片已生成，但傳送到 Telegram 失敗", code="TELEGRAM_SEND_FAILED")
@@ -631,20 +727,16 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
 
         break
 
-    if not organized.get("ok") and _qwen_retryable_error(organize_error):
-        _edit_status_message(
-            job,
-            (
-                "生圖申請已暫存\n"
-                "等待 AI 匝道連線中\n"
-                "重新連線後會先讓 Qwen 補考整理 prompt\n"
-                "暫存期限：24 小時"
-            ),
-        )
+    if not organized.get("ok"):
+        if not _wait_for_qwen_retake(
+            _get_job(job["id"]) or job,
+            organize_error or "Qwen Prompt 整理失敗，已暫存等待補考",
+        ):
+            return True
         return True
 
     if organized.get("ok"):
-        prompt_preview = organized.get("text") or organized.get("main_positive") or source_prompt
+        prompt_preview = organized.get("preview_text") or organized.get("text") or organized.get("main_positive") or source_prompt
         _update_job(
             job["id"],
             final_prompt=_encrypt_prompt(job["id"], prompt_preview, field="final_prompt"),
@@ -655,34 +747,6 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
             prompt_chars_after=len(prompt_preview),
         )
         _edit_status_message(job, "prompt整理完成，正在送入 OMI 自架模型")
-    else:
-        fallback_positive = source_prompt
-        fallback_negative = (
-            "close-up, extreme close-up, headshot, face-only shot, portrait crop, tight crop, anime, cartoon, "
-            "illustration, blurry, low quality, bad anatomy, extra limbs, malformed hands, plastic skin"
-        )
-        fallback_face_positive, fallback_face_negative = build_face_prompts(
-            "EastAsian",
-            "man" if _text(job.get("gender")).lower() == "male" else "woman",
-        )
-        organized = {
-            "ok": True,
-            "main_positive": fallback_positive,
-            "main_negative": fallback_negative,
-            "face_positive": fallback_face_positive,
-            "face_negative": fallback_face_negative,
-        }
-        error_message = organize_error or "Qwen Prompt 整理失敗，已改用原始提示詞"
-        _update_job(
-            job["id"],
-            final_prompt=_encrypt_prompt(job["id"], fallback_positive, field="final_prompt"),
-            prompt_generation_status="fallback",
-            prompt_model=secondary_label,
-            prompt_error=error_message[:500],
-            prompt_chars_before=len(source_prompt),
-            prompt_chars_after=len(fallback_positive),
-        )
-        _edit_status_message(job, "prompt整理失敗，已改用原始提示詞，正在送入 OMI 自架模型")
 
     if _job_cancel_requested(job["id"]):
         _cancel(_get_job(job["id"]) or job)

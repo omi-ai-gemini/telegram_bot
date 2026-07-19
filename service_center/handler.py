@@ -339,7 +339,7 @@ def _manual_section_text(section):
         ),
         "svc:manual:image": (
             "📸 生圖設定\n\n"
-            "入口：聊天訊息下方生圖按鈕，或 /hidden → 生圖\n\n"
+            "入口：/image、聊天訊息下方生圖按鈕，或 /hidden → 生圖\n\n"
             "目前重點：\n"
             "• 純文生圖走 OMI 自架模型\n"
             "• AI 匝道未連線時可暫存 24 小時\n"
@@ -354,6 +354,8 @@ def _manual_section_text(section):
             "查看近期記憶、摘要記憶、重點記憶。\n\n"
             "/reply 或 /回覆\n"
             "上一輪沒回覆時手動補救。\n\n"
+            "/image 或 /生圖\n"
+            "開啟生圖設定。\n\n"
             "/hidden\n"
             "開啟開發者功能鍵盤。"
         ),

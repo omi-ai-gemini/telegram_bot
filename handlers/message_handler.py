@@ -10,6 +10,7 @@ from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
 from services.model_mode import handle_models_deputy_command
+from services.image_actions import send_image_command_link
 from test_lab.service import handle_test_lab_message
 
 
@@ -57,6 +58,10 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
             source_message_id=message_id,
             user_id=user_id,
         )
+        return
+
+    if text in ["/image", "/生圖"]:
+        send_image_command_link(bot_id, chat_id, user_id)
         return
 
     if text in ["/memory", "/記憶"]:

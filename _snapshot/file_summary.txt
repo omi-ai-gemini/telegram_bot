@@ -3573,7 +3573,7 @@ def _send_script_opening(bot_id, chat_id):
 # handlers\message_handler.py
 
 - 類型：.py
-- 行數：152
+- 行數：157
 
 ## imports
 - services.ai_actions.handle_hidden_keyboard_message
@@ -3582,6 +3582,7 @@ def _send_script_opening(bot_id, chat_id):
 - services.call_ai.run_ai
 - services.call_ai.run_reply_recovery
 - services.commands.send_setting_menu
+- services.image_actions.send_image_command_link
 - services.media_ai.queue_text_for_pending_photo
 - services.memory_view.send_memory_view_menu
 - services.model_mode.handle_models_deputy_command
@@ -3606,6 +3607,7 @@ from services.media_ai import queue_text_for_pending_photo
 from services.telegram_service import send_message
 from services.prompt_debug import send_prompt_debug_link
 from services.model_mode import handle_models_deputy_command
+from services.image_actions import send_image_command_link
 from test_lab.service import handle_test_lab_message
 
 
@@ -3655,6 +3657,10 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         )
         return
 
+    if text in ["/image", "/生圖"]:
+        send_image_command_link(bot_id, chat_id, user_id)
+        return
+
     if text in ["/memory", "/記憶"]:
         send_memory_view_menu(
             bot_id=bot_id,
@@ -3669,13 +3675,8 @@ def handle_message(user_id, bot_id, chat_id, user_text, message_id=None):
         return
 
     if text == "/models_deputy" or text.startswith("/models_deputy "):
-        handle_models_deputy_command(
-            user_id=user_id,
-            bot_id=bot_id,
-            chat_id=chat_id,
-            command_text=text,
 ...
-... 已省略 72 行
+... 已省略 77 行
 ```
 
 
@@ -4125,7 +4126,7 @@ def add_key_route():
 # routes\image_gen.py
 
 - 類型：.py
-- 行數：325
+- 行數：349
 
 ## imports
 - base64
@@ -4139,6 +4140,7 @@ def add_key_route():
 - services.image_actions.load_action_context
 - services.image_auth.verify_image_token
 - services.image_jobs.create_image_job
+- services.image_jobs.get_image_job_prompt_debug
 - services.image_prompt.FIXED_TAGS
 - services.image_prompt.build_image_prompt
 - services.image_store.delete_image_asset
@@ -4156,6 +4158,7 @@ def add_key_route():
 - _render_generate
 - image_generate_page
 - image_generate_submit
+- image_prompt_debug_page
 - image_library_page
 - image_library_preview
 - image_library_rename
@@ -4164,6 +4167,7 @@ def add_key_route():
 ## routes
 - /image/generate → image_generate_page
 - /image/generate → image_generate_submit
+- /image/prompt_debug/<int:job_id> → image_prompt_debug_page
 - /setting/images → image_library_page
 - /setting/images/preview/<identifier> → image_library_preview
 - /setting/images/rename → image_library_rename
@@ -4179,7 +4183,7 @@ from flask import Blueprint, Response, jsonify, render_template, request
 
 from services.image_actions import load_action_context
 from services.image_auth import verify_image_token
-from services.image_jobs import create_image_job
+from services.image_jobs import create_image_job, get_image_job_prompt_debug
 from services.image_prompt import FIXED_TAGS, build_image_prompt
 from services.image_store import (
     delete_image_asset,
@@ -4252,7 +4256,7 @@ def _build_qwen_source_prompt(
     tag = str(fixed_tag or "").strip()
     supplement = str(supplement_prompt or "").strip()
 ...
-... 已省略 245 行
+... 已省略 269 行
 ```
 
 
@@ -4842,7 +4846,7 @@ def init_service_center_db():
 # service_center\handler.py
 
 - 類型：.py
-- 行數：755
+- 行數：757
 
 ## imports
 - config.SERVICE_CENTER_ADMIN_IDS
@@ -4982,7 +4986,7 @@ def is_service_center_bot(bot_id):
 
 def _admin_ids():
 ...
-... 已省略 675 行
+... 已省略 677 行
 ```
 
 
@@ -6162,9 +6166,11 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 # services\comfyui_service.py
 
 - 類型：.py
-- 行數：418
+- 行數：443
 
 ## imports
+- copy
+- json
 - os
 - pathlib.Path
 - random
@@ -6189,6 +6195,7 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
 ## functions
 - _workflow_seed
+- _load_txt2img_workflow_template
 - build_txt2img_workflow
 - _post_json
 - queue_prompt
@@ -6203,10 +6210,13 @@ def get_chat_persona_settings(bot_id, chat_id, user_id=None):
 
 ## preview
 ```text
+import copy
+import json
 import os
 import random
 import time
 import uuid
+from pathlib import Path
 from typing import Any, Callable, Dict, Optional
 from urllib.parse import urlencode
 
@@ -6241,10 +6251,20 @@ COMFYUI_HEIGHT = max(256, int(os.getenv("COMFYUI_HEIGHT", "1024") or "1024"))
 COMFYUI_TEMP_DIR = str(os.getenv("COMFYUI_TEMP_DIR", "")).strip()
 COMFYUI_ROOT = str(os.getenv("COMFYUI_ROOT", "")).strip()
 _LOCAL_TASK_PREFIX = "localtask:"
+TXT2IMG_WORKFLOW_FILE = Path(__file__).resolve().parent.parent / "workflows" / "txt2img_basic_api.json"
 
 
 def _workflow_seed() -> int:
     return random.SystemRandom().randint(1, 2**62)
+
+
+def _load_txt2img_workflow_template() -> Optional[Dict[str, Any]]:
+    try:
+        workflow = json.loads(TXT2IMG_WORKFLOW_FILE.read_text(encoding="utf-8"))
+    except Exception as exc:
+        print(f"TXT2IMG WORKFLOW TEMPLATE READ FAILED path={TXT2IMG_WORKFLOW_FILE}: {exc}", flush=True)
+        return None
+    return copy.deepcopy(workflow) if isinstance(workflow, dict) else None
 
 
 def build_txt2img_workflow(
@@ -6254,37 +6274,24 @@ def build_txt2img_workflow(
     face_positive: str,
     face_negative: str,
 ) -> Dict[str, Any]:
+    template = _load_txt2img_workflow_template()
+    if template:
+        template["10"]["inputs"]["text"] = str(main_negative or "")
+        template["11"]["inputs"]["text"] = str(main_positive or "")
+        template["23"]["inputs"]["text"] = str(face_positive or "")
+        template["24"]["inputs"]["text"] = str(face_negative or "")
+        template["13"]["inputs"]["seed"] = _workflow_seed()
+        template["19"]["inputs"]["seed"] = _workflow_seed()
+        if template.get("15", {}).get("class_type") == "SaveImage":
+            template["15"].setdefault("inputs", {})["filename_prefix"] = "Telemini_OMI_Text"
+        return template
+
     return {
         "10": {
             "inputs": {"text": str(main_negative or ""), "clip": ["12", 1]},
             "class_type": "CLIPTextEncode",
-            "_meta": {"title": "CLIP 文字編碼（負面提示詞）"},
-        },
-        "11": {
-            "inputs": {"text": str(main_positive or ""), "clip": ["12", 1]},
-            "class_type": "CLIPTextEncode",
-            "_meta": {"title": "CLIP 文字編碼（正面提示詞）"},
-        },
-        "12": {
-            "inputs": {"ckpt_name": COMFYUI_CHECKPOINT},
-            "class_type": "CheckpointLoaderSimple",
-            "_meta": {"title": "載入檢查點"},
-        },
-        "13": {
-            "inputs": {
-                "seed": _workflow_seed(),
-                "steps": 25,
-                "cfg": 5.5,
-                "sampler_name": "dpmpp_2m",
-                "scheduler": "karras",
-                "denoise": 1,
-                "model": ["12", 0],
-                "positive": ["11", 0],
-                "negative": ["10", 0],
-                "latent_image": ["14", 0],
-            },
 ...
-... 已省略 338 行
+... 已省略 363 行
 ```
 
 
@@ -7019,10 +7026,12 @@ def _with_structured_reply_instructions(prompt):
 # services\image_actions.py
 
 - 類型：.py
-- 行數：119
+- 行數：137
 
 ## imports
 - os
+- services.ai_actions._create_latest_hidden_action_from_memory
+- services.ai_actions._get_latest_ai_action_id
 - services.database.get_conn
 - services.image_auth.create_image_token
 - services.memory.get_chat_memory_item
@@ -7040,6 +7049,7 @@ def _with_structured_reply_instructions(prompt):
 - get_image_library_url
 - load_action_context
 - send_hidden_image_link
+- send_image_command_link
 
 ## preview
 ```text
@@ -7124,7 +7134,7 @@ def get_image_library_url(user_id: Any, bot_id: Any, chat_id: Any) -> Optional[s
 def load_action_context(action_id: Any, user_id: Any, bot_id: Any, chat_id: Any) -> Optional[Dict[str, Any]]:
     action = get_action_identity(action_id)
 ...
-... 已省略 39 行
+... 已省略 57 行
 ```
 
 
@@ -7247,7 +7257,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：1137
+- 行數：1201
 
 ## imports
 - datetime.datetime
@@ -7268,6 +7278,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.crypto_env.encrypt_text
 - services.crypto_env.is_encrypted
 - services.database.get_conn
+- services.image_auth.create_image_token
 - services.image_prepare.OUTPUT_HEIGHT
 - services.image_prepare.OUTPUT_WIDTH
 - services.image_prepare.prepare_img2img_source
@@ -7286,17 +7297,22 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - typing.Any
 - typing.Dict
 - typing.Optional
+- urllib.parse.urlencode
 
 ## functions
 - _text
 - _extract_message_id
 - _cancel_markup
+- _prompt_debug_url
+- _job_status_markup
 - _delete_notice_markup
 - _encrypt_prompt
 - _decrypt_prompt
 - _count_active
 - create_image_job
 - _get_job
+- _split_prompt_preview
+- get_image_job_prompt_debug
 - _claim_job
 - _update_job
 - _elapsed_seconds
@@ -7332,6 +7348,7 @@ import time
 from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
+from urllib.parse import urlencode
 
 from services.aihorde_service import (
     cancel_image_request,
@@ -7342,6 +7359,7 @@ from services.aihorde_service import (
 )
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
+from services.image_auth import create_image_token
 from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
@@ -7378,35 +7396,33 @@ def _extract_message_id(result):
 
 
 def _cancel_markup(job_id: int):
-    return {
-        "inline_keyboard": [[
-            {"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}
-        ]]
-    }
+    return {"inline_keyboard": [[{"text": "取消生圖", "callback_data": f"image_cancel:{int(job_id)}"}]]}
 
 
-def _delete_notice_markup(job_id: int):
-    return {
-        "inline_keyboard": [[
-            {"text": "刪除訊息", "callback_data": f"image_notice_delete:{int(job_id)}"}
-        ]]
-    }
-
-
-def _encrypt_prompt(job_id: int, prompt: str, field: str = "final_prompt") -> str:
+def _prompt_debug_url(job: Dict[str, Any]) -> Optional[str]:
+    base_url = str(os.getenv("BASE_URL") or "").rstrip("/")
+    if not base_url or not job.get("id"):
+        return None
     try:
-        return encrypt_text(prompt, aad=aad_for("image_generation_jobs", field, job_id))
+        token = create_image_token(
+            user_id=job.get("user_id"),
+            bot_id=job.get("bot_id"),
+            chat_id=job.get("chat_id"),
+            page_type="prompt_debug",
+            action_id=job.get("action_id"),
+            ttl_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
+        )
     except Exception as exc:
-        print(f"IMAGE PROMPT ENCRYPT ERROR field={field}:", exc, flush=True)
-        return prompt
+        print(f"IMAGE PROMPT DEBUG TOKEN ERROR job_id={job.get('id')}: {exc}", flush=True)
+        return None
+    return f"{base_url}/image/prompt_debug/{int(job['id'])}?{urlencode({'token': token})}"
 
 
-def _decrypt_prompt(job_id: int, value: str, field: str = "final_prompt") -> str:
-    if not is_encrypted(value):
-        return _text(value)
-    try:
+def _job_status_markup(job: Dict[str, Any], allow_cancel: bool = True):
+    keyboard = []
+    prompt_url = _prompt_debug_url(job)
 ...
-... 已省略 1057 行
+... 已省略 1121 行
 ```
 
 
@@ -10723,6 +10739,100 @@ def user_has_key(user_id: int) -> bool:
 
 ================================================================================
 
+# templates\image_prompt_debug.html
+
+- 類型：.html
+- 行數：142
+
+## preview
+```text
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生圖 Prompt Debug</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090b10;
+      --panel: #121722;
+      --panel-2: #171f2d;
+      --text: #edf2ff;
+      --muted: #93a4bd;
+      --line: #263247;
+      --accent: #8bd3ff;
+      --ok: #a8ffcf;
+      --warn: #ffd38b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, #17243a, var(--bg) 42%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: min(1040px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .pill {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(18, 23, 34, .72);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pill strong { color: var(--text); font-weight: 650; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(18, 23, 34, .88);
+      overflow: hidden;
+    }
+    section h2 {
+      margin: 0;
+      padding: 11px 13px;
+      font-size: 14px;
+      color: var(--accent);
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+    }
+    pre {
+      margin: 0;
+...
+... 已省略 62 行
+```
+
+
+================================================================================
+
 # templates\important_memory_form.html
 
 - 類型：.html
@@ -12694,7 +12804,7 @@ def should_ignore(path: Path) -> bool:
 # workflows\txt2img_basic_api.json
 
 - 類型：.json
-- 行數：230
+- 行數：231
 
 ## preview
 ```text
@@ -12709,7 +12819,7 @@ def should_ignore(path: Path) -> bool:
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "主生圖負面提示詞"
     }
   },
   "11": {
@@ -12722,7 +12832,7 @@ def should_ignore(path: Path) -> bool:
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "CLIP 文字編碼（提示詞）"
+      "title": "主生圖正面提示詞"
     }
   },
   "12": {
@@ -12736,7 +12846,7 @@ def should_ignore(path: Path) -> bool:
   },
   "13": {
     "inputs": {
-      "seed": 402326381105677,
+      "seed": 1,
       "steps": 25,
       "cfg": 5.5,
       "sampler_name": "dpmpp_2m",
@@ -12777,9 +12887,9 @@ def should_ignore(path: Path) -> bool:
   },
   "15": {
     "inputs": {
-      "images": [
+      "filename_prefix": "Telemini_Qwen_Test",
 ...
-... 已省略 150 行
+... 已省略 151 行
 ```
 
 
@@ -14345,32 +14455,49 @@ services/aihorde_service.py
 # 覆蓋說明.txt
 
 - 類型：.txt
-- 行數：22
+- 行數：39
 
 ## preview
 ```text
-Telemini 純文生圖：測試機 Qwen Chat 同步補丁
+Telemini 純文生圖：同步測試機完整補丁
 
-用途：
-1. 純文生圖的 Prompt 整理改成接近本機測試機流程：Ollama /api/chat + system/user messages + JSON schema。
-2. 保留四欄 Prompt：main_positive、main_negative、face_positive、face_negative。
-3. 保留中國人 / Han Chinese、防外國人、防大頭照、防肖像近拍、空氣瀏海、鯊魚夾髮型等鎖定修復。
-4. 圖文生圖、參考圖、遮罩等其他模式維持原樣。
+本次目標：
+把線上純文生圖流程同步到本機測試機的核心做法。
+
+包含內容：
+1. Qwen Prompt 整理走 Ollama /api/chat messages。
+2. Qwen 輸出四欄：main_positive、main_negative、face_positive、face_negative。
+3. 純文生圖 ComfyUI workflow 改成讀 workflows/txt2img_basic_api.json 模板。
+4. workflows/txt2img_basic_api.json 已同步為測試機的 文生圖_API工作流_空Prompt.json。
+5. 線上只替換節點 10、11、23、24 的 prompt，以及節點 13、19 的 seed。
+6. Qwen 整理失敗時不再用原始中文 prompt 硬生，改暫存等 Qwen 補考。
+7. 生圖狀態與完成圖片會附上「查看整理 Prompt」按鈕，可看線上實際整理後的四欄 prompt。
+8. 新增 /image 與 /生圖 快捷指令，用來直接開啟生圖設定。
+9. 服務中心常用指令與生圖入口說明補上 /image。
 
 覆蓋位置：
+- services/comfyui_service.py -> 專案 services/comfyui_service.py
+- services/image_jobs.py -> 專案 services/image_jobs.py
+- services/image_actions.py -> 專案 services/image_actions.py
 - services/qwen_service.py -> 專案 services/qwen_service.py
 - routes/image_gen.py -> 專案 routes/image_gen.py
-- 本機AI閘道/app.py -> 本機 AI 匝道資料夾內的 app.py
+- templates/image_prompt_debug.html -> 專案 templates/image_prompt_debug.html
+- handlers/message_handler.py -> 專案 handlers/message_handler.py
+- workflows/txt2img_basic_api.json -> 專案 workflows/txt2img_basic_api.json
+- service_center/handler.py -> 專案 service_center/handler.py
+- 本機AI閘道/app.py -> 本機 AI 匝道資料夾內 app.py
 
-重要：
-這次補丁同時改 Render 專案端與本機 AI 匝道端。
-覆蓋後請重新部署 Render，並重啟本機 AI 匝道。
-如果只更新 Render、不重啟本機匝道，Render 送出的 ollama_chat 任務可能無法被本機 worker 處理。
+重要套用順序：
+1. 覆蓋 Render 專案端檔案並重新部署。
+2. 覆蓋本機 AI 匝道 app.py。
+3. 重啟本機 AI 匝道。
+4. 再送新的純文生圖任務測試。
 
-本次關鍵差異：
-舊線上版 Qwen Prompt 整理走 /api/generate。
-測試機走 /api/chat messages。
-本補丁把線上純文生圖整理流程同步為 /api/chat messages，降低 Qwen 忘記族群、構圖與環境要求的機率。
+測試重點：
+- Telegram 輸入 /image，應出現開啟生圖設定按鈕。
+- 純文生圖送出後，狀態訊息應有「查看整理 Prompt」按鈕。
+- prompt 成功後 debug 頁應看到四欄英文 prompt。
+- ComfyUI 任務應使用 workflows/txt2img_basic_api.json 模板，而不是程式手寫 workflow。
 ```
 
 

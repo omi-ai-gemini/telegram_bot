@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>生圖 Prompt Debug</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090b10;
+      --panel: #121722;
+      --panel-2: #171f2d;
+      --text: #edf2ff;
+      --muted: #93a4bd;
+      --line: #263247;
+      --accent: #8bd3ff;
+      --ok: #a8ffcf;
+      --warn: #ffd38b;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top left, #17243a, var(--bg) 42%);
+      color: var(--text);
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+    main {
+      width: min(1040px, calc(100% - 28px));
+      margin: 0 auto;
+      padding: 28px 0 48px;
+    }
+    header {
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+      justify-content: space-between;
+      margin-bottom: 16px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 24px;
+      letter-spacing: 0;
+    }
+    .meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 10px;
+    }
+    .pill {
+      padding: 7px 10px;
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      background: rgba(18, 23, 34, .72);
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .pill strong { color: var(--text); font-weight: 650; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 12px;
+    }
+    section {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(18, 23, 34, .88);
+      overflow: hidden;
+    }
+    section h2 {
+      margin: 0;
+      padding: 11px 13px;
+      font-size: 14px;
+      color: var(--accent);
+      background: var(--panel-2);
+      border-bottom: 1px solid var(--line);
+    }
+    pre {
+      margin: 0;
+      padding: 13px;
+      min-height: 120px;
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: var(--text);
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+    .wide { grid-column: 1 / -1; }
+    .empty { color: var(--warn); }
+    @media (max-width: 760px) {
+      header { display: block; }
+      .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>生圖 Prompt Debug</h1>
+        <div class="meta">
+          <span class="pill">Job <strong>#{{ job.id }}</strong></span>
+          <span class="pill">狀態 <strong>{{ job.status }}</strong></span>
+          <span class="pill">Prompt <strong>{{ job.prompt_generation_status or "pending" }}</strong></span>
+          <span class="pill">模型 <strong>{{ job.prompt_model or "尚未完成" }}</strong></span>
+        </div>
+      </div>
+    </header>
+
+    {% if job.prompt_error %}
+    <section class="wide" style="margin-bottom:12px">
+      <h2>Prompt Error</h2>
+      <pre>{{ job.prompt_error }}</pre>
+    </section>
+    {% endif %}
+
+    <div class="grid">
+      {% for key, title in [
+        ("main_positive", "主生圖正面"),
+        ("main_negative", "主生圖負面"),
+        ("face_positive", "FaceDetailer 正面"),
+        ("face_negative", "FaceDetailer 負面")
+      ] %}
+      <section>
+        <h2>{{ title }}</h2>
+        <pre class="{{ '' if fields.get(key) else 'empty' }}">{{ fields.get(key) or "尚未整理完成" }}</pre>
+      </section>
+      {% endfor %}
+
+      <section class="wide">
+        <h2>原始需求</h2>
+        <pre>{{ source_prompt or "無" }}</pre>
+      </section>
+
+      <section class="wide">
+        <h2>完整 final_prompt</h2>
+        <pre>{{ final_prompt or "尚未整理完成" }}</pre>
+      </section>
+    </div>
+  </main>
+</body>
+</html>
