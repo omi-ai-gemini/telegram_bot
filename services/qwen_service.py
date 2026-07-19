@@ -398,6 +398,87 @@ def _post_generate(
     }
 
 
+def _post_chat(
+    *,
+    model: str,
+    user_text: str,
+    system: str = "",
+    num_predict: int = 512,
+    temperature: float = 0.6,
+    format_schema: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    url = f"{OLLAMA_BASE_URL}/api/chat"
+    messages = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": str(user_text or "")})
+    payload = {
+        "model": model,
+        "messages": messages,
+        "stream": False,
+        "keep_alive": "10m",
+        "options": {
+            "temperature": float(temperature),
+            "num_predict": int(num_predict),
+            "num_ctx": 8192,
+        },
+    }
+    if format_schema:
+        payload["format"] = format_schema
+
+    if gateway_requested() and not gateway_enabled():
+        if gateway_reverse_enabled():
+            try:
+                task_id = create_local_ai_task("ollama_chat", payload)
+                waited = wait_for_local_ai_task_result(
+                    task_id,
+                    timeout_seconds=OLLAMA_TIMEOUT_SECONDS,
+                    poll_seconds=2,
+                )
+            except Exception as exc:
+                return {"ok": False, "message": f"建立 Qwen worker 任務失敗：{exc}"}
+            if not waited.get("ok") or not waited.get("bytes"):
+                return {"ok": False, "message": waited.get("message") or "Qwen worker 沒有回傳結果"}
+            try:
+                data = json.loads(waited["bytes"].decode("utf-8"))
+            except Exception as exc:
+                return {"ok": False, "message": f"Qwen worker JSON 解析失敗：{exc}"}
+        else:
+            return {"ok": False, "message": gateway_config_error() or "本機 AI 閘道設定不完整"}
+
+    elif gateway_enabled():
+        gateway_result = gateway_post_json(
+            "/v1/ollama/chat",
+            payload,
+            timeout=OLLAMA_TIMEOUT_SECONDS,
+        )
+        if not gateway_result.get("ok"):
+            return {"ok": False, "message": gateway_result.get("message") or "Qwen 閘道呼叫失敗"}
+        data = gateway_result.get("data") or {}
+    else:
+        try:
+            response = _OLLAMA_SESSION.post(url, json=payload, timeout=OLLAMA_TIMEOUT_SECONDS)
+        except Exception as exc:
+            return {"ok": False, "message": f"Ollama 連線失敗：{exc}"}
+
+        if not response.ok:
+            return {"ok": False, "message": f"Ollama HTTP {response.status_code}: {response.text[:500]}"}
+
+        try:
+            data = response.json()
+        except Exception as exc:
+            return {"ok": False, "message": f"Ollama 回傳 JSON 解析失敗：{exc}"}
+
+    message = data.get("message") or {}
+    text = _clean_text(message.get("content") or data.get("response"))
+    return {
+        "ok": bool(text),
+        "text": text,
+        "raw": data,
+        "message": None if text else "Ollama 沒有回傳文字",
+    }
+
+
 def get_secondary_model_label() -> str:
     return OLLAMA_DEPUTY_MODEL
 
@@ -510,16 +591,13 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
     if not clean_draft:
         return {"ok": False, "message": "原始提示詞為空"}
 
-    prompt = (
-        "請把下列需求整理成 ComfyUI / SDXL 可直接使用的四欄 JSON。\n"
-        "只輸出 JSON，不要 Markdown，不要解釋。\n\n"
-        f"DRAFT REQUEST:\n{clean_draft}\n\n"
-        f"GENDER HINT: {str(gender_hint or '').strip() or 'auto'}\n"
-    )
+    prompt = clean_draft
+    if str(gender_hint or "").strip():
+        prompt = f"{prompt}\n\n性別提示：{str(gender_hint or '').strip()}"
 
-    result = _post_generate(
+    result = _post_chat(
         model=OLLAMA_PROMPT_MODEL,
-        prompt=prompt,
+        user_text=prompt,
         system=IMAGE_PROMPT_SYSTEM,
         num_predict=OLLAMA_PROMPT_NUM_PREDICT,
         temperature=0.2,

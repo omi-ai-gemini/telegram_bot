@@ -1,49 +1,22 @@
-Telemini 純文生圖同步測試機 Prompt 補丁
+Telemini 純文生圖：測試機 Qwen Chat 同步補丁
 
-覆蓋檔案：
-- routes/image_gen.py
-- services/qwen_service.py
+用途：
+1. 純文生圖的 Prompt 整理改成接近本機測試機流程：Ollama /api/chat + system/user messages + JSON schema。
+2. 保留四欄 Prompt：main_positive、main_negative、face_positive、face_negative。
+3. 保留中國人 / Han Chinese、防外國人、防大頭照、防肖像近拍、空氣瀏海、鯊魚夾髮型等鎖定修復。
+4. 圖文生圖、參考圖、遮罩等其他模式維持原樣。
 
-本次重點：
-1. 純文生圖、不啟用基準圖時，線上版會改成跟測試機一樣：
-   使用者原始提示詞 → Qwen 四欄整理 → ComfyUI
+覆蓋位置：
+- services/qwen_service.py -> 專案 services/qwen_service.py
+- routes/image_gen.py -> 專案 routes/image_gen.py
+- 本機AI閘道/app.py -> 本機 AI 匝道資料夾內的 app.py
 
-2. 純文生圖不再先把提示詞包成 image_prompt.py 的大段英文規則後才交給 Qwen。
-   這是線上版和測試機出圖感覺不同的主要原因。
+重要：
+這次補丁同時改 Render 專案端與本機 AI 匝道端。
+覆蓋後請重新部署 Render，並重啟本機 AI 匝道。
+如果只更新 Render、不重啟本機匝道，Render 送出的 ollama_chat 任務可能無法被本機 worker 處理。
 
-3. 圖文生圖、啟用基準圖、使用者上傳圖、聊天室圖片、遮罩修改維持原樣。
-
-4. Qwen Prompt 整理補上測試機同方向：
-   - 固定四欄：main_positive、main_negative、face_positive、face_negative
-   - 使用 JSON schema 約束四欄輸出
-   - 男女各三套美感詞庫
-   - FaceDetailer 優先吃 Qwen 回傳的 face_positive / face_negative
-
-5. 保留程式端翻譯修復：
-   - 瀏海／刘海／air刘海 → bangs / wispy air bangs
-   - 稀疏空氣瀏海／sparse air刘海 → sparse wispy air bangs
-   - 鯊魚夾／shark clip → claw hair clip
-   - 腦後鯊魚夾收髮 → compact rounded claw clip updo at the back of the head
-
-6. 保留程式端硬鎖：
-   - 中國／中國人 → Chinese、Han Chinese facial features、natural Chinese facial structure
-   - 移除並負面化 Western、Caucasian、European、blue eyes、blonde hair 等衝突詞
-   - 沒明確要求特寫時，強制加入 medium-long shot、three-quarter body shot、visible from head to knees
-   - 負面提示強制加入 portrait、close-up、headshot、face-only shot、tight framing 等防大頭詞
-
-套用方式：
-1. 解壓縮本補丁。
-2. 把 routes/image_gen.py 覆蓋到 Telemini 專案相同路徑。
-3. 把 services/qwen_service.py 覆蓋到 Telemini 專案相同路徑。
-4. 推上 GitHub。
-5. Render 重新部署。
-6. 本機 AI 匝道不用重開；除非你同時改了本機閘道程式。
-
-驗證方式：
-在專案根目錄執行：
-python -m py_compile routes/image_gen.py services/qwen_service.py
-
-預期效果：
-- 線上純文生圖整理 prompt 的行為會更接近「文生圖測試_美版v2」。
-- 使用者打「中國人」時，不會被大段包裝 prompt 稀釋權重。
-- 未要求特寫時，會更穩定壓制大頭照與肖像構圖。
+本次關鍵差異：
+舊線上版 Qwen Prompt 整理走 /api/generate。
+測試機走 /api/chat messages。
+本補丁把線上純文生圖整理流程同步為 /api/chat messages，降低 Qwen 忘記族群、構圖與環境要求的機率。

@@ -124,6 +124,11 @@ def ollama_generate():
     return _proxy_json("POST", f"{OLLAMA_BASE_URL}/api/generate", timeout=300)
 
 
+@app.post("/v1/ollama/chat")
+def ollama_chat():
+    return _proxy_json("POST", f"{OLLAMA_BASE_URL}/api/chat", timeout=300)
+
+
 @app.post("/v1/comfy/prompt")
 def comfy_prompt():
     return _proxy_json("POST", f"{COMFYUI_BASE_URL}/prompt", timeout=60)
@@ -375,6 +380,13 @@ def _ollama_generate(payload: dict) -> tuple[bytes, str]:
     return bytes(response.content), response.headers.get("Content-Type") or "application/json"
 
 
+def _ollama_chat(payload: dict) -> tuple[bytes, str]:
+    response = _SESSION.post(f"{OLLAMA_BASE_URL}/api/chat", json=payload, timeout=300)
+    if not response.ok:
+        raise RuntimeError(f"Ollama HTTP {response.status_code}: {response.text[:500]}")
+    return bytes(response.content), response.headers.get("Content-Type") or "application/json"
+
+
 def _task_heartbeat_loop(task_id: int, stop_event: threading.Event) -> None:
     while not stop_event.wait(5):
         try:
@@ -410,6 +422,8 @@ def _process_render_task(task: dict) -> None:
             result_bytes, mime_type = _comfy_run_prompt(payload, task_id)
         elif task_type == "ollama_generate":
             result_bytes, mime_type = _ollama_generate(payload)
+        elif task_type == "ollama_chat":
+            result_bytes, mime_type = _ollama_chat(payload)
         else:
             raise RuntimeError(f"不支援的任務類型：{task_type}")
         encoded = base64.b64encode(result_bytes).decode("ascii")

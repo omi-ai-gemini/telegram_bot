@@ -908,6 +908,7 @@ C:\Projects\telemini
 - `_portrait_requested()`
 - `_apply_identity_and_composition_locks()`
 - `_post_generate()`
+- `_post_chat()`
 - `get_secondary_model_label()`
 - `generate_chat_reply()`
 - `_strip_code_fence()`
@@ -1085,6 +1086,7 @@ C:\Projects\telemini
 - `_auth_guard()`
 - `_proxy_json()`
 - `ollama_generate()`
+- `ollama_chat()`
 - `comfy_prompt()`
 - `comfy_interrupt()`
 - `comfy_history()`
@@ -1101,6 +1103,7 @@ C:\Projects\telemini
 - `_delete_temp_and_history()`
 - `_comfy_run_prompt()`
 - `_ollama_generate()`
+- `_ollama_chat()`
 - `_task_heartbeat_loop()`
 - `_process_render_task()`
 - `_render_worker_loop()`
