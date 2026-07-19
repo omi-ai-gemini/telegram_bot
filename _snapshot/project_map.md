@@ -900,6 +900,10 @@ C:\Projects\telemini
 ### `services\qwen_service.py`
 - `_clean_text()`
 - `_normalize_visual_terms()`
+- `_add_terms()`
+- `_remove_terms()`
+- `_has_claw_clip_updo_request()`
+- `_apply_visual_translation_locks()`
 - `_post_generate()`
 - `get_secondary_model_label()`
 - `generate_chat_reply()`

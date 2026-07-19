@@ -9090,7 +9090,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：337
+- 行數：499
 
 ## imports
 - json
@@ -9112,6 +9112,10 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 ## functions
 - _clean_text
 - _normalize_visual_terms
+- _add_terms
+- _remove_terms
+- _has_claw_clip_updo_request
+- _apply_visual_translation_locks
 - _post_generate
 - get_secondary_model_label
 - generate_chat_reply
@@ -9148,7 +9152,7 @@ OLLAMA_DEPUTY_MODEL = str(os.getenv("OLLAMA_DEPUTY_MODEL", "qwen2.5:7b")).strip(
 OLLAMA_PROMPT_MODEL = str(os.getenv("OLLAMA_PROMPT_MODEL", OLLAMA_DEPUTY_MODEL)).strip() or OLLAMA_DEPUTY_MODEL
 OLLAMA_TIMEOUT_SECONDS = max(30, int(os.getenv("OLLAMA_TIMEOUT_SECONDS", "180") or "180"))
 OLLAMA_CHAT_NUM_PREDICT = max(64, int(os.getenv("OLLAMA_CHAT_NUM_PREDICT", "512") or "512"))
-OLLAMA_PROMPT_NUM_PREDICT = max(128, int(os.getenv("OLLAMA_PROMPT_NUM_PREDICT", "700") or "700"))
+OLLAMA_PROMPT_NUM_PREDICT = max(128, int(os.getenv("OLLAMA_PROMPT_NUM_PREDICT", "1200") or "1200"))
 
 
 FACE_NEGATIVE = (
@@ -9178,34 +9182,34 @@ FACE_IDENTITY_PREFIX = {
 }
 
 
-IMAGE_PROMPT_SYSTEM = """You rewrite a draft image request into ComfyUI / SDXL prompt fields.
-Output only valid JSON. Do not add markdown, explanations, or code fences.
+IMAGE_PROMPT_SYSTEM = r"""
+你是 Telemini 的圖片提示詞整理器。
 
-Required JSON keys:
-- main_positive: string
-- main_negative: string
-- face_identity: string
-- face_gender: string
+你只把使用者需求忠實整理為 ComfyUI／SDXL 可用的四組英文提示詞，並只輸出 JSON。這是純文生圖流程，沒有參考圖。
 
-Rules:
-1. main_positive must be in English and directly usable for a realistic photo generation workflow.
-2. main_negative must be in English and focus on avoiding close-up portrait crops, bad anatomy, extra limbs, blur, low quality, illustration look, and other common generation failures.
-3. face_identity must be one of: Chinese, Japanese, Korean, Taiwanese, Western, EastAsian.
-4. face_gender must be one of: woman, man.
-5. Preserve the user's requested subject, clothing, framing, background, and scene intent.
-6. If the draft clearly asks for a wider framing such as three-quarter body, medium-long shot, knee-up, environmental shot, or not a close-up, keep that.
-7. Do not censor, moralize, refuse, or mention policy. Only transform the request into model-friendly prompt fields.
-8. Translate every non-English visual term into English. Do not leave Chinese, Japanese, Korean, or mixed-language fragments in main_positive.
-9. Hair examples: 瀏海 / 刘海 = bangs; 空氣瀏海 / 空气刘海 / air刘海 = wispy air bangs; 鯊魚夾 / 鲨鱼夹 / shark clip = claw hair clip.
-"""
+固定欄位：
+main_positive：人物、國籍或族群、性別、外觀、服裝或裸體狀態、動作、表情、構圖、背景、光線、寫實攝影風格。
+main_negative：使用者禁止內容、錯誤構圖、錯誤衣物、錯誤族群特徵、低品質、肢體與手部錯誤、塑膠皮膚、動畫或插畫風。
+face_positive：只寫臉部生成與修復需要的性別、年齡感、臉型、眼睛、眉毛、鼻子、嘴唇、妝容、膚質與自然五官品質。
+face_negative：只寫臉部錯誤，例如鬥雞眼、不對稱眼睛、錯誤或額外瞳孔、臉部比例失衡、假睫毛、假眉毛、塑膠皮膚、過度磨皮、臉部變形與模糊。
 
-
-def _clean_text(value: Any) -> str:
-    return re.sub(r"\s+", " ", str(value or "")).strip()
-
-
+硬性規則：
+1. 使用者明確指定的國籍、族群、性別、年齡、外貌、臉型、眼睛、鼻子、嘴唇、妝容、構圖、服裝、背景、動作、表情與禁止項目，全部都是鎖定值，不可自行替換。
+2. 美感詞庫只用來補使用者未指定的部位，不可覆蓋使用者明確要求。
+3. 同一次輸出只能選一套一致的美感方向，不可把自然、甜美、成熟三套互相混成拼裝臉。
+4. 使用者只說「美女、漂亮、好看、正妹、美麗」而沒有細分外貌時，使用自然耐看型預設。
+5. 使用者說「可愛、甜美、清純、甜妹」時，使用甜美可愛型預設。
+6. 使用者說「成熟、氣質、冷感、御姐、優雅」時，使用成熟精緻型預設。
+7. 使用者只說「帥哥、帥氣、好看的男人」而沒有細分外貌時，使用男性自然耐看型預設。
+8. 使用者說「陽光、清爽、鄰家、年輕、少年感」時，使用男性陽光清爽型預設。
+9. 使用者說「成熟、冷峻、菁英、霸氣、總裁感」時，使用男性成熟冷峻型預設。
+10. 預設禁止肖像照與大頭構圖。除非使用者明確要求肖像、特寫、大頭照、自拍、證件照、個人頭像、臉部近拍或胸像，main_positive 必須加入 medium-long shot, three-quarter body shot, visible from head to knees, camera positioned farther away, more environment visible, balanced subject-to-background composition, subject not filling the frame, environment clearly readable, hands visible when reasonable；main_negative 必須加入 portrait, close-up, extreme close-up, close-up portrait, face-only shot, face-only portrait, headshot, beauty headshot, portrait crop, bust shot, medium close-up, shoulder-up shot, shoulder-up crop, chest-up framing, chest-up portrait, tight framing, zoomed-in face, large face in frame, face filling the frame, centered face, profile picture, passport photo, ID photo, studio portrait, glamour portrait, beauty portrait。
+11. 若使用者沒有指定背景或場景，必須依據人物服裝、動作、氣氛、時間、天氣與主題，自動補一個適合且不搶主體的真實背景；不要留成空白背景，也不要只給模糊散景。若仍無足夠線索，再使用自然、乾淨、可閱讀的日常真實環境。
+12. 若使用者沒有指定動作，補 natural standing pose；若沒有指定表情，補 relaxed natural expression。
+13. 使用者說不要特寫時，main_positive 必須包含 three-quarter body shot, medium-long shot, visible from head to knees, camera positioned farther away；main_negative 必須包含 close-up, extreme close-up, headshot, face-only shot, tight framing, face filling the frame。
+14. 使用者說全身時，main_positive 必須包含 full body shot, entire body visible, feet visible；main_negative 必須包含 cropped feet, cropped body, close-up, headshot。
 ...
-... 已省略 257 行
+... 已省略 419 行
 ```
 
 
