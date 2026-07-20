@@ -1,7 +1,7 @@
 import json
 import os
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import requests
 
@@ -721,7 +721,12 @@ def _post_chat(
     num_predict: int = 512,
     temperature: float = 0.6,
     format_schema: Optional[Dict[str, Any]] = None,
+    cancel_check: Optional[Callable[[], bool]] = None,
+    progress_callback: Optional[Callable[[], None]] = None,
 ) -> Dict[str, Any]:
+    if cancel_check and cancel_check():
+        return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
+
     url = f"{OLLAMA_BASE_URL}/api/chat"
     messages = []
     if system:
@@ -749,9 +754,18 @@ def _post_chat(
                     task_id,
                     timeout_seconds=OLLAMA_TIMEOUT_SECONDS,
                     poll_seconds=2,
+                    cancel_check=cancel_check,
+                    progress_callback=progress_callback,
                 )
             except Exception as exc:
                 return {"ok": False, "message": f"建立 Qwen worker 任務失敗：{exc}"}
+            if waited.get("canceled"):
+                return {
+                    "ok": False,
+                    "canceled": True,
+                    "message": waited.get("message") or "使用者已取消生圖",
+                    "local_task_id": task_id,
+                }
             if not waited.get("ok") or not waited.get("bytes"):
                 return {"ok": False, "message": waited.get("message") or "Qwen worker 沒有回傳結果"}
             try:
@@ -786,6 +800,8 @@ def _post_chat(
 
     message = data.get("message") or {}
     text = _clean_text(message.get("content") or data.get("response"))
+    if cancel_check and cancel_check():
+        return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
     return {
         "ok": bool(text),
         "text": text,
@@ -903,6 +919,10 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
     user_text = _clean_text(draft_prompt)
     if not user_text:
         return {"ok": False, "message": "原始提示詞為空"}
+    cancel_check = kwargs.get("cancel_check")
+    progress_callback = kwargs.get("progress_callback")
+    if callable(cancel_check) and cancel_check():
+        return {"ok": False, "canceled": True, "message": "使用者已取消生圖"}
 
     result = _post_chat(
         model=OLLAMA_PROMPT_MODEL,
@@ -911,7 +931,11 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
         num_predict=OLLAMA_PROMPT_NUM_PREDICT,
         temperature=0.2,
         format_schema=IMAGE_PROMPT_SCHEMA,
+        cancel_check=cancel_check if callable(cancel_check) else None,
+        progress_callback=progress_callback if callable(progress_callback) else None,
     )
+    if result.get("canceled"):
+        return {"ok": False, "canceled": True, "message": result.get("message") or "使用者已取消生圖"}
     if not result.get("ok"):
         return {"ok": False, "message": result.get("message") or "Qwen Prompt 整理失敗"}
 

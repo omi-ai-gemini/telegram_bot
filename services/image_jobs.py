@@ -714,7 +714,15 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
             return True
 
         secondary_label = get_secondary_model_label() or "qwen2.5:7b"
-        organized = organize_image_prompt(source_prompt, gender_hint=job.get("gender") or "")
+        organized = organize_image_prompt(
+            source_prompt,
+            gender_hint=job.get("gender") or "",
+            cancel_check=lambda: _job_cancel_requested(job["id"]),
+            progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
+        )
+        if organized.get("canceled") or _job_cancel_requested(job["id"]):
+            _cancel(_get_job(job["id"]) or job)
+            return True
         organize_error = _text(organized.get("message"))
         if organized.get("ok"):
             break
@@ -867,6 +875,8 @@ def process_image_job(
                         draft_prompt=source_prompt,
                         generation_mode=job.get("generation_mode") or "text",
                         reference_type=job.get("reference_type"),
+                        cancel_check=lambda: _job_cancel_requested(job["id"]),
+                        progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
                         debug_context={
                             "chat_id": job.get("chat_id"),
                             "user_id": job.get("user_id"),
@@ -877,6 +887,10 @@ def process_image_job(
                     )
                 except Exception as exc:
                     organized = {"ok": False, "message": f"副模型整理失敗：{exc}"}
+
+                if organized.get("canceled") or _job_cancel_requested(job["id"]):
+                    _cancel(_get_job(job["id"]) or job)
+                    return
 
                 if organized.get("ok") and _text(organized.get("text")):
                     prompt = _text(organized.get("text"))
@@ -1157,7 +1171,8 @@ def cancel_job_for_user(job_id: Any, user_id: Any, bot_id: Any, chat_id: Any) ->
     try:
         cursor = conn.cursor()
         cursor.execute("""
-            SELECT status FROM image_generation_jobs
+            SELECT status, horde_request_id, api_slot, status_message_id
+            FROM image_generation_jobs
             WHERE id=%s AND user_id=%s AND bot_id=%s AND chat_id=%s
         """, (job_id, _text(user_id), _text(bot_id), _text(chat_id)))
         row = cursor.fetchone()
@@ -1171,6 +1186,20 @@ def cancel_job_for_user(job_id: Any, user_id: Any, bot_id: Any, chat_id: Any) ->
             WHERE id=%s
         """, (job_id,))
         conn.commit()
+        local_task_id = _local_task_id_from_prompt(row[1])
+        if local_task_id is not None:
+            try:
+                cancel_local_ai_task(local_task_id)
+            except Exception as exc:
+                print(f"IMAGE CANCEL LOCAL TASK FAILED job_id={job_id} task_id={local_task_id}:", exc, flush=True)
+        if row[3]:
+            edit_message_text(
+                bot_id,
+                chat_id,
+                row[3],
+                "已收到取消要求，正在停止生圖任務",
+                reply_markup=None,
+            )
         return {"ok": True, "message": "已送出取消生圖要求"}
     finally:
         conn.close()

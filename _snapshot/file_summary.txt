@@ -7257,7 +7257,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：1201
+- 行數：1230
 
 ## imports
 - datetime.datetime
@@ -7422,7 +7422,7 @@ def _job_status_markup(job: Dict[str, Any], allow_cancel: bool = True):
     keyboard = []
     prompt_url = _prompt_debug_url(job)
 ...
-... 已省略 1121 行
+... 已省略 1150 行
 ```
 
 
@@ -9107,7 +9107,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 # services\qwen_service.py
 
 - 類型：.py
-- 行數：950
+- 行數：974
 
 ## imports
 - json
@@ -9122,6 +9122,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 - services.local_ai_tasks.create_local_ai_task
 - services.local_ai_tasks.wait_for_local_ai_task_result
 - typing.Any
+- typing.Callable
 - typing.Dict
 - typing.Optional
 - typing.Tuple
@@ -9161,7 +9162,7 @@ def verify_prompt_debug_token(token: str, user_id: Any = None, bot_id: Any = Non
 import json
 import os
 import re
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Callable, Dict, Optional, Tuple
 
 import requests
 
@@ -9239,7 +9240,7 @@ face_negative：只寫臉部錯誤，例如鬥雞眼、不對稱眼睛、錯誤�
 5. 使用者說「可愛、甜美、清純、甜妹」時，使用甜美可愛型預設。
 6. 使用者說「成熟、氣質、冷感、御姐、優雅」時，使用成熟精緻型預設。
 ...
-... 已省略 870 行
+... 已省略 894 行
 ```
 
 
