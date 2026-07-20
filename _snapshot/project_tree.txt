@@ -64,6 +64,7 @@
 📄 prompt#U5916#U5e36#U8aaa#U660e.txt
 📄 prompt外帶說明.txt
 📄 README_#U8986#U84cb#U8aaa#U660e.txt
+📄 README_任務管理器補丁說明.txt
 📄 README_覆蓋說明.txt
 📄 requirements.txt
 📁 routes/
@@ -101,6 +102,7 @@
   📄 image_prepare.py
   📄 image_prompt.py
   📄 image_store.py
+  📄 image_task_manager.py
   📄 local_ai_gateway_client.py
   📄 local_ai_tasks.py
   📄 media_ai.py

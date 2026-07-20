@@ -3937,6 +3937,68 @@ python -m py_compile main.py config.py service_center/handler.py service_center/
 
 ================================================================================
 
+# README_任務管理器補丁說明.txt
+
+- 類型：.txt
+- 行數：50
+
+## preview
+```text
+Telemini 純文生圖任務管理器補丁
+
+用途：
+把純文生圖的主要流程集中到 services/image_task_manager.py，避免 Qwen 整理、OMI 送出、暫存等待、補考、取消分散在不同服務裡。
+
+本次新增：
+- telemini/services/image_task_manager.py
+
+本次覆蓋：
+- telemini/services/image_jobs.py
+- telemini/services/qwen_service.py
+
+目前接管範圍：
+- 純文生圖
+- Qwen prompt 整理
+- Qwen 補考
+- OMI 自架模型送出
+- AI 匝道離線暫存等待
+- 使用者取消
+- OMI 圖片結果收尾
+
+暫時保持原樣：
+- 圖文生圖
+- 整體圖生圖
+- 遮罩局部修改
+- 圖片庫
+- Telegram 圖片保存
+
+主要差異：
+1. image_jobs.py 不再自己鋪完整純文生圖流程，只建立 ImageTaskContext 並交給 process_pure_text_omi_job。
+2. image_task_manager.py 統一管理 prompting -> submitting -> queued/processing -> completed/canceled。
+3. Qwen 等待本機 worker 時可接收 cancel_check；prompt生成中按取消不會再卡住。
+4. prompt 整理失敗或 AI 匝道離線時，由任務管理器統一進入暫存/補考流程。
+5. 上一版「原文需求硬保留」保留在 qwen_service.py 內。
+
+套用：
+1. 將 telemini 資料夾覆蓋到專案根目錄。
+2. 重新部署 Render。
+3. 重新啟動本機 OMI worker / AI 匝道。
+4. 測試純文生圖：
+   - 正常生成
+   - prompt生成中取消
+   - AI 匝道關閉後送任務，再開啟匝道
+
+驗證：
+已做 Python 語法檢查：
+python3 -m py_compile services/image_task_manager.py services/image_jobs.py services/qwen_service.py
+
+注意：
+這版是第一階段任務管理器，先穩定純文生圖。其他生圖模式沒有被搬進任務管理器，避免改動過大。
+```
+
+
+================================================================================
+
 # README_覆蓋說明.txt
 
 - 類型：.txt
@@ -7257,7 +7319,7 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 # services\image_jobs.py
 
 - 類型：.py
-- 行數：1230
+- 行數：1104
 
 ## imports
 - datetime.datetime
@@ -7284,6 +7346,8 @@ def verify_image_token(token: str, expected_page: Optional[str] = None) -> Dict[
 - services.image_prepare.prepare_img2img_source
 - services.image_store.download_image_asset
 - services.image_store.save_image_asset
+- services.image_task_manager.ImageTaskContext
+- services.image_task_manager.process_pure_text_omi_job
 - services.local_ai_tasks.cancel_local_ai_task
 - services.qwen_service.build_face_prompts
 - services.qwen_service.get_secondary_model_label
@@ -7360,6 +7424,7 @@ from services.aihorde_service import (
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
 from services.image_auth import create_image_token
+from services.image_task_manager import ImageTaskContext, process_pure_text_omi_job
 from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
@@ -7420,9 +7485,8 @@ def _prompt_debug_url(job: Dict[str, Any]) -> Optional[str]:
 
 def _job_status_markup(job: Dict[str, Any], allow_cancel: bool = True):
     keyboard = []
-    prompt_url = _prompt_debug_url(job)
 ...
-... 已省略 1150 行
+... 已省略 1024 行
 ```
 
 
@@ -7757,6 +7821,129 @@ def init_image_tables() -> None:
         cursor.execute("ALTER TABLE image_generation_jobs ADD COLUMN IF NOT EXISTS prompt_generation_status TEXT DEFAULT 'pending'")
 ...
 ... 已省略 240 行
+```
+
+
+================================================================================
+
+# services\image_task_manager.py
+
+- 類型：.py
+- 行數：228
+
+## imports
+- datetime.datetime
+- services.comfyui_service.build_txt2img_workflow
+- services.comfyui_service.queue_prompt
+- services.comfyui_service.wait_for_prompt_image
+- services.local_ai_tasks.cancel_local_ai_task
+- services.qwen_service.get_secondary_model_label
+- services.qwen_service.organize_image_prompt
+- time
+- typing.Any
+- typing.Callable
+- typing.Dict
+- typing.Optional
+
+## classes
+- ImageTaskContext
+
+## functions
+- _offline_prompt_text
+- _cancel_fallback_local_task
+- _wait_existing_omi_task
+- _organize_prompt_with_retake
+- process_pure_text_omi_job
+- __init__
+- current_job
+- heartbeat
+- cancel_requested
+- cancel_current
+
+## preview
+```text
+import time
+from datetime import datetime
+from typing import Any, Callable, Dict, Optional
+
+from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
+from services.local_ai_tasks import cancel_local_ai_task
+from services.qwen_service import get_secondary_model_label, organize_image_prompt
+
+
+class ImageTaskContext:
+    def __init__(
+        self,
+        *,
+        text: Callable[[Any], str],
+        decrypt_prompt: Callable[..., str],
+        encrypt_prompt: Callable[..., str],
+        update_job: Callable[..., None],
+        get_job: Callable[[int], Optional[Dict[str, Any]]],
+        job_cancel_requested: Callable[[int], bool],
+        cancel_job: Callable[[Dict[str, Any]], None],
+        fail_job: Callable[..., None],
+        edit_status_message: Callable[..., Any],
+        finish_omi_txt2img_result: Callable[[Dict[str, Any], Dict[str, Any]], bool],
+        is_local_task_prompt: Callable[[Any], bool],
+        local_task_id_from_prompt: Callable[[Any], Optional[int]],
+        qwen_retryable_error: Callable[[Any], bool],
+        wait_for_qwen_retake: Callable[[Dict[str, Any], str], bool],
+        pure_text_queue_timeout_seconds: int,
+    ):
+        self.text = text
+        self.decrypt_prompt = decrypt_prompt
+        self.encrypt_prompt = encrypt_prompt
+        self.update_job = update_job
+        self.get_job = get_job
+        self.job_cancel_requested = job_cancel_requested
+        self.cancel_job = cancel_job
+        self.fail_job = fail_job
+        self.edit_status_message = edit_status_message
+        self.finish_omi_txt2img_result = finish_omi_txt2img_result
+        self.is_local_task_prompt = is_local_task_prompt
+        self.local_task_id_from_prompt = local_task_id_from_prompt
+        self.qwen_retryable_error = qwen_retryable_error
+        self.wait_for_qwen_retake = wait_for_qwen_retake
+        self.pure_text_queue_timeout_seconds = int(pure_text_queue_timeout_seconds)
+
+    def current_job(self, job: Dict[str, Any]) -> Dict[str, Any]:
+        return self.get_job(int(job["id"])) or job
+
+    def heartbeat(self, job_id: int) -> None:
+        self.update_job(job_id, heartbeat_at=datetime.utcnow())
+
+    def cancel_requested(self, job_id: int) -> bool:
+        return self.job_cancel_requested(job_id)
+
+    def cancel_current(self, job: Dict[str, Any]) -> bool:
+        self.cancel_job(self.current_job(job))
+        return True
+
+
+def _offline_prompt_text(*, qwen_retake: bool = False) -> str:
+    lines = [
+        "生圖申請已暫存",
+        "等待 AI 匝道連線中",
+    ]
+    if qwen_retake:
+        lines.append("重新連線後會先讓 Qwen 補考整理 prompt")
+    else:
+        lines.append("開啟 OMI 自架模型後會自動開始生圖")
+    lines.append("暫存期限：24 小時")
+    return "\n".join(lines)
+
+
+def _cancel_fallback_local_task(job: Dict[str, Any], ctx: ImageTaskContext) -> None:
+    local_task_id = ctx.local_task_id_from_prompt(job.get("horde_request_id"))
+    if local_task_id is None:
+        return
+    try:
+        cancel_local_ai_task(local_task_id)
+    except Exception as exc:
+        print(
+...
+... 已省略 148 行
 ```
 
 

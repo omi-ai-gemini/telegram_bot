@@ -17,6 +17,7 @@ from services.aihorde_service import (
 from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypted
 from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
 from services.image_auth import create_image_token
+from services.image_task_manager import ImageTaskContext, process_pure_text_omi_job
 from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
@@ -659,151 +660,24 @@ def _finish_omi_txt2img_result(job: Dict[str, Any], waited: Dict[str, Any]) -> b
 
 
 def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
-    source_prompt = _decrypt_prompt(
-        job["id"],
-        job.get("source_prompt") or job.get("final_prompt"),
-        field="source_prompt" if job.get("source_prompt") else "final_prompt",
+    context = ImageTaskContext(
+        text=_text,
+        decrypt_prompt=_decrypt_prompt,
+        encrypt_prompt=_encrypt_prompt,
+        update_job=_update_job,
+        get_job=_get_job,
+        job_cancel_requested=_job_cancel_requested,
+        cancel_job=_cancel,
+        fail_job=_fail,
+        edit_status_message=_edit_status_message,
+        finish_omi_txt2img_result=_finish_omi_txt2img_result,
+        is_local_task_prompt=_is_local_task_prompt,
+        local_task_id_from_prompt=_local_task_id_from_prompt,
+        qwen_retryable_error=_qwen_retryable_error,
+        wait_for_qwen_retake=_wait_for_qwen_retake,
+        pure_text_queue_timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
     )
-    if not source_prompt:
-        _fail(job, "生圖提示詞讀取失敗", code="PROMPT_READ_FAILED")
-        return True
-
-    existing_prompt_id = _text(job.get("horde_request_id"))
-    if _is_local_task_prompt(existing_prompt_id):
-        if _text(job.get("prompt_generation_status")) == "fallback":
-            local_task_id = _local_task_id_from_prompt(existing_prompt_id)
-            if local_task_id is not None:
-                try:
-                    cancel_local_ai_task(local_task_id)
-                except Exception as exc:
-                    print(f"QWEN RETAKE CANCEL FALLBACK TASK FAILED job_id={job['id']}:", exc, flush=True)
-            _update_job(
-                job["id"],
-                status="prompting",
-                horde_request_id=None,
-                api_slot=None,
-                started_at=None,
-                queued_notified=True,
-                processing_notified=False,
-                prompt_generation_status="pending",
-                prompt_error="等待 AI 匝道連線後讓 Qwen 補考",
-                heartbeat_at=datetime.utcnow(),
-            )
-            job = _get_job(job["id"]) or job
-        else:
-            _edit_status_message(
-                job,
-                (
-                    "生圖申請已暫存\n"
-                    "等待 AI 匝道連線中\n"
-                    "開啟 OMI 自架模型後會自動開始生圖\n"
-                    "暫存期限：24 小時"
-                ),
-            )
-            waited = wait_for_prompt_image(
-                existing_prompt_id,
-                timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
-                cancel_check=lambda: _job_cancel_requested(job["id"]),
-                progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
-            )
-            return _finish_omi_txt2img_result(job, waited)
-
-    while True:
-        if _job_cancel_requested(job["id"]):
-            _cancel(_get_job(job["id"]) or job)
-            return True
-
-        secondary_label = get_secondary_model_label() or "qwen2.5:7b"
-        organized = organize_image_prompt(
-            source_prompt,
-            gender_hint=job.get("gender") or "",
-            cancel_check=lambda: _job_cancel_requested(job["id"]),
-            progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
-        )
-        if organized.get("canceled") or _job_cancel_requested(job["id"]):
-            _cancel(_get_job(job["id"]) or job)
-            return True
-        organize_error = _text(organized.get("message"))
-        if organized.get("ok"):
-            break
-
-        if _qwen_retryable_error(organize_error):
-            if not _wait_for_qwen_retake(_get_job(job["id"]) or job, organize_error):
-                return True
-            job = _get_job(job["id"]) or job
-            continue
-
-        break
-
-    if not organized.get("ok"):
-        if not _wait_for_qwen_retake(
-            _get_job(job["id"]) or job,
-            organize_error or "Qwen Prompt 整理失敗，已暫存等待補考",
-        ):
-            return True
-        return True
-
-    if organized.get("ok"):
-        prompt_preview = organized.get("preview_text") or organized.get("text") or organized.get("main_positive") or source_prompt
-        _update_job(
-            job["id"],
-            final_prompt=_encrypt_prompt(job["id"], prompt_preview, field="final_prompt"),
-            prompt_generation_status="ready",
-            prompt_model=secondary_label,
-            prompt_error=None,
-            prompt_chars_before=len(source_prompt),
-            prompt_chars_after=len(prompt_preview),
-        )
-        _edit_status_message(job, "prompt整理完成，正在送入 OMI 自架模型")
-
-    if _job_cancel_requested(job["id"]):
-        _cancel(_get_job(job["id"]) or job)
-        return True
-
-    workflow = build_txt2img_workflow(
-        main_positive=organized.get("main_positive") or source_prompt,
-        main_negative=organized.get("main_negative") or "",
-        face_positive=organized.get("face_positive") or "",
-        face_negative=organized.get("face_negative") or "",
-    )
-
-    _update_job(job["id"], status="submitting", heartbeat_at=datetime.utcnow())
-    queued = queue_prompt(workflow)
-    if not queued.get("ok"):
-        _fail(job, queued.get("message") or "OMI 自架模型任務送出失敗", code="OMI_SUBMIT_FAILED")
-        return True
-
-    prompt_id = str(queued.get("prompt_id"))
-    is_local_task = _is_local_task_prompt(prompt_id)
-    _update_job(
-        job["id"],
-        status="queued" if is_local_task else "processing",
-        horde_request_id=prompt_id,
-        api_slot="omi_local_worker" if is_local_task else "comfyui",
-        started_at=None if is_local_task else datetime.utcnow(),
-        heartbeat_at=datetime.utcnow(),
-        queued_notified=True,
-        processing_notified=not is_local_task,
-    )
-    _edit_status_message(
-        job,
-        (
-            "生圖申請已暫存\n"
-            "等待 AI 匝道連線中\n"
-            "開啟 OMI 自架模型後會自動開始生圖\n"
-            "暫存期限：24 小時"
-        )
-        if is_local_task
-        else "正在生圖",
-    )
-
-    waited = wait_for_prompt_image(
-        prompt_id,
-        timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
-        cancel_check=lambda: _job_cancel_requested(job["id"]),
-        progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
-    )
-    return _finish_omi_txt2img_result(job, waited)
+    return process_pure_text_omi_job(job, context)
 
 
 def process_image_job(

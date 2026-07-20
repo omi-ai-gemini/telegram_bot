@@ -73,6 +73,7 @@ C:\Projects\telemini
 - `prompt#U5916#U5e36#U8aaa#U660e.txt`
 - `prompt外帶說明.txt`
 - `README_#U8986#U84cb#U8aaa#U660e.txt`
+- `README_任務管理器補丁說明.txt`
 - `README_覆蓋說明.txt`
 - `requirements.txt`
 - `routes\admin.py`
@@ -107,6 +108,7 @@ C:\Projects\telemini
 - `services\image_prepare.py`
 - `services\image_prompt.py`
 - `services\image_store.py`
+- `services\image_task_manager.py`
 - `services\local_ai_gateway_client.py`
 - `services\local_ai_tasks.py`
 - `services\media_ai.py`
@@ -726,6 +728,18 @@ C:\Projects\telemini
 - `download_image_asset()`
 - `rename_image_asset()`
 - `delete_image_asset()`
+
+### `services\image_task_manager.py`
+- `_offline_prompt_text()`
+- `_cancel_fallback_local_task()`
+- `_wait_existing_omi_task()`
+- `_organize_prompt_with_retake()`
+- `process_pure_text_omi_job()`
+- `__init__()`
+- `current_job()`
+- `heartbeat()`
+- `cancel_requested()`
+- `cancel_current()`
 
 ### `services\local_ai_gateway_client.py`
 - `gateway_requested()`
