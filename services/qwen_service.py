@@ -445,6 +445,199 @@ def _test_apply_locks(user_text: str, fields: Dict[str, str]) -> None:
         fields["main_negative"] = _add_terms(fields["main_negative"], ["cropped feet", "cropped body", "close-up", "headshot"])
 
 
+MAIN_POSITIVE_FACE_FILLER_TERMS = [
+    "harmonious facial proportions",
+    "balanced facial features",
+    "balanced masculine facial features",
+    "refined but realistic facial structure",
+    "soft oval face",
+    "gentle natural jawline",
+    "natural jawline",
+    "almond-shaped eyes",
+    "clear expressive eyes",
+    "balanced eye spacing",
+    "realistic eyelid detail",
+    "natural eyebrows",
+    "softly arched eyebrows",
+    "individual eyebrow hairs",
+    "proportionate nose bridge",
+    "refined natural nose shape",
+    "balanced nose proportions",
+    "well-shaped natural lips",
+    "natural lip contour",
+    "subtle cupid's bow",
+    "minimal natural makeup",
+    "subtle blush",
+    "soft natural lip color",
+    "natural skin texture",
+    "subtle pores",
+    "fine skin details",
+    "healthy complexion",
+    "minimal retouching",
+    "soft youthful facial proportions",
+    "softly rounded cheeks",
+    "gentle facial contour",
+    "small delicate chin",
+    "slightly round bright eyes",
+    "expressive eyes",
+    "soft realistic eyelid detail",
+    "soft natural eyebrows",
+    "delicate natural nose shape",
+    "soft natural lips",
+    "gentle lip shape",
+    "soft natural makeup",
+    "fresh blush",
+    "delicate lip tint",
+    "refined facial structure",
+    "elegant facial contour",
+    "balanced mature facial proportions",
+    "defined but natural jawline",
+    "elongated almond eyes",
+    "calm refined eyes",
+    "elegant eye shape",
+    "softly arched natural eyebrows",
+    "defined but natural nose bridge",
+    "elegant nose shape",
+    "refined natural nose tip",
+    "refined natural lip shape",
+    "elegant lip contour",
+    "refined natural makeup",
+    "softly defined eye makeup",
+    "elegant blush",
+    "natural lip color",
+    "clean-cut handsome appearance",
+    "balanced facial proportions",
+    "fresh youthful facial structure",
+    "natural facial contour",
+    "bright expressive eyes",
+    "clear lively eyes",
+    "neat natural eyebrows",
+    "proportionate natural nose bridge",
+    "clean natural nose shape",
+    "natural lip shape",
+    "balanced lip proportions",
+    "approachable expression",
+    "mature handsome appearance",
+    "defined masculine facial structure",
+    "strong natural jawline",
+    "composed facial contour",
+    "deep-set calm eyes",
+    "composed eyes",
+    "straight natural eyebrows",
+    "well-shaped masculine eyebrows",
+    "refined nose bridge",
+    "defined natural nose shape",
+    "composed lip contour",
+    "composed expression",
+    "cool mature presence",
+    "realistic facial skin",
+    "healthy natural skin texture",
+]
+
+
+def _has_any(source: str, terms) -> bool:
+    low = str(source or "").lower()
+    return any(str(term).lower() in low for term in terms)
+
+
+def _append_unique(terms: list[str], term: str) -> None:
+    if term and term.lower() not in {item.lower() for item in terms}:
+        terms.append(term)
+
+
+def _extract_explicit_main_terms(user_text: str) -> list[str]:
+    source = str(user_text or "")
+    low = source.lower()
+    terms: list[str] = []
+
+    if _has_any(source, ("中國", "中国", "中國人", "中国人", "chinese", "han chinese")):
+        _append_unique(terms, "Chinese")
+
+    if _has_any(source, ("年輕女性", "年轻女性", "年輕女人", "年轻女人", "young woman", "young female")):
+        _append_unique(terms, "young woman")
+    elif _has_any(source, ("女性", "女人", "女生", "女孩子", "woman", "female", "girl")):
+        _append_unique(terms, "woman")
+
+    age_match = re.search(r"(\d{1,2})\s*(?:歲|岁|years?\s*old|yo\b)", source, flags=re.IGNORECASE)
+    if age_match:
+        _append_unique(terms, f"{age_match.group(1)} years old")
+
+    if _has_any(source, ("氣質", "气质", "優雅", "优雅", "elegant beauty")):
+        _append_unique(terms, "elegant beauty")
+    elif _has_any(source, ("美女", "漂亮", "好看", "正妹", "美麗", "美丽", "beautiful woman", "beautiful girl")):
+        _append_unique(terms, "beautiful woman")
+
+    if _has_any(source, ("襯衫", "衬衫", "blouse")):
+        _append_unique(terms, "blouse")
+    elif _has_any(source, ("shirt",)):
+        _append_unique(terms, "shirt")
+
+    if _has_any(source, ("短裙", "short skirt", "mini skirt", "miniskirt")):
+        _append_unique(terms, "short skirt")
+
+    if (
+        _has_any(source, ("稀疏空氣瀏海", "稀疏空气刘海", "稀疏的空氣瀏海", "稀疏的空气刘海", "sparse air刘海", "sparse wispy air bangs"))
+        or ("稀疏" in source and _has_any(source, ("瀏海", "刘海", "bangs")))
+    ):
+        _append_unique(terms, "sparse wispy air bangs")
+    elif _has_any(source, ("空氣瀏海", "空气刘海", "air刘海", "wispy air bangs")):
+        _append_unique(terms, "wispy air bangs")
+    elif _has_any(source, ("瀏海", "刘海", "bangs")):
+        _append_unique(terms, "bangs")
+
+    normalized_source = _test_normalize_visual_terms(source)
+    if _has_claw_clip_updo_request(source) or _has_claw_clip_updo_request(normalized_source):
+        _append_unique(terms, "compact rounded claw clip updo at the back of the head")
+        _append_unique(terms, "all long hair gathered upward and secured with a claw hair clip")
+        _append_unique(terms, "bun-like shape but not a formal bun")
+        _append_unique(terms, "no loose hanging hair tail")
+
+    right_hand_hair = (
+        ("右手" in source and _has_any(source, ("右耳", "耳邊", "耳边", "髮絲", "发丝", "頭髮", "头发", "hair")))
+        or _has_any(low, ("right hand adjusting hair", "right hand fixing hair", "right hand touching hair"))
+    )
+    if right_hand_hair:
+        _append_unique(terms, "right hand adjusting hair by ear")
+
+    if (
+        ("左手" in source and _has_any(source, ("書", "书", "book")))
+        or _has_any(low, ("left hand holding a book",))
+    ):
+        _append_unique(terms, "left hand holding a book")
+    elif _has_any(source, ("拿著一本書", "拿着一本书", "holding a book")):
+        _append_unique(terms, "holding a book")
+
+    if _has_any(source, ("走在校園", "走在校园", "walking in campus", "walking on campus")):
+        _append_unique(terms, "walking in campus")
+    elif _has_any(source, ("校園", "校园", "campus")):
+        _append_unique(terms, "campus")
+
+    if _has_any(source, ("校園建築", "校园建筑", "campus buildings")):
+        _append_unique(terms, "campus buildings")
+
+    return terms
+
+
+def _prepend_terms(text: str, terms: list[str]) -> str:
+    body = _remove_terms(text, terms)
+    return ", ".join([item for item in [*terms, body] if item])
+
+
+def _apply_test_machine_source_overlay(user_text: str, fields: Dict[str, str]) -> None:
+    fields["main_positive"] = _remove_terms(
+        fields.get("main_positive"),
+        MAIN_POSITIVE_FACE_FILLER_TERMS,
+    )
+    if not _has_any(user_text, ("全身照", "完整全身", "全身", "full body", "entire body", "feet visible")):
+        fields["main_positive"] = _remove_terms(
+            fields["main_positive"],
+            ["full body shot", "entire body visible", "feet visible"],
+        )
+    explicit_terms = _extract_explicit_main_terms(user_text)
+    if explicit_terms:
+        fields["main_positive"] = _prepend_terms(fields["main_positive"], explicit_terms)
+
+
 def _post_generate(
     *,
     model: str,
@@ -730,7 +923,9 @@ def organize_image_prompt(draft_prompt: str, gender_hint: str = "", **kwargs) ->
             return {"ok": False, "message": f"Qwen 缺少欄位：{key}"}
         fields[key] = " ".join(value.strip().split())
 
+    _apply_test_machine_source_overlay(user_text, fields)
     _test_apply_locks(user_text, fields)
+    _apply_test_machine_source_overlay(user_text, fields)
     face_identity = _infer_identity(user_text)
     face_gender = _infer_gender(user_text, gender_hint)
 

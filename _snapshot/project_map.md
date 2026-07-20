@@ -921,6 +921,11 @@ C:\Projects\telemini
 - `_test_has_explicit_background()`
 - `_test_infer_background_terms()`
 - `_test_apply_locks()`
+- `_has_any()`
+- `_append_unique()`
+- `_extract_explicit_main_terms()`
+- `_prepend_terms()`
+- `_apply_test_machine_source_overlay()`
 - `_post_generate()`
 - `_post_chat()`
 - `get_secondary_model_label()`
