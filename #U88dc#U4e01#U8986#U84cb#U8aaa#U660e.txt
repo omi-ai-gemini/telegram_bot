@@ -1,0 +1,29 @@
+Telemini 隱私閘道補丁
+
+套用基準：你這次上傳的「telemini更換代理模型.zip」。
+本壓縮檔只包含新增或修改的檔案，不是完整專案。
+
+覆蓋方式：
+1. 先停止本機 AI 閘道與 Telemini 測試程序。
+2. 解壓本補丁。
+3. 把壓縮檔內所有檔案與資料夾複製到 Telemini 專案根目錄。
+4. Windows 詢問時選擇「取代目的地中的檔案」。
+5. 不要刪除專案中其他未出現在本補丁的檔案。
+
+本次主要內容：
+- Render 不再直接連接 127.0.0.1 的 Ollama／ComfyUI，改走本機 AI 閘道。
+- 閘道請求使用 HMAC-SHA256、時間戳與 nonce 驗證。
+- 遠端閘道預設要求 HTTPS。
+- Ollama 與 ComfyUI 保持只供本機使用，不必公開 11434、8188。
+- ComfyUI 臨時圖片讀取後自動刪除，並清除該次 history。
+- Telegram 圖片管理功能照常保留 file_id，不保存圖片實體到 Render。
+- 圖片管理與預覽回應加入 no-store 等防快取標頭。
+
+一次性設定：
+- 先閱讀「本機AI閘道/設定說明.txt」與「本機AI閘道/Cloudflare設定步驟.txt」。
+- Render 與本機閘道要設定同一組 LOCAL_AI_GATEWAY_SECRET。
+- Render 設定 LOCAL_AI_GATEWAY_URL 為 Cloudflare Tunnel 的 HTTPS 網址。
+- Cloudflare Access Service Token 為選配；有使用時再設定 Client ID／Secret。
+
+驗證：
+python -m compileall -q .

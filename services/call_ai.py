@@ -6,13 +6,8 @@ from services.ai_actions import (
     send_blocked_reply_message,
 )
 from services.gemini_service import GEMINI_BLOCKED
-from services.qwen_service import get_secondary_model_label
 from services.reply_model_router import generate_reply_by_mode
-from services.model_mode import (
-    MODE_MAIN,
-    MODE_SECONDARY,
-    get_api_model_mode,
-)
+MODE_MAIN = "main"
 from services.user_router import get_gemini_key
 from services.bot_router import get_bot_token
 from services.telegram_service import send_message, edit_message_text, delete_message
@@ -341,9 +336,7 @@ def _send_generated_reply(
 
     if not result.get("text"):
         message = result.get("error") or (
-            "Qwen 副模型沒有回傳可用文字"
-            if provider == MODE_SECONDARY
-            else "Gemini 沒有回傳可用文字"
+            "Gemini 沒有回傳可用文字"
         )
         print(f"{label} {provider.upper()} EMPTY/ERROR: {message}", flush=True)
         _send_ai_message_with_retry(
@@ -371,11 +364,11 @@ def _send_generated_reply(
 # =========================
 def run_ai(user_id: int, bot_id: str, chat_id: int, user_text: str, user_message_id=None):
     try:
-        selected_mode = get_api_model_mode(user_id, bot_id, chat_id)
+        selected_mode = MODE_MAIN
         gemini_key = get_gemini_key(user_id)
         bot_token = get_bot_token(bot_id)
 
-        if not bot_token or (selected_mode == MODE_MAIN and not gemini_key):
+        if not bot_token or not gemini_key:
             send_message(
                 bot_id,
                 chat_id,

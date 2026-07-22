@@ -1,0 +1,148 @@
+Telemini 生圖排隊狀態與失敗通知外帶包
+
+本包已合併：
+- 遮罩局部修改／inpainting
+- AI Horde is_possible=false 繼續排隊
+- 排隊最長 30 分鐘
+- 排隊資訊定時更新
+- 失敗原因代號
+- 失敗通知刪除按鈕
+
+一、覆蓋方式
+
+把本資料夾內的：
+
+handlers
+routes
+services
+templates
+
+直接複製到 Telemini 專案根目錄：
+
+C:\Projects\telemini
+
+選擇覆蓋同名檔案。
+
+二、新的生圖訊息流程
+
+1. 使用者送出生圖表單後，原本的「prompt生成中」會被編輯成同一則狀態訊息：
+
+生圖中請稍後
+排隊位置：取得中／數字
+預計等待：估算中／時間
+已等待：時間
+
+2. 排隊位置、預計等待時間、已等待時間每 10 秒更新一次。
+
+3. AI Horde 回傳 is_possible=false 時：
+- 不會失敗。
+- 不會顯示相容節點等技術文字。
+- 繼續留在佇列等待。
+
+4. 排隊 30 分鐘內開始生成時：
+- 立刻刪除「生圖中請稍後」狀態訊息。
+- 生成工作繼續在背景執行。
+- 完成後直接傳送圖片。
+- 30 分鐘限制只管排隊階段，不會取消已經開始生成的任務。
+
+5. 排隊超過 30 分鐘仍未開始生成時：
+- 呼叫 AI Horde 取消任務。
+- 刪除排隊狀態訊息。
+- 傳送：
+
+生圖超過30分鐘，任務取消
+代號：QUEUE_TIMEOUT
+
+6. 使用者手動取消時：
+
+生圖任務已取消
+代號：USER_CANCELLED
+
+7. 所有失敗／取消通知下方會附上：
+
+[刪除訊息]
+
+按下後只刪除該則通知，不會重試、不會取消其他任務、不會再次呼叫 AI Horde。
+
+三、主要失敗代號
+
+OUTDATED_FLOW
+舊版生圖流程任務，需重新送出。
+
+UPLOAD_EXPIRED
+臨時上傳圖片已失效。
+
+REFERENCE_NOT_FOUND
+聊天室參考圖片不存在或已刪除。
+
+MASK_EXPIRED
+局部修改遮罩資料已失效。
+
+PROMPT_READ_FAILED
+提示詞讀取失敗。
+
+PROMPT_EMPTY
+提示詞內容為空。
+
+IMAGE_PREPARE_FAILED
+圖片或遮罩預處理失敗。
+
+SUBMIT_FAILED
+AI Horde 任務送出失敗。
+
+QUEUE_TIMEOUT
+排隊超過 30 分鐘仍未開始生成。
+
+HORDE_JOB_NOT_FOUND
+AI Horde 找不到已送出的任務。
+
+HORDE_FAULTED
+AI Horde 回報任務異常。
+
+RESULT_FETCH_FAILED
+生成完成後取得結果失敗。
+
+RESULT_EMPTY
+AI Horde 沒有回傳圖片結果。
+
+IMAGE_DOWNLOAD_FAILED
+圖片結果下載失敗。
+
+TELEGRAM_SEND_FAILED
+圖片已生成，但傳送到 Telegram 失敗。
+
+UNEXPECTED_ERROR
+程式發生未預期錯誤，需查看 Render log。
+
+四、資料庫
+
+- 不新增資料表。
+- 沿用 image_generation_jobs 既有欄位。
+- started_at 會記錄 AI Horde 真正開始生成的時間。
+- error_message 會保存失敗代號與原因。
+
+五、部署前檢查
+
+在專案根目錄執行：
+
+python -m compileall -q .
+
+六、Git
+
+git add handlers/call_handler.py routes/image_gen.py services/aihorde_service.py services/image_jobs.py services/image_prepare.py services/image_prompt.py templates/image_gen_form.html
+git commit -m "update image queue status and failure notices"
+git push
+
+七、Render 測試重點
+
+排隊時：
+- 聊天室只保留一則生圖狀態訊息。
+- 約每 10 秒更新排隊資訊。
+
+開始生成時，Render log：
+IMAGE GENERATION STARTED job_id=... queue_elapsed=...
+IMAGE STATUS MESSAGE DELETE job_id=... message_id=... ok=True
+
+排隊逾時時：
+- 收到 QUEUE_TIMEOUT。
+- 點「刪除訊息」後該通知消失。

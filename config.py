@@ -1,15 +1,18 @@
 import os
 
 # =========================
-# Gemini
+# Gemini 五模型路由（全部可由 Render 環境變數更換）
 # =========================
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite").strip()
+GEMINI_RESCUE_MODEL = os.getenv("GEMINI_RESCUE_MODEL", "gemini-3.1-flash-lite").strip()
 
-GEMINI_MODEL = "gemini-3.1-flash-lite"
-
-# 圖片解析專用模型：只把圖片轉成文字描述，再交回主模型回覆。
-# 先用 3.5 Flash；若遇到 quota / rate limit / service unavailable，會在 gemini_service.py 自動切到 3 Flash Preview。
-GEMINI_VISION_MODEL = os.getenv("GEMINI_VISION_MODEL", "gemini-3.5-flash")
-GEMINI_VISION_FALLBACK_MODEL = os.getenv("GEMINI_VISION_FALLBACK_MODEL", "gemini-3-flash-preview")
+# 圖片／貼圖解析依序嘗試三個模型。
+GEMINI_VISION_MODEL_1 = os.getenv("GEMINI_VISION_MODEL_1", "gemini-3.6-flash").strip()
+GEMINI_VISION_MODEL_2 = os.getenv("GEMINI_VISION_MODEL_2", "gemini-3.5-flash").strip()
+GEMINI_VISION_MODEL_3 = os.getenv("GEMINI_VISION_MODEL_3", "gemini-3-flash-preview").strip()
+# 舊名稱相容，讓既有匯入不會立刻中斷。
+GEMINI_VISION_MODEL = GEMINI_VISION_MODEL_1
+GEMINI_VISION_FALLBACK_MODEL = GEMINI_VISION_MODEL_2
 
 def _env_int(name, default):
     try:
@@ -17,9 +20,7 @@ def _env_int(name, default):
     except Exception:
         return int(default)
 
-# 圖片解析單次輸出上限：盡量拉高，避免過度保守截斷。
 GEMINI_VISION_MAX_OUTPUT_TOKENS = _env_int("GEMINI_VISION_MAX_OUTPUT_TOKENS", 65536)
-# 靜態貼圖維持較小上限，避免不必要的額度消耗。
 GEMINI_STICKER_MAX_OUTPUT_TOKENS = _env_int("GEMINI_STICKER_MAX_OUTPUT_TOKENS", 500)
 
 # 如果你未來想保留預設備用KEY才留著
@@ -76,16 +77,6 @@ AI_HORDE_API_KEY_1 = os.getenv("AI_HORDE_API_KEY_1")
 AI_HORDE_API_KEY_2 = os.getenv("AI_HORDE_API_KEY_2")
 AI_HORDE_MODEL = os.getenv("AI_HORDE_MODEL", "Flux.1-Schnell fp8 (Compact)")
 AI_HORDE_ALLOW_NSFW = os.getenv("AI_HORDE_ALLOW_NSFW", "true")
-# =========================
-# Ollama / Qwen 副模型
-# =========================
-OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
-OLLAMA_DEPUTY_MODEL = os.getenv("OLLAMA_DEPUTY_MODEL", "qwen2.5:7b")
-OLLAMA_PROMPT_MODEL = os.getenv("OLLAMA_PROMPT_MODEL", OLLAMA_DEPUTY_MODEL)
-OLLAMA_TIMEOUT_SECONDS = _env_int("OLLAMA_TIMEOUT_SECONDS", 180)
-OLLAMA_CHAT_NUM_PREDICT = _env_int("OLLAMA_CHAT_NUM_PREDICT", 512)
-OLLAMA_PROMPT_NUM_PREDICT = _env_int("OLLAMA_PROMPT_NUM_PREDICT", 700)
-
 # =========================
 # ComfyUI 文生圖
 # =========================

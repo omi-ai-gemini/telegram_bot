@@ -1,0 +1,17 @@
+固定身份提示詞生圖－最新版相容修正版
+
+本補丁以使用者最新上傳的 telemini(3).zip 為基礎製作。
+
+直接把補丁內資料夾與檔案覆蓋到專案根目錄。
+
+主要修改：
+- routes/image_gen.py
+- services/aihorde_service.py
+- services/image_jobs.py
+- services/image_prompt.py
+- services/image_prepare.py（新增）
+- templates/image_gen_form.html
+- requirements.txt（保留 Pillow==12.3.0）
+
+部署後請讓 Render 重新 Build。
+不需要新增尺寸環境變數。

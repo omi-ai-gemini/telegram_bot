@@ -4,7 +4,9 @@ import json
 import re
 from services.style import build_prompt
 from services.prompt_debug import save_prompt_debug_log, update_prompt_debug_log
-from config import GEMINI_MODEL, GEMINI_VISION_FALLBACK_MODEL
+from services.model_health import notify_model_404_once
+from services.telegram_service import send_message, delete_message
+from config import (GEMINI_MODEL, GEMINI_RESCUE_MODEL, GEMINI_VISION_MODEL_1, GEMINI_VISION_MODEL_2, GEMINI_VISION_MODEL_3)
 
 
 # =========================
@@ -556,6 +558,9 @@ def _classify_image_error(exc):
         "temporarily unavailable",
     ]
 
+    if "404" in text or "NOT_FOUND" in text:
+        return "not_found"
+
     if any(marker in text for marker in quota_markers):
         return "quota"
 
@@ -565,18 +570,16 @@ def _classify_image_error(exc):
     return "other"
 
 
-def _image_models_to_try(primary_model):
-    primary = _image_model_key(primary_model or GEMINI_MODEL)
-    fallback = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
-
+def _image_models_to_try(primary_model=None):
+    candidates = [
+        _image_model_key(primary_model or GEMINI_VISION_MODEL_1),
+        _image_model_key(GEMINI_VISION_MODEL_2),
+        _image_model_key(GEMINI_VISION_MODEL_3),
+    ]
     models = []
-
-    if primary and not _is_image_model_temporarily_disabled(primary):
-        models.append(primary)
-
-    if fallback and fallback not in models and not _is_image_model_temporarily_disabled(fallback):
-        models.append(fallback)
-
+    for item in candidates:
+        if item and item not in models and not _is_image_model_temporarily_disabled(item):
+            models.append(item)
     return models
 
 # =========================
@@ -595,8 +598,8 @@ def ask_gemini_image_to_text(
     讓 Gemini 模型讀取圖片，回傳結構化結果。
 
     流程：
-    - 先用 GEMINI_VISION_MODEL，例如 gemini-3.5-flash。
-    - 若遇到 quota / rate limit，改用 GEMINI_VISION_FALLBACK_MODEL，並把該模型停用到 Pacific time 下一次午夜重置。
+    - 依序使用三個環境變數指定的圖片解析模型。
+    - 只有三個模型全部回覆 429 / RESOURCE_EXHAUSTED，才回傳當日次數已用完。
     - 若遇到 503 / 高負載，僅本次改試下一個模型，不做整天停用。
 
     注意：
@@ -632,22 +635,17 @@ def ask_gemini_image_to_text(
             )
         )
 
-    primary_model = _image_model_key(model or GEMINI_MODEL)
-    fallback_model = _image_model_key(GEMINI_VISION_FALLBACK_MODEL)
-    primary_disabled = _is_image_model_temporarily_disabled(primary_model)
-    fallback_disabled = _is_image_model_temporarily_disabled(fallback_model) if fallback_model else False
+    primary_model = _image_model_key(model or GEMINI_VISION_MODEL_1)
     models_to_try = _image_models_to_try(model)
 
     print(
-        f"GEMINI IMAGE ROUTE primary={primary_model} fallback={fallback_model or '-'} "
-        f"primary_disabled={primary_disabled} fallback_disabled={fallback_disabled} "
-        f"mime={mime_type} max_output_tokens={max_output_tokens}",
+        f"GEMINI IMAGE ROUTE models={models_to_try} mime={mime_type} max_output_tokens={max_output_tokens}",
         flush=True,
     )
 
     if not models_to_try:
         print(
-            f"GEMINI IMAGE TO TEXT NO AVAILABLE MODELS primary={primary_model} fallback={fallback_model or '-'}",
+            f"GEMINI IMAGE TO TEXT NO AVAILABLE MODELS configured={[GEMINI_VISION_MODEL_1, GEMINI_VISION_MODEL_2, GEMINI_VISION_MODEL_3]}",
             flush=True,
         )
         return _image_parse_result(
@@ -658,12 +656,13 @@ def ask_gemini_image_to_text(
 
     last_error = None
     saw_quota_error = False
+    quota_error_count = 0
     saw_unavailable_error = False
     saw_empty_response = False
     saw_max_tokens_without_text = False
 
     for index, current_model in enumerate(models_to_try, start=1):
-        role = "primary" if current_model == primary_model else "fallback"
+        role = f"vision_{index}"
 
         print(
             f"GEMINI IMAGE ATTEMPT model={current_model} role={role} attempt={index}/{len(models_to_try)} mime={mime_type}",
@@ -694,8 +693,13 @@ def ask_gemini_image_to_text(
                 flush=True,
             )
 
+            if error_kind == "not_found":
+                notify_model_404_once(current_model, str(exc))
+                continue
+
             if error_kind == "quota":
                 saw_quota_error = True
+                quota_error_count += 1
                 _disable_image_model_until_reset(current_model, reason="quota_exhausted")
                 continue
 
@@ -755,7 +759,7 @@ def ask_gemini_image_to_text(
         )
         saw_empty_response = True
 
-    if saw_quota_error:
+    if saw_quota_error and quota_error_count == len(models_to_try):
         print(
             f"GEMINI IMAGE TO TEXT FAILED QUOTA models={models_to_try}",
             flush=True,
@@ -825,143 +829,75 @@ def ask_gemini_prompt(
     debug_context=None,
     prompt_meta=None,
 ):
-    """把已完成組裝的最終 Prompt 直接送進 Gemini。"""
+    """主模型安全阻擋時，自動轉送救援模型。"""
     prompt = str(prompt or "")
-
-    # 只有需要 meta 的聊天流程才要求 JSON 雙欄位輸出。
     if return_meta:
         prompt = _with_structured_reply_instructions(prompt)
-
-    # 不印 prompt 內容，避免解密後的明文進 Render log。
     print("DEBUG prompt built")
 
-    prompt_debug_id = None
-    if debug_context:
+    notice_message_id = None
+    models = [("main", GEMINI_MODEL), ("rescue", GEMINI_RESCUE_MODEL)]
+    for index, (role, current_model) in enumerate(models):
+        prompt_debug_id = None
+        if debug_context:
+            try:
+                meta = dict(prompt_meta or {})
+                meta.update({"include_thoughts": bool(include_thoughts), "return_meta": bool(return_meta), "prebuilt_prompt": True, "model_role": role})
+                prompt_debug_id = save_prompt_debug_log(
+                    prompt_text=prompt,
+                    user_id=debug_context.get("user_id"), bot_id=debug_context.get("bot_id"), chat_id=debug_context.get("chat_id"),
+                    source=debug_context.get("source", "unknown"), generation_type=debug_context.get("generation_type", "unknown"),
+                    action_id=debug_context.get("action_id"), source_user_chat_id=debug_context.get("source_user_chat_id"),
+                    model=current_model, prompt_meta=meta,
+                )
+            except Exception as exc:
+                print("PROMPT DEBUG SAVE SKIPPED:", exc, flush=True)
         try:
-            meta = dict(prompt_meta or {})
-            meta.update({
-                "include_thoughts": bool(include_thoughts),
-                "return_meta": bool(return_meta),
-                "prebuilt_prompt": True,
-            })
-            prompt_debug_id = save_prompt_debug_log(
-                prompt_text=prompt,
-                user_id=debug_context.get("user_id"),
-                bot_id=debug_context.get("bot_id"),
-                chat_id=debug_context.get("chat_id"),
-                source=debug_context.get("source", "unknown"),
-                generation_type=debug_context.get("generation_type", "unknown"),
-                action_id=debug_context.get("action_id"),
-                source_user_chat_id=debug_context.get("source_user_chat_id"),
-                model=GEMINI_MODEL,
-                prompt_meta=meta,
-            )
+            with genai.Client(api_key=gemini_key) as client:
+                response = client.models.generate_content(model=current_model, contents=prompt, config=_build_gemini_config(include_thoughts=include_thoughts))
         except Exception as exc:
-            print("PROMPT DEBUG SAVE SKIPPED:", exc, flush=True)
+            if "404" in str(exc) or "NOT_FOUND" in str(exc):
+                notify_model_404_once(current_model, str(exc))
+            if prompt_debug_id:
+                update_prompt_debug_log(prompt_debug_id, status="error", block_reason=str(exc)[:500])
+            if role == "rescue":
+                break
+            raise
 
-    try:
-        with genai.Client(api_key=gemini_key) as client:
-            response = client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=_build_gemini_config(include_thoughts=include_thoughts),
-            )
-    except Exception as exc:
+        finish_reason_name = _enum_name(_extract_finish_reason(response))
+        debug_gemini_response(response, label=f"GEMINI {role.upper()} {current_model}")
+        answer_text, thought_text = _extract_answer_and_thoughts(response)
+        result_text = answer_text or _safe_response_text(response)
+        if result_text:
+            if prompt_debug_id:
+                update_prompt_debug_log(prompt_debug_id, status="ok", finish_reason=finish_reason_name or "", response_chars=len(result_text))
+            if notice_message_id and debug_context:
+                try:
+                    delete_message(debug_context.get("bot_id"), debug_context.get("chat_id"), notice_message_id)
+                except Exception:
+                    pass
+            if return_meta:
+                parsed = _parse_structured_reply(result_text)
+                visible_reasoning = thought_text or parsed.get("reasoning_note", "")
+                payload = _meta_result(parsed.get("answer", ""), visible_reasoning, thought_source="official" if thought_text else ("generated" if parsed.get("reasoning_note") else "empty"), structured=parsed.get("structured", False))
+                payload["model"] = current_model
+                payload["model_role"] = role
+                return payload
+            return result_text
+
+        block_reason = get_gemini_block_reason(response)
         if prompt_debug_id:
-            update_prompt_debug_log(prompt_debug_id, status="error", block_reason=str(exc)[:500])
-        raise
-
-    print("DEBUG gemini response received")
-    finish_reason_name = _enum_name(_extract_finish_reason(response))
-    print("GEMINI finish_reason:", finish_reason_name)
-    debug_gemini_response(response, label="GEMINI")
-
-    answer_text, thought_text = _extract_answer_and_thoughts(response)
-    print(
-        f"GEMINI extracted lengths: answer={len(answer_text or '')} thoughts={len(thought_text or '')}",
-        flush=True,
-    )
-
-    if include_thoughts and not thought_text:
-        print("GEMINI thought summary empty: no thought part returned", flush=True)
-
-    result_text = answer_text or _safe_response_text(response)
-
-    if result_text:
-        if prompt_debug_id:
-            update_prompt_debug_log(
-                prompt_debug_id,
-                status="ok",
-                finish_reason=finish_reason_name or "",
-                response_chars=len(result_text or ""),
-            )
-
-        if return_meta:
-            parsed = _parse_structured_reply(result_text)
-            visible_reasoning = thought_text or parsed.get("reasoning_note", "")
-            thought_source = "official" if thought_text else (
-                "generated" if parsed.get("reasoning_note") else "empty"
-            )
-
-            print(
-                "GEMINI structured reply "
-                f"structured={parsed.get('structured')} "
-                f"answer_len={len(parsed.get('answer') or '')} "
-                f"reasoning_len={len(visible_reasoning or '')} "
-                f"thought_source={thought_source}",
-                flush=True,
-            )
-
-            return _meta_result(
-                parsed.get("answer", ""),
-                visible_reasoning,
-                thought_source=thought_source,
-                structured=parsed.get("structured", False),
-            )
-
-        return result_text
-
-    block_reason = get_gemini_block_reason(response)
-
-    if block_reason:
-        print("GEMINI blocked reply:", block_reason)
-
-        if prompt_debug_id:
-            update_prompt_debug_log(
-                prompt_debug_id,
-                status="blocked",
-                finish_reason=finish_reason_name or "",
-                block_reason=block_reason,
-                response_chars=0,
-            )
-
-        if return_meta:
-            return _meta_result(
-                GEMINI_BLOCKED,
-                thought_text,
-                thought_source="official" if thought_text else "empty",
-            )
-
-        return GEMINI_BLOCKED
-
-    print("GEMINI empty reply: no text returned")
-
-    if prompt_debug_id:
-        update_prompt_debug_log(
-            prompt_debug_id,
-            status="empty",
-            finish_reason=finish_reason_name or "",
-            response_chars=0,
-        )
+            update_prompt_debug_log(prompt_debug_id, status="blocked" if block_reason else "empty", finish_reason=finish_reason_name or "", block_reason=block_reason or "", response_chars=0)
+        if block_reason and role == "main":
+            if debug_context:
+                sent = send_message(debug_context.get("bot_id"), debug_context.get("chat_id"), "主模型回覆受阻，正在使用救援模型重新回覆…")
+                notice_message_id = ((sent or {}).get("result") or {}).get("message_id") if isinstance(sent, dict) else None
+            continue
+        break
 
     if return_meta:
-        return _meta_result(
-            None,
-            thought_text,
-            thought_source="official" if thought_text else "empty",
-        )
-
-    return None
+        return _meta_result(GEMINI_BLOCKED, "", thought_source="empty", structured=False)
+    return GEMINI_BLOCKED
 
 
 def ask_gemini(
@@ -1114,29 +1050,24 @@ def summarize_memory(gemini_key, source_text=None, summary_type="segment", chat_
 {source_text}
 """.strip()
 
-    with genai.Client(api_key=gemini_key) as client:
-        response = client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=prompt,
-            config=GEMINI_CONFIG,
-        )
-
-    print("DEBUG memory summary received")
-    print("GEMINI summary finish_reason:", _enum_name(_extract_finish_reason(response)))
-    debug_gemini_response(response, label="GEMINI SUMMARY")
-
-    # 先判斷安全阻擋，再讀文字。
-    # 原本是先拿 response.text，只要有任何文字就直接 return，
-    # 會造成 Gemini 已標記 SAFETY / PROHIBITED_CONTENT 時，仍把殘留文字存進長期記憶。
-    block_reason = get_gemini_block_reason(response)
-
-    if block_reason:
-        print("GEMINI summary blocked:", block_reason)
-        return MEMORY_SUMMARY_BLOCKED
-
-    text = _safe_response_text(response)
-
-    if text:
-        return text.strip()
-
-    return ""
+    for role, current_model in (("main", GEMINI_MODEL), ("rescue", GEMINI_RESCUE_MODEL)):
+        try:
+            with genai.Client(api_key=gemini_key) as client:
+                response = client.models.generate_content(model=current_model, contents=prompt, config=GEMINI_CONFIG)
+        except Exception as exc:
+            if "404" in str(exc) or "NOT_FOUND" in str(exc):
+                notify_model_404_once(current_model, str(exc))
+            raise
+        print(f"DEBUG memory summary received role={role} model={current_model}")
+        debug_gemini_response(response, label=f"GEMINI SUMMARY {role.upper()}")
+        block_reason = get_gemini_block_reason(response)
+        if block_reason and role == "main":
+            print("GEMINI summary main blocked, retry rescue:", block_reason)
+            continue
+        if block_reason:
+            return MEMORY_SUMMARY_BLOCKED
+        text = _safe_response_text(response)
+        if text:
+            return text.strip()
+        return ""
+    return MEMORY_SUMMARY_BLOCKED

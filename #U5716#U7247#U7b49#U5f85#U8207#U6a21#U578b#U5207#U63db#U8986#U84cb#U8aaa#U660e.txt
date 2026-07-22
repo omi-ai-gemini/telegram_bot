@@ -1,0 +1,20 @@
+Telemini 圖片等待與模型切換修正補丁
+
+只覆蓋以下三個程式檔：
+- handlers/message_handler.py
+- services/media_ai.py
+- services/gemini_service.py
+
+附帶說明：
+- docs/圖片等待與模型切換修正說明.md
+
+更新內容：
+1. 圖片解析完成後等待 10 秒。
+2. 等待期間收到文字，與圖片解析結果合併後只回覆一次。
+3. 503 高流量只重試 3.5 Flash，不再誤切 3 Flash。
+4. 只有明確每日額度用完才切 3 Flash Preview。
+5. 每個人的 API Key 狀態分開，log 不顯示原始 Key。
+6. 新增圖片等待與模型路由 debug log。
+
+套用後執行：
+python -m py_compile handlers/message_handler.py services/media_ai.py services/gemini_service.py

@@ -1,0 +1,27 @@
+Telemini 生圖雙模式本次覆蓋說明
+
+本包以使用者最新上傳的 telemini(4).zip 為底修改。
+
+修改檔案：
+- services/image_prompt.py
+- services/aihorde_service.py
+- docs/文生圖構圖與圖生圖修改力度更新說明.md
+
+本次修正：
+1. 文生圖維持 Flux.1-Schnell fp8 (Compact) 與 4 steps。
+2. 文生圖預設改為環境敘事生活攝影；未明確要求特寫時，避免頭肩肖像與純臉部構圖。
+3. 圖生圖維持 Flux Schnell，不切換冷門模型。
+4. 圖生圖明確禁止只縮放原圖後退回；自訂修改必須明顯完成。
+5. 圖生圖改為 8 steps、denoising_strength=0.72。
+6. 完全自訂提示詞或補充提示詞仍為最高優先，並在 Prompt 結尾再次驗收。
+
+可選環境變數：
+AI_HORDE_TXT2IMG_STEPS=4
+AI_HORDE_IMG2IMG_STEPS=8
+AI_HORDE_IMG2IMG_DENOISING_STRENGTH=0.72
+
+不設定環境變數時，程式會直接使用以上預設值。
+
+部署：
+- 覆蓋後 git add / commit / push。
+- Render 重新部署即可；requirements.txt 未改，不需要因本包額外安裝套件。

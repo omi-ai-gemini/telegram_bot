@@ -1,0 +1,58 @@
+Telemini AI Horde 生圖功能外帶包
+
+新增檔案：
+- routes/image_gen.py
+- services/aihorde_service.py
+- services/image_actions.py
+- services/image_auth.py
+- services/image_jobs.py
+- services/image_prompt.py
+- services/image_store.py
+- templates/image_gen_form.html
+- templates/image_library.html
+- static/image_reference/基準圖放置說明.txt
+- static/image_reference/male_reference.png
+- static/image_reference/female_reference.png
+- docs/AI_HORDE生圖功能更新說明.md
+
+覆蓋檔案：
+- config.py
+- main.py
+- handlers/call_handler.py
+- services/ai_actions.py
+- services/commands.py
+- services/media_ai.py
+- services/telegram_service.py
+
+Render 必填：
+AI_HORDE_API_KEY_1=第一把Key
+AI_HORDE_API_KEY_2=第二把Key
+
+沿用原本：
+BASE_URL
+SETTING_LINK_SECRET
+APP_ENCRYPTION_SECRET
+DATABASE_URL
+
+基準圖放置：
+static/image_reference/male_reference.png
+static/image_reference/female_reference.png
+
+部署後不需要手動建表，第一次 request 會自動建立：
+chat_image_assets
+image_generation_jobs
+
+編譯檢查：
+python -m compileall -q .
+
+注意：
+1. 臨時網頁上傳圖不寫 DB、不加入圖片庫。
+2. 聊天室使用者圖片與 AI 生成圖片會保存 Telegram file_id，不保存圖片實體到 DB。
+3. 圖片庫刪除不會刪 Telegram 原始訊息。
+4. 每人同時最多 3 張排隊／生成中任務。
+5. 生圖連結有效 20 分鐘。
+
+本最終版已整合：
+- 圖片解析後等待 10 秒並合併使用者補充文字
+- 使用者傳入聊天室的圖片自動加入圖片庫
+- 寫實男／女系統基準圖（1024×1792）

@@ -1,0 +1,64 @@
+Cloudflare Tunnel 一次性設定
+
+這一步無法由專案自動替你登入 Cloudflare 或選擇網域，所以只需要你第一次設定一次。
+之後每次開機只要保持 cloudflared 運行。
+
+一、建立 Tunnel
+在 PowerShell 執行：
+
+cloudflared tunnel login
+cloudflared tunnel create telemini-ai
+
+第二個指令會顯示 Tunnel UUID，並在：
+%USERPROFILE%\.cloudflared
+建立對應的 JSON 憑證檔。
+
+二、建立設定檔
+把「cloudflared-config範例.yml」內容複製到：
+
+%USERPROFILE%\.cloudflared\config.yml
+
+修改三處：
+1. Tunnel UUID
+2. credentials-file 的 Windows 帳號與 UUID
+3. ai.你的網域
+
+Cloudflare Tunnel 只指向：
+http://127.0.0.1:8787
+
+不要指向 11434 或 8188。
+
+三、建立 DNS 路由
+
+cloudflared tunnel route dns telemini-ai ai.你的網域
+
+四、啟動 Tunnel
+
+cloudflared tunnel run telemini-ai
+
+五、Render Environment
+
+LOCAL_AI_GATEWAY_URL=https://ai.你的網域
+LOCAL_AI_GATEWAY_SECRET=與本機閘道設定.cmd 完全相同的密鑰
+
+六、Cloudflare Access（第二層保護，建議開啟）
+
+在 Cloudflare Zero Trust 建立 Self-hosted Application，網域選 ai.你的網域。
+建立 Service Token，再建立 Service Auth Policy 只允許該 Service Token。
+把產生的值填入 Render：
+
+CF_ACCESS_CLIENT_ID=...
+CF_ACCESS_CLIENT_SECRET=...
+
+程式會自動使用：
+CF-Access-Client-Id
+CF-Access-Client-Secret
+
+七、實際保護層
+
+1. Cloudflare Tunnel：不開路由器連接埠，不公開家中 IP。
+2. HTTPS：Render 到 Cloudflare 的傳輸加密。
+3. Cloudflare Access Service Token：非授權請求先被 Cloudflare 擋下。
+4. Telemini HMAC：每次請求另有時間戳、nonce、SHA-256 內容雜湊與簽章。
+5. 本機閘道只監聽 127.0.0.1:8787。
+6. Ollama 與 ComfyUI 只監聽 127.0.0.1，不對外公開。

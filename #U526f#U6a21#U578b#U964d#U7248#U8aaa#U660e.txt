@@ -1,0 +1,25 @@
+Telemini 副模型降版
+
+本版只保留：
+- /modes_api secondary 後，一般新文字訊息使用 AI Horde 副模型。
+- /modes_api main 切回 Gemini。
+
+已停用副模型連線：
+- 安全阻擋後的主副模型競速。
+- 重跑按鈕使用副模型。
+- 接續按鈕使用副模型。
+- /reply 救援使用副模型。
+- 生圖 Prompt 使用副文字模型整理。
+
+目前行為：
+- 一般新訊息：依 /modes_api 決定主模型或副模型。
+- 重跑／接續／救援／安全阻擋重試：固定 Gemini。
+- 舊 blocked_reply_race callback 保留相容，但只會轉成 Gemini 單次重試，不會競速，也不會自動切換副模型。
+- 生圖直接使用原始 Prompt，不再呼叫副文字模型。
+
+修改檔案：
+- services/ai_actions.py
+- services/call_ai.py
+- services/model_mode.py
+- services/image_jobs.py
+- handlers/call_handler.py

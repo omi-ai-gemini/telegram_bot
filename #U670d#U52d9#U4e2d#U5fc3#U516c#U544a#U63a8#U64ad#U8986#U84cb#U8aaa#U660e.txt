@@ -1,0 +1,21 @@
+服務中心公告推播更新包
+
+覆蓋 / 新增檔案：
+- main.py
+- service_center/db.py
+- service_center/handler.py
+- service_center/scheduler.py
+- docs/服務中心公告推播更新說明.md
+
+更新內容：
+1. /start 不再先送最新公告，只送服務中心主頁按鈕。
+2. 公告仍存 service_center_announcements，公告事項按鈕會顯示全部公告，最新在最上面。
+3. 新增 service_center_subscribers，記錄曾經私訊或操作服務中心 bot 的 chat。
+4. 新增 service_center_announcement_deliveries，防止同一則公告對同一個 chat 重複推播。
+5. 新增 service_center_scheduler_state，記錄每天 17:00 推播是否已跑過。
+6. 每天台灣時間 17:00 後，如果有新公告，就主動 sendMessage 推播一次。
+7. 推播處理完成後會寫入 pushed_at 並關閉 push_enabled，避免同一則公告未來又推給新 chat。
+8. 本次預設公告改成「圖片與貼圖輸入更新」。
+
+注意：
+Telegram bot 只能主動傳訊息給曾經私訊過 bot，或曾經和 bot 互動過的 chat。

@@ -1,0 +1,21 @@
+Telemini AI Horde 遮罩生圖修正檢查結果
+
+本版已修正原本普通 img2img 將基準圖直接套進不同長寬所造成的人物變形。
+
+已檢查：
+1. 全專案 Python compileall 通過。
+2. 14 個 Jinja HTML 模板解析通過。
+3. 男女基準圖皆能保持原始長寬比例，等比例置入 896×1152 畫布。
+4. 來源圖與 source_mask 均為 896×1152，尺寸完全一致。
+5. source_mask 同時包含可重繪白色區與身份錨點黑色區。
+6. AI Horde payload 使用 source_processing=inpainting。
+7. payload 已包含 source_image 與 source_mask。
+8. payload 不再包含普通 img2img 使用的 denoising_strength。
+9. 生成尺寸直接寫在程式碼：896×1152，不需要新增尺寸環境變數。
+10. 保留兩把 AI Horde Key 輪替、取消、排隊、20 分鐘超時、圖片庫與媒體等待流程。
+11. 全專案已掃描，不含使用者要求禁止出現的角色名字。
+
+遮罩規則：
+- 白色：依本輪訊息、場景、動作、固定標籤與補充需求重新生成。
+- 黑色：保留臉部核心身份特徵。
+- 灰色：羽化過渡，降低臉部與新生成畫面的接縫。

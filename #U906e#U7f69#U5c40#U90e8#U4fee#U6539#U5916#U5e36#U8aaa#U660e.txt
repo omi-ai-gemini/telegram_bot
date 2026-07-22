@@ -1,0 +1,156 @@
+Telemini 遮罩局部修改外帶包
+
+基底版本：telemini(9).zip
+用途：在既有生圖頁新增「局部遮罩修改」，保留原本文生圖與整體圖生圖。
+
+========================================
+一、覆蓋檔案
+========================================
+
+routes/image_gen.py
+services/aihorde_service.py
+services/image_jobs.py
+services/image_prepare.py
+services/image_prompt.py
+templates/image_gen_form.html
+
+不新增資料表。
+不修改 requirements.txt。
+不影響聊天、記憶、服務中心、圖片解析與原本圖片庫流程。
+
+========================================
+二、新功能
+========================================
+
+生圖頁新增三種模式：
+
+1. 文生圖
+2. 整體圖生圖
+3. 局部遮罩修改
+
+局部遮罩修改可使用：
+
+- 本次臨時上傳圖片
+- 聊天室圖片代號／名稱
+
+使用者可在網頁上用滑鼠或手指操作：
+
+- 塗抹要修改的區域
+- 擦除遮罩
+- 調整筆刷大小
+- 復原
+- 清空
+- 反轉遮罩
+
+畫面規則：
+
+- 紅色區域：AI 可以修改
+- 未塗區域：保護，盡量維持原圖
+
+換背景用法：
+
+1. 先把人物整體塗紅。
+2. 按「反轉遮罩」。
+3. 此時背景會成為可修改區域，人物則成為保護區。
+
+========================================
+三、後端流程
+========================================
+
+來源圖與遮罩會使用完全相同的處理座標：
+
+原圖
+→ 修正 EXIF 方向
+→ 等比例縮放
+→ 使用 AI Horde 相容畫布
+→ 不裁切，必要時淺灰補邊
+
+遮罩
+→ 映射回原圖尺寸
+→ 使用與原圖相同的縮放尺寸
+→ 使用與原圖相同的置中位置
+→ 黑色補邊
+→ 邊緣自動羽化
+
+避免前端圈選的位置，在送出後因縮放或補邊而偏移。
+
+送往 AI Horde 時：
+
+source_image=處理後來源圖
+source_mask=處理後黑白遮罩
+source_processing=inpainting
+
+========================================
+四、Render 環境變數
+========================================
+
+原本環境變數繼續沿用，不需要刪除或更改。
+
+以下為遮罩模式的可選環境變數；完全不設定也可使用預設值：
+
+AI_HORDE_INPAINT_MODEL=Deliberate Inpainting
+AI_HORDE_INPAINT_STEPS=20
+AI_HORDE_INPAINT_CFG_SCALE=7
+AI_HORDE_INPAINT_DENOISING_STRENGTH=0.80
+
+注意：
+
+- 遮罩模式使用獨立 inpainting 模型，不使用原本 Flux.1-Schnell 圖生圖模型。
+- AI Horde 是社群工作節點，inpainting 節點不足時可能排隊較久。
+- 任務仍沿用原本 20 分鐘總逾時限制。
+- 若之後更換 inpainting 模型，只需修改 AI_HORDE_INPAINT_MODEL。
+
+========================================
+五、覆蓋方式
+========================================
+
+將外帶包內的 routes、services、templates 三個資料夾，複製到：
+
+C:\Projects\telemini
+
+Windows 詢問時選擇「取代目的地中的檔案」。
+
+PowerShell 可在外帶包解壓縮後執行：
+
+Copy-Item .\routes\image_gen.py C:\Projects\telemini\routes\image_gen.py -Force
+Copy-Item .\services\aihorde_service.py C:\Projects\telemini\services\aihorde_service.py -Force
+Copy-Item .\services\image_jobs.py C:\Projects\telemini\services\image_jobs.py -Force
+Copy-Item .\services\image_prepare.py C:\Projects\telemini\services\image_prepare.py -Force
+Copy-Item .\services\image_prompt.py C:\Projects\telemini\services\image_prompt.py -Force
+Copy-Item .\templates\image_gen_form.html C:\Projects\telemini\templates\image_gen_form.html -Force
+
+覆蓋後檢查：
+
+cd C:\Projects\telemini
+python -m compileall -q .
+
+git add routes/image_gen.py services/aihorde_service.py services/image_jobs.py services/image_prepare.py services/image_prompt.py templates/image_gen_form.html
+git commit -m "add masked local image editing"
+git push
+
+========================================
+六、測試方式
+========================================
+
+1. 在 Telegram 開啟生圖設定頁。
+2. 選「局部遮罩修改」。
+3. 上傳圖片，或輸入聊天室圖片代號後按「載入圖片」。
+4. 把要修改的區域塗紅。
+5. 提示詞輸入，例如：
+   把圈選區域的黑色外套改成寬鬆白色襯衫。
+6. 送出任務。
+7. Render Log 應出現：
+
+IMAGE REQUEST PREPARED ... mode=inpainting ...
+AI HORDE SUBMIT PREPARED ... mode=inpainting ... has_mask=True ...
+
+========================================
+七、本包已完成檢查
+========================================
+
+- Python compileall：通過
+- Jinja 模板解析：通過
+- 前端 JavaScript 語法：通過
+- 640×1472 圖片縮放補邊與遮罩對位：通過
+- AI Horde source_mask / inpainting payload：通過
+- 遮罩 Prompt 路由：通過

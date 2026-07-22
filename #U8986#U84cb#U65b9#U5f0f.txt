@@ -1,0 +1,4 @@
+將本資料夾內的 requirements.txt、services、service_center、docs 直接覆蓋到 Telemini 專案根目錄。
+
+覆蓋後提交 GitHub，讓 Render 重新 Build 與 Deploy。
+不需要新增任何 Pillow 環境變數。

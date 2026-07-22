@@ -1,0 +1,14 @@
+【覆蓋檔案】
+service_center/handler.py
+
+【修正內容】
+1. 每次管理員判定都即時讀取 SERVICE_CENTER_ADMIN_IDS。
+2. 支援逗號、中文逗號、分號及換行分隔。
+3. 自動去除 Value 兩側誤貼的單引號或雙引號。
+4. 每次判定在 Render log 顯示：
+   SERVICE CENTER ADMIN CHECK user_id='...' configured_admins=['...'] allowed=True/False
+
+【部署後測試】
+在服務中心 Bot 私人聊天室傳送 /announce。
+Render log 正常應顯示：
+SERVICE CENTER ADMIN CHECK user_id='6597463743' configured_admins=['6597463743'] allowed=True

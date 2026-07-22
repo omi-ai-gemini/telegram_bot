@@ -1,0 +1,15 @@
+本次修改：
+1. 主模型：GEMINI_MODEL，預設 gemini-3.5-flash-lite。
+2. 救援模型：GEMINI_RESCUE_MODEL，預設 gemini-3.1-flash-lite。
+3. 主模型安全阻擋時，先提示使用者正在使用救援模型；救援成功後刪除提示；救援失敗才顯示原安全阻擋。
+4. 圖片／貼圖解析模型：GEMINI_VISION_MODEL_1、2、3，預設依序 gemini-3.6-flash、gemini-3.5-flash、gemini-3-flash-preview。
+5. 三個解析模型全部 429 才回覆當日次數已用完。
+6. 任一模型出現 404，透過服務中心 bot 通知 SERVICE_CENTER_ADMIN_IDS；同模型只通知一次，紀錄於 service_center_model_alerts。
+7. 移除 Qwen2.5:7b 聊天副模型、模型切換指令、生圖 Prompt 整理與 Ollama 閘道路由。生圖直接使用表單組裝後 Prompt。
+
+Render 環境變數：
+GEMINI_MODEL=gemini-3.5-flash-lite
+GEMINI_RESCUE_MODEL=gemini-3.1-flash-lite
+GEMINI_VISION_MODEL_1=gemini-3.6-flash
+GEMINI_VISION_MODEL_2=gemini-3.5-flash
+GEMINI_VISION_MODEL_3=gemini-3-flash-preview

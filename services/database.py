@@ -649,26 +649,6 @@ def init_db():
         ON user_notice_log (bot_id, notice_id, user_id)
         """)
 
-        # =========================
-        # 主／副模型切換狀態
-        # - 預設 main = Gemini
-        # - secondary = AI Horde 文字模型
-        # =========================
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS api_model_modes (
-            user_id TEXT NOT NULL,
-            bot_id TEXT NOT NULL,
-            chat_id TEXT NOT NULL,
-            mode TEXT NOT NULL DEFAULT 'main',
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (user_id, bot_id, chat_id)
-        )
-        """)
-
-        cursor.execute("""
-        CREATE INDEX IF NOT EXISTS idx_api_model_modes_lookup
-        ON api_model_modes (bot_id, chat_id, user_id, mode)
-        """)
 
         # =========================
         # Prompt Debug 紀錄

@@ -1,0 +1,48 @@
+Telemini 副模型競速與圖片 Prompt 整理更新包
+
+新增：
+- services/aihorde_text_service.py
+- services/model_mode.py
+- docs/副模型競速與圖片Prompt整理更新說明.md
+
+覆蓋：
+- config.py
+- handlers/message_handler.py
+- handlers/call_handler.py
+- services/database.py
+- services/call_ai.py
+- services/ai_actions.py
+- services/image_store.py
+- services/image_jobs.py
+- routes/image_gen.py
+
+沿用原本 Render 環境變數：
+- AI_HORDE_API_KEY_1
+- AI_HORDE_API_KEY_2
+- APP_ENCRYPTION_SECRET
+- DATABASE_URL
+
+部署後第一次 request 會自動建立／補欄位：
+- api_model_modes
+- image_generation_jobs 的副模型 Prompt 狀態欄位
+
+測試指令：
+- /modes_api
+- /modes_api main
+- /modes_api secondary
+- /modes_api status
+
+生圖訊息流程：
+- prompt生成中
+- 生圖任務已送出，正在加入排隊
+- 後續排隊與生成流程不變
+
+編譯：
+python -m compileall -q .
+
+
+本修正版補充：
+- 已移除副模型 28000 字元靜默截斷。
+- 聊天／劇場完整 Prompt 原樣送往 AI Horde。
+- 預設上下文改為 16384。
+- worker 無法承接完整上下文時會回報失敗，不會用殘缺 Prompt 回覆。

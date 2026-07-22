@@ -18,7 +18,6 @@ from services.crypto_env import aad_for, decrypt_text, encrypt_text, is_encrypte
 from services.comfyui_service import build_txt2img_workflow, queue_prompt, wait_for_prompt_image
 from services.image_auth import create_image_token
 from services.image_task_manager import ImageTaskContext, process_pure_text_omi_job
-from services.qwen_service import build_face_prompts, get_secondary_model_label, organize_image_prompt
 from services.database import get_conn
 from services.image_prepare import OUTPUT_HEIGHT, OUTPUT_WIDTH, prepare_img2img_source
 from services.image_store import download_image_asset, save_image_asset
@@ -35,7 +34,6 @@ PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS = max(
 )
 POLL_SECONDS = 4
 STATUS_UPDATE_SECONDS = 10
-QWEN_RETRY_SECONDS = 30
 BASE_REFERENCE_DIR = Path(__file__).resolve().parent.parent / "static" / "image_reference"
 BASE_REFERENCE_FILES = {
     "male": "male_reference.png",
@@ -574,60 +572,6 @@ def _local_task_id_from_prompt(prompt_id: Any) -> Optional[int]:
         return None
 
 
-def _qwen_retryable_error(message: Any) -> bool:
-    text = _text(message)
-    retry_tokens = [
-        "AI 匝道等待超過",
-        "Qwen worker 沒有回傳結果",
-        "建立 Qwen worker 任務失敗",
-        "Qwen worker JSON 解析失敗",
-        "本機 AI 閘道設定不完整",
-        "Ollama 連線失敗",
-        "Ollama HTTP",
-        "Qwen 閘道呼叫失敗",
-        "不支援的任務類型",
-        "ollama_chat",
-    ]
-    return any(token in text for token in retry_tokens)
-
-
-def _wait_for_qwen_retake(job: Dict[str, Any], error_message: str) -> bool:
-    elapsed = _elapsed_seconds(job.get("created_at"))
-    if elapsed >= PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS:
-        _fail(
-            job,
-            "AI 匝道等待超過 24 小時，Qwen 無法補考",
-            code="QWEN_RETAKE_TIMEOUT",
-            public_text="生圖申請已暫存超過 24 小時，任務取消",
-        )
-        return False
-
-    _update_job(
-        job["id"],
-        status="prompting",
-        prompt_generation_status="pending",
-        prompt_error=_text(error_message)[:500],
-        heartbeat_at=datetime.utcnow(),
-    )
-    _edit_status_message(
-        job,
-        (
-            "生圖申請已暫存\n"
-            "等待 AI 匝道連線中\n"
-            "重新連線後會先讓 Qwen 補考整理 prompt\n"
-            "暫存期限：24 小時"
-        ),
-    )
-
-    deadline = time.monotonic() + QWEN_RETRY_SECONDS
-    while time.monotonic() < deadline:
-        if _job_cancel_requested(job["id"]):
-            _cancel(_get_job(job["id"]) or job)
-            return False
-        time.sleep(1)
-    return True
-
-
 def _finish_omi_txt2img_result(job: Dict[str, Any], waited: Dict[str, Any]) -> bool:
     if waited.get("canceled"):
         _cancel(_get_job(job["id"]) or job)
@@ -673,8 +617,6 @@ def _process_comfy_txt2img(job: Dict[str, Any]) -> bool:
         finish_omi_txt2img_result=_finish_omi_txt2img_result,
         is_local_task_prompt=_is_local_task_prompt,
         local_task_id_from_prompt=_local_task_id_from_prompt,
-        qwen_retryable_error=_qwen_retryable_error,
-        wait_for_qwen_retake=_wait_for_qwen_retake,
         pure_text_queue_timeout_seconds=PURE_TEXT_LOCAL_QUEUE_TIMEOUT_SECONDS,
     )
     return process_pure_text_omi_job(job, context)
@@ -743,71 +685,19 @@ def process_image_job(
             )
 
             if prompt_status not in {"ready", "fallback"}:
-                secondary_label = get_secondary_model_label() or "secondary_text_model"
-                try:
-                    organized = organize_image_prompt(
-                        draft_prompt=source_prompt,
-                        generation_mode=job.get("generation_mode") or "text",
-                        reference_type=job.get("reference_type"),
-                        cancel_check=lambda: _job_cancel_requested(job["id"]),
-                        progress_callback=lambda: _update_job(job["id"], heartbeat_at=datetime.utcnow()),
-                        debug_context={
-                            "chat_id": job.get("chat_id"),
-                            "user_id": job.get("user_id"),
-                            "bot_id": job.get("bot_id"),
-                            "purpose": "image_prompt",
-                            "job_id": job.get("id"),
-                        },
-                    )
-                except Exception as exc:
-                    organized = {"ok": False, "message": f"副模型整理失敗：{exc}"}
-
-                if organized.get("canceled") or _job_cancel_requested(job["id"]):
-                    _cancel(_get_job(job["id"]) or job)
-                    return
-
-                if organized.get("ok") and _text(organized.get("text")):
-                    prompt = _text(organized.get("text"))
-                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
-                    _update_job(
-                        job["id"],
-                        final_prompt=encrypted_prompt,
-                        prompt_generation_status="ready",
-                        prompt_model=secondary_label,
-                        prompt_error=None,
-                        prompt_chars_before=len(source_prompt),
-                        prompt_chars_after=len(prompt),
-                    )
-                    print(
-                        "IMAGE PROMPT SECONDARY OK "
-                        f"job_id={job['id']} model={secondary_label} "
-                        f"input_chars={len(source_prompt)} output_chars={len(prompt)}",
-                        flush=True,
-                    )
-                    job["prompt_generation_status"] = "ready"
-                    job["prompt_model"] = secondary_label
-                    queue_status_text = "prompt整理完成，正在加入排隊"
-                else:
-                    prompt = source_prompt
-                    encrypted_prompt = _encrypt_prompt(job["id"], prompt, field="final_prompt")
-                    error_message = _text(organized.get("message")) or "副模型整理失敗，已改用原始提示詞"
-                    _update_job(
-                        job["id"],
-                        final_prompt=encrypted_prompt,
-                        prompt_generation_status="fallback",
-                        prompt_model=secondary_label,
-                        prompt_error=error_message[:500],
-                        prompt_chars_before=len(source_prompt),
-                        prompt_chars_after=len(prompt),
-                    )
-                    print(
-                        "IMAGE PROMPT SECONDARY FALLBACK "
-                        f"job_id={job['id']} model={secondary_label} reason={error_message}",
-                        flush=True,
-                    )
-                    job["prompt_generation_status"] = "fallback"
-                    job["prompt_model"] = secondary_label
-                    queue_status_text = "prompt整理失敗，已改用原始提示詞，正在加入排隊"
+                prompt = source_prompt
+                _update_job(
+                    job["id"],
+                    final_prompt=_encrypt_prompt(job["id"], prompt, field="final_prompt"),
+                    prompt_generation_status="ready",
+                    prompt_model="direct_prompt",
+                    prompt_error=None,
+                    prompt_chars_before=len(source_prompt),
+                    prompt_chars_after=len(prompt),
+                )
+                job["prompt_generation_status"] = "ready"
+                job["prompt_model"] = "direct_prompt"
+                queue_status_text = "生圖任務已送出，正在加入排隊"
             elif not prompt:
                 prompt = source_prompt
 

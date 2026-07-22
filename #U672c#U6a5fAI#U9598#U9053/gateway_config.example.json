@@ -1,0 +1,12 @@
+{
+  "LOCAL_AI_GATEWAY_SECRET": "ui7Ophml2NJjlWk9woJthgjWY5HxVbWpY0QmEjgAd_N06bcBqvA-bsacLTN7-C41XWGYqhG-HqPx2oRCKkwdgw",
+  "LOCAL_AI_GATEWAY_PORT": 8787,
+  "COMFYUI_BASE_URL": "http://127.0.0.1:8188",
+  "COMFYUI_ROOT": "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini文生圖\\ComfyUI",
+  "COMFYUI_TEMP_RETENTION_SECONDS": 1800,
+  "RENDER_BASE_URL": "https://你的服務.onrender.com",
+  "LOCAL_AI_WORKER_ENABLED": 1,
+  "LOCAL_AI_WORKER_ID": "telemini-local-worker",
+  "LOCAL_AI_WORKER_POLL_SECONDS": 3,
+  "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS": 900
+}

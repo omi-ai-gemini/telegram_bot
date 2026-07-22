@@ -2,7 +2,7 @@ import secrets
 import threading
 import time
 
-from config import GEMINI_MODEL, GEMINI_VISION_MODEL
+from config import GEMINI_VISION_MODEL_1
 from services.bot_router import get_bot_token
 from services.call_ai import run_ai
 from services.gemini_service import GEMINI_BLOCKED, ask_gemini_image_to_text
@@ -386,7 +386,7 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
     print(
         "MEDIA PHOTO PARSE START "
         f"user_id={user_id} bot_id={bot_id} chat_id={chat_id} "
-        f"message_id={message_id} model={GEMINI_VISION_MODEL} caption={bool(caption)}",
+        f"message_id={message_id} model={GEMINI_VISION_MODEL_1} caption={bool(caption)}",
         flush=True,
     )
 
@@ -416,23 +416,21 @@ def handle_photo_message(user_id, bot_id, chat_id, message, message_id=None, pen
         image_bytes=media.get("bytes"),
         mime_type=media.get("mime_type"),
         prompt=prompt,
-        model=GEMINI_VISION_MODEL,
+        model=GEMINI_VISION_MODEL_1,
         temperature=0.1,
         max_output_tokens=65536,
     )
 
-    if description == GEMINI_BLOCKED:
-        _fail_pending_photo(
-            user_id, bot_id, chat_id, pending_token,
-            "圖片內容被安全阻擋，無法解析。",
-        )
+    parse_status = str((description or {}).get("status") or "error") if isinstance(description, dict) else "ok"
+    if parse_status == "quota_exhausted":
+        _fail_pending_photo(user_id, bot_id, chat_id, pending_token, "圖片解析模型當日次數已用完。")
         return
-
+    if parse_status == "blocked":
+        _fail_pending_photo(user_id, bot_id, chat_id, pending_token, "圖片內容被安全阻擋，無法解析。")
+        return
+    description = str((description or {}).get("text") or "").strip() if isinstance(description, dict) else str(description or "").strip()
     if not description:
-        _fail_pending_photo(
-            user_id, bot_id, chat_id, pending_token,
-            "圖片解析失敗，請稍後再試一次。",
-        )
+        _fail_pending_photo(user_id, bot_id, chat_id, pending_token, "圖片解析失敗，請稍後再試一次。")
         return
 
     print(
@@ -512,15 +510,19 @@ def handle_sticker_message(user_id, bot_id, chat_id, message, message_id=None):
         image_bytes=media.get("bytes"),
         mime_type=media.get("mime_type"),
         prompt=prompt,
-        model=GEMINI_MODEL,
+        model=GEMINI_VISION_MODEL_1,
         temperature=0.1,
         max_output_tokens=500,
     )
 
-    if description == GEMINI_BLOCKED:
+    parse_status = str((description or {}).get("status") or "error") if isinstance(description, dict) else "ok"
+    if parse_status == "quota_exhausted":
+        send_message(bot_id, chat_id, "貼圖解析模型當日次數已用完。")
+        return
+    if parse_status == "blocked":
         send_message(bot_id, chat_id, "貼圖內容被安全阻擋，無法解析。")
         return
-
+    description = str((description or {}).get("text") or "").strip() if isinstance(description, dict) else str(description or "").strip()
     if not description:
         send_message(bot_id, chat_id, "貼圖解析失敗，請稍後再試一次。")
         return

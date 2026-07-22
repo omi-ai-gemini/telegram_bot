@@ -1,0 +1,29 @@
+Telemini 本機 AI 閘道啟動修正
+
+修正問題：
+1. 舊版 .cmd 使用 UTF-8 中文內容與 LF 換行，Windows cmd.exe 可能把指令解析成亂碼。
+2. 找不到「閘道設定.cmd」時仍繼續執行 app.py，造成 LOCAL_AI_GATEWAY_SECRET 錯誤顯示兩次。
+3. COMFYUI_ROOT 含中文路徑時，批次檔受系統碼頁影響。
+
+新版做法：
+- 啟動批次檔內容改成純 ASCII 並使用 Windows CRLF。
+- 不再讀取「閘道設定.cmd」。
+- 改讀 UTF-8 的 gateway_config.json。
+- 第一次啟動會自動執行 setup_gateway.ps1：
+  1. 產生隨機 LOCAL_AI_GATEWAY_SECRET。
+  2. 建立 gateway_config.json。
+  3. 顯示並複製 Render 需要設定的密鑰。
+
+覆蓋方式：
+把本補丁內的「本機AI閘道」資料夾覆蓋到專案根目錄。
+舊的「閘道設定.cmd」可以刪除，新版不會再使用。
+
+第一次啟動：
+1. 雙擊 本機AI閘道\啟動本機AI閘道.cmd
+2. 第一次會自動產生 gateway_config.json。
+3. 把畫面顯示的 LOCAL_AI_GATEWAY_SECRET 設到 Render。
+4. 再次雙擊啟動檔。
+
+注意：
+- gateway_config.json 含私密密鑰，不要上傳 GitHub。
+- Ollama、ComfyUI 必須先啟動。

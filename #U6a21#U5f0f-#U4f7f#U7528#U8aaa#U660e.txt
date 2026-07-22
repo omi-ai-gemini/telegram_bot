@@ -1,0 +1,29 @@
+Telemini 人物 / 劇本模式更新包
+
+請把 zip 解壓縮後，依照資料夾結構覆蓋到你的專案：
+
+新增：
+- services/chat_persona.py
+- templates/chat_persona_form.html
+
+覆蓋：
+- services/database.py
+- routes/setting.py
+- services/commands.py
+- handlers/call_handler.py
+- services/style.py
+- services/gemini_service.py
+- services/call_ai.py
+
+功能：
+1. 聊天模式：人物設定按鈕會打開聊天人物表單。
+2. 劇場模式：人物設定按鈕會打開原本劇本表單。
+3. 聊天模式 AI 回覆會讀 chat_persona_settings。
+4. 劇場模式 AI 回覆會讀 character_settings。
+5. 記憶設定清除只刪記憶。
+6. 人物設定刪除所有設定會刪聊天人物設定、劇本設定、記憶。
+
+注意：
+- Render 需要有 BASE_URL 環境變數。
+- 第一次部署後，init_db() 會自動建立 chat_persona_settings 表。
+- Telegram 舊按鈕可能還是舊 callback，請重新輸入 /設定 產生新的按鈕。

@@ -1,0 +1,53 @@
+Telemini 本機 AI 反向 worker
+
+作用：
+不再使用 trycloudflare.com 臨時網址，也不需要 Cloudflare Tunnel。
+Render 收到生圖請求後，只把任務存起來。
+本機 worker 主動連到 Render 拉任務，跑完 ComfyUI 後再把圖片回傳 Render。
+
+本機要保持運行：
+1. ComfyUI
+2. 本機 AI 閘道 / worker（啟動本機AI閘道.cmd）
+
+Render 環境變數：
+1. 保留：
+   LOCAL_AI_GATEWAY_SECRET=與本機 gateway_config.json 完全相同的共用密鑰
+
+2. 刪除或留空：
+   LOCAL_AI_GATEWAY_URL
+
+   只填 secret、不填 URL 時，Render 會自動改用反向 worker 模式。
+
+本機 gateway_config.json：
+請填入：
+
+{
+  "LOCAL_AI_GATEWAY_SECRET": "與 Render 完全相同的密鑰",
+  "LOCAL_AI_GATEWAY_PORT": 8787,
+  "OLLAMA_BASE_URL": "http://127.0.0.1:11434",
+  "COMFYUI_BASE_URL": "http://127.0.0.1:8188",
+  "COMFYUI_ROOT": "N:\\Comfy-Desktop\\ComfyUI-Installs\\Telemini文生圖\\ComfyUI",
+  "COMFYUI_TEMP_RETENTION_SECONDS": 1800,
+  "RENDER_BASE_URL": "https://你的服務.onrender.com",
+  "LOCAL_AI_WORKER_ENABLED": 1,
+  "LOCAL_AI_WORKER_ID": "telemini-local-worker",
+  "LOCAL_AI_WORKER_POLL_SECONDS": 3,
+  "LOCAL_AI_WORKER_TASK_TIMEOUT_SECONDS": 900
+}
+
+啟動方式：
+1. 開 ComfyUI，確認 http://127.0.0.1:8188 可用。
+2. 雙擊「啟動本機AI閘道.cmd」。
+3. 終端機看到：
+   LOCAL AI WORKER STARTED render=https://你的服務.onrender.com
+   代表 worker 已經開始向 Render 拉任務。
+
+安全規則：
+- 不要把 11434、8188、8787 做路由器 Port Forwarding。
+- 本機服務都維持 127.0.0.1。
+- Render 與本機 worker 之間使用 Bearer Token，也就是 LOCAL_AI_GATEWAY_SECRET。
+- gateway_config.json 含密鑰，不要提交到 GitHub。
+
+圖片隱私：
+- worker 從 ComfyUI 讀取圖片 bytes 後，會嘗試刪除該張 ComfyUI temp 檔與 history。
+- Render 只暫存 worker 回傳結果，Telegram 發送完成後，系統仍只保留圖片管理所需的 Telegram file_id。
