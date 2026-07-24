@@ -1,30 +1,4 @@
 {
-  "10": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "12",
-        1
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "主生圖負面提示詞"
-    }
-  },
-  "11": {
-    "inputs": {
-      "text": "",
-      "clip": [
-        "12",
-        1
-      ]
-    },
-    "class_type": "CLIPTextEncode",
-    "_meta": {
-      "title": "主生圖正面提示詞"
-    }
-  },
   "12": {
     "inputs": {
       "ckpt_name": "cyberrealisticXL_v100.safetensors"
@@ -36,7 +10,7 @@
   },
   "13": {
     "inputs": {
-      "seed": 1,
+      "seed": 795356943161530,
       "steps": 25,
       "cfg": 5.5,
       "sampler_name": "dpmpp_2m",
@@ -47,11 +21,11 @@
         0
       ],
       "positive": [
-        "11",
+        "26",
         0
       ],
       "negative": [
-        "10",
+        "27",
         0
       ],
       "latent_image": [
@@ -77,7 +51,7 @@
   },
   "15": {
     "inputs": {
-      "filename_prefix": "Telemini_Qwen_Test",
+      "filename_prefix": "ComfyUI",
       "images": [
         "18",
         0
@@ -134,18 +108,18 @@
       "guide_size": 512,
       "guide_size_for": true,
       "max_size": 1024,
-      "seed": 1,
+      "seed": 89111524056202,
       "steps": 20,
       "cfg": 5,
-      "sampler_name": "euler",
-      "scheduler": "simple",
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
       "denoise": 0.25,
       "feather": 5,
       "noise_mask": true,
       "force_inpaint": true,
       "bbox_threshold": 0.5,
       "bbox_dilation": 10,
-      "bbox_crop_factor": 3,
+      "bbox_crop_factor": 2.5,
       "sam_detection_hint": "center-1",
       "sam_dilation": 0,
       "sam_threshold": 0.93,
@@ -204,7 +178,7 @@
   },
   "23": {
     "inputs": {
-      "text": "",
+      "text": "attractive natural face, balanced facial proportions, clear symmetrical eyes, natural eyebrows, well-shaped natural lips, subtle natural makeup, realistic skin texture, detailed facial features",
       "clip": [
         "12",
         1
@@ -212,12 +186,12 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "FaceDetailer 正面提示詞"
+      "title": "CLIP 文字編碼（提示詞）"
     }
   },
   "24": {
     "inputs": {
-      "text": "",
+      "text": "cross-eyed, asymmetrical eyes, mismatched eyes, malformed pupils, extra pupils, distorted facial proportions, deformed face, blurry face, plastic skin, over-smoothed skin, waxy skin",
       "clip": [
         "12",
         1
@@ -225,7 +199,33 @@
     },
     "class_type": "CLIPTextEncode",
     "_meta": {
-      "title": "FaceDetailer 負面提示詞"
+      "title": "CLIP 文字編碼（提示詞）"
+    }
+  },
+  "26": {
+    "inputs": {
+      "text": "photorealistic, aesthetically pleasing, harmonious facial proportions, natural realistic appearance, coherent anatomy, detailed photography",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 文字編碼（提示詞）"
+    }
+  },
+  "27": {
+    "inputs": {
+      "text": "low quality, blurry, bad anatomy, deformed body, malformed hands, extra fingers, missing fingers, plastic skin, over-smoothed skin, anime, cartoon, illustration",
+      "clip": [
+        "12",
+        1
+      ]
+    },
+    "class_type": "CLIPTextEncode",
+    "_meta": {
+      "title": "CLIP 文字編碼（提示詞）"
     }
   }
 }

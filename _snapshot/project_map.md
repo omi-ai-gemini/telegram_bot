@@ -12,9 +12,56 @@ C:\Projects\telemini
 
 ## 主要檔案列表
 
+- `#U4f7f#U7528#U8aaa#U660e.txt`
+- `#U4fee#U6539#U6a94#U6848#U6e05#U55ae.txt`
+- `#U5168#U5beb#U771f#U9632#U8096#U50cf#U6539#U7248#U8aaa#U660e.txt`
+- `#U526f#U6a21#U578b#U771f#U5be6#U5c0d#U8a71#U89d2#U8272#U4fee#U6b63#U8aaa#U660e.txt`
+- `#U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U8986#U84cb#U8aaa#U660e.txt`
+- `#U526f#U6a21#U578b#U7af6#U901f#U8207#U751f#U5716#U6d41#U7a0b#U6aa2#U67e5#U7d50#U679c.txt`
+- `#U526f#U6a21#U578b#U964d#U7248#U8aaa#U660e.txt`
+- `#U531d#U9053#U91cd#U9023#U4efb#U52d9#U56de#U6536#U4fee#U6b63#U8aaa#U660e.txt`
+- `#U555f#U52d5#U932f#U8aa4#U4fee#U6b63#U8aaa#U660e.txt`
+- `#U56fa#U5b9a#U8eab#U4efd#U63d0#U793a#U8a5e#U751f#U5716_#U6700#U65b0#U7248#U76f8#U5bb9#U4fee#U6b63#U7248#U8986#U84cb#U8aaa#U660e.txt`
+- `#U5716#U7247#U6a21#U578bfallback#U8986#U84cb#U8aaa#U660e.txt`
+- `#U5716#U7247#U7b49#U5f85#U8207#U6a21#U578b#U5207#U63db#U8986#U84cb#U8aaa#U660e.txt`
+- `#U5a92#U9ad4#U8f38#U5165#U8986#U84cb#U8aaa#U660e.txt`
+- `#U5c40#U90e8#U906e#U7f69#U756b#U7b46#U4fee#U5fa9#U8aaa#U660e.txt`
+- `#U66f4#U65b0#U8aaa#U660e.txt`
+- `#U670d#U52d9#U4e2d#U5fc3#U516c#U544a#U63a8#U64ad#U8986#U84cb#U8aaa#U660e.txt`
+- `#U670d#U52d9#U4e2d#U5fc3#U786c#U6aa2#U67e5#U8986#U84cb#U8aaa#U660e.txt`
+- `#U670d#U52d9#U4e2d#U5fc3#U7ba1#U7406#U54e1#U5224#U5b9a#U4fee#U5fa9#U8aaa#U660e.txt`
+- `#U672c#U6a5fAI#U9598#U9053\#U8a2d#U5b9a#U8aaa#U660e.txt`
+- `#U672c#U6a5fAI#U9598#U9053\app.py`
+- `#U672c#U6a5fAI#U9598#U9053\Cloudflare#U8a2d#U5b9a#U6b65#U9a5f.txt`
+- `#U672c#U6a5fAI#U9598#U9053\cloudflared-config#U7bc4#U4f8b.yml`
+- `#U672c#U6a5fAI#U9598#U9053\gateway_config.example.json`
+- `#U672c#U6a5fAI#U9598#U9053\gateway_config.json`
+- `#U672c#U6a5fAI#U9598#U9053\requirements.txt`
+- `#U672c#U6b21#U4fee#U5fa9#U8aaa#U660e.txt`
+- `#U672c#U6b21#U4fee#U6539#U8aaa#U660e.txt`
+- `#U6a21#U578b#U5207#U63db#U5171#U7528#U8def#U7531#U4fee#U6b63#U8aaa#U660e.txt`
+- `#U6a21#U5f0f-#U4f7f#U7528#U8aaa#U660e.txt`
+- `#U751f#U5716#U529f#U80fd#U6aa2#U67e5#U7d50#U679c.txt`
+- `#U751f#U5716#U6392#U968a#U72c0#U614b#U8207#U5931#U6557#U901a#U77e5#U8986#U84cb#U8aaa#U660e.txt`
+- `#U751f#U5716#U6539#U7248#U76f8#U5bb9#U6027#U6aa2#U67e5#U7d50#U679c.txt`
+- `#U751f#U5716#U96d9#U6a21#U5f0f#U6539#U7248#U6aa2#U67e5#U7d50#U679c.txt`
+- `#U751f#U5716#U96d9#U6a21#U5f0f#U6539#U7248#U8986#U84cb#U8aaa#U660e.txt`
+- `#U751f#U5716#U96d9#U6a21#U5f0f#U672c#U6b21#U8986#U84cb#U8aaa#U660e.txt`
+- `#U88dc#U4e01#U5957#U7528#U8aaa#U660e.txt`
+- `#U88dc#U4e01#U8986#U84cb#U8aaa#U660e.txt`
+- `#U8986#U84cb#U65b9#U5f0f.txt`
+- `#U8986#U84cb#U6a94#U6848#U6e05#U55ae.txt`
+- `#U8986#U84cb#U8aaa#U660e.txt`
+- `#U906e#U7f69#U5c40#U90e8#U4fee#U6539#U5916#U5e36#U8aaa#U660e.txt`
+- `#U906e#U7f69#U751f#U5716#U4fee#U6b63#U8aaa#U660e.txt`
+- `#U958b#U5834-#U66f4#U65b0#U8aaa#U660e.txt`
+- `#U96b1#U79c1#U7248#U6aa2#U67e5#U7d50#U679c.txt`
 - `__init__.py`
+- `AI_Horde#U5c3a#U5bf8#U8207#U5de5#U4f5c#U7bc0#U9ede#U76f8#U5bb9#U4fee#U6b63#U8aaa#U660e.txt`
+- `AI_Horde#U751f#U5716#U5916#U5e36#U8aaa#U660e.txt`
 - `AI_Horde尺寸與工作節點相容修正說明.txt`
 - `AI_Horde生圖外帶說明.txt`
+- `Bearer#U9a57#U8b49#U4fee#U6b63#U8aaa#U660e.txt`
 - `Bearer驗證修正說明.txt`
 - `config.py`
 - `docs\#U526f#U6a21#U578b#U7af6#U901f#U8207#U5716#U7247Prompt#U6574#U7406#U66f4#U65b0#U8aaa#U660e.md`
@@ -66,12 +113,14 @@ C:\Projects\telemini
 - `docs\服務中心公告推播更新說明.md`
 - `docs\服務中心更新說明.md`
 - `docs\目前專案整合狀態.md`
+- `Gemini五模型與移除Qwen更新說明.txt`
 - `handlers\__init__.py`
 - `handlers\call_handler.py`
 - `handlers\message_handler.py`
 - `main.py`
 - `prompt#U5916#U5e36#U8aaa#U660e.txt`
 - `prompt外帶說明.txt`
+- `README_#U4efb#U52d9#U7ba1#U7406#U5668#U88dc#U4e01#U8aaa#U660e.txt`
 - `README_#U8986#U84cb#U8aaa#U660e.txt`
 - `README_任務管理器補丁說明.txt`
 - `README_覆蓋說明.txt`
@@ -115,6 +164,7 @@ C:\Projects\telemini
 - `services\memory.py`
 - `services\memory_summary.py`
 - `services\memory_view.py`
+- `services\model_health.py`
 - `services\model_mode.py`
 - `services\privacy_access.py`
 - `services\privacy_migration.py`
@@ -258,6 +308,32 @@ C:\Projects\telemini
 - `/test_lab/save` → `save_test_lab_page`
 
 ## Python 函式總覽
+
+### `#U672c#U6a5fAI#U9598#U9053\app.py`
+- `_load_gateway_config()`
+- `_verify_request()`
+- `_auth_guard()`
+- `_proxy_json()`
+- `comfy_prompt()`
+- `comfy_interrupt()`
+- `comfy_history()`
+- `_temp_root()`
+- `_cleanup_stale_temp_files()`
+- `_stale_cleanup_loop()`
+- `_clear_comfy_history_on_start()`
+- `_safe_temp_path()`
+- `_render_headers()`
+- `_render_get()`
+- `_render_post()`
+- `_pick_image_meta()`
+- `_history_error_message()`
+- `_delete_temp_and_history()`
+- `_comfy_run_prompt()`
+- `_task_heartbeat_loop()`
+- `_process_render_task()`
+- `_render_worker_loop()`
+- `comfy_view()`
+- `_privacy_headers()`
 
 ### `config.py`
 - `_env_int()`
@@ -864,6 +940,10 @@ C:\Projects\telemini
 - `_render_summary_memory()`
 - `handle_memory_view_callback()`
 
+### `services\model_health.py`
+- `_admin_ids()`
+- `notify_model_404_once()`
+
 ### `services\model_mode.py`
 - `_text()`
 - `get_api_model_mode()`
@@ -952,8 +1032,6 @@ C:\Projects\telemini
 - `organize_image_prompt()`
 
 ### `services\reply_model_router.py`
-- `_normalize_main()`
-- `_normalize_secondary()`
 - `generate_reply_by_mode()`
 
 ### `services\reply_style.py`
